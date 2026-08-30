@@ -93,15 +93,33 @@ impl VimTerm {
             })
             .map_err(|e| format!("openpty failed: {e}"))?;
 
-        let mut cmd = CommandBuilder::new(program);
+        // CreateProcess does no PATH × PATHEXT search, and the default
+        // "vim" is rarely on a Windows PATH anyway — resolve it (with the
+        // Git-for-Windows fallback) before spawning. Unresolved names go
+        // through untouched so the OS's own error surfaces.
+        #[cfg(windows)]
+        let resolved =
+            nebula_core::spawn::resolve_editor_program(program).map(|p| p.display().to_string());
+        #[cfg(windows)]
+        let launch: &str = resolved.as_deref().unwrap_or(program);
+        #[cfg(unix)]
+        let launch: &str = program;
+
+        let mut cmd = CommandBuilder::new(launch);
         cmd.args(args);
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
 
-        let mut child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| format!("failed to launch {program}: {e}"))?;
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
+            let mut msg = format!("failed to launch {program}: {e}");
+            #[cfg(windows)]
+            if resolved.is_none() {
+                msg.push_str(
+                    " (not on PATH — set NEBULA_EDITOR or pick another editor in Settings)",
+                );
+            }
+            msg
+        })?;
         drop(pair.slave);
 
         let killer = child.clone_killer();

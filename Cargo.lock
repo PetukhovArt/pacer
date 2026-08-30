@@ -1153,6 +1153,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "subtle",
+ "tempfile",
  "tokio",
  "ulid",
  "windows-sys",

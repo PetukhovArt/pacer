@@ -16,7 +16,8 @@
 //! against `PATH` × `PATHEXT`, and hand a `.cmd` / `.bat` shim to `cmd.exe`,
 //! which is the only thing that can execute one.
 
-use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::path::Path;
 
 /// The program + args a plain TERMINAL SESSION opens on.
 pub fn interactive_shell() -> (String, Vec<String>) {
@@ -142,6 +143,10 @@ mod platform {
 #[cfg(windows)]
 mod platform {
     use super::*;
+    // The PATH × PATHEXT lookup lives in nebula-core so the TUI's editor
+    // spawn can share it; this module keeps the daemon-only policy (shell
+    // choice, `.cmd` shim wrapping).
+    use nebula_core::spawn::resolve_program;
 
     pub fn interactive_shell() -> (String, Vec<String>) {
         // `SHELL` wins when it names something this OS can actually start —
@@ -212,110 +217,9 @@ mod platform {
             .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
     }
 
-    /// Resolve a program name the way a Windows shell does: an explicit path
-    /// is taken as written, a bare name is searched down `PATH`, and either
-    /// may be missing the extension, which `PATHEXT` supplies.
-    pub(super) fn resolve_program(program: &str) -> Option<PathBuf> {
-        let extensions = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
-        let path_var = std::env::var_os("PATH").unwrap_or_default();
-
-        let named = Path::new(program);
-        if named.components().count() > 1 || named.is_absolute() {
-            return first_existing(named, &extensions);
-        }
-        std::env::split_paths(&path_var)
-            .filter(|dir| !dir.as_os_str().is_empty())
-            .find_map(|dir| first_existing(&dir.join(program), &extensions))
-    }
-
-    /// `base` itself if it is a file, else `base` + each `PATHEXT` entry.
-    fn first_existing(base: &Path, extensions: &str) -> Option<PathBuf> {
-        if base.is_file() {
-            return Some(base.to_path_buf());
-        }
-        extensions
-            .split(';')
-            .map(str::trim)
-            .filter(|ext| !ext.is_empty())
-            // PATHEXT entries carry the leading dot; appending rather than
-            // using `set_extension` keeps `cursor-agent` from becoming
-            // `cursor.exe` on a name that already contains a dot.
-            .map(|ext| PathBuf::from(format!("{}{ext}", base.display())))
-            .find(|candidate| candidate.is_file())
-    }
-
     #[cfg(test)]
     mod tests {
         use super::*;
-
-        /// The resolved path is compared case-insensitively: PATHEXT is
-        /// conventionally upper-case while the file on disk is not, and NTFS
-        /// treats the two as one name. What matters is *which file*, not how
-        /// it is spelled.
-        fn assert_resolves(base: &Path, extensions: &str, expected: Option<&Path>) {
-            let got = first_existing(base, extensions);
-            let normalize = |p: &Path| p.to_string_lossy().to_lowercase();
-            assert_eq!(
-                got.as_deref().map(normalize),
-                expected.map(normalize),
-                "resolving {}",
-                base.display()
-            );
-        }
-
-        /// The two things a Windows shell does that `CreateProcess` will not:
-        /// supply the extension, and search `PATH` for a bare name.
-        #[test]
-        fn a_bare_name_resolves_through_path_and_pathext() {
-            let tmp = tempfile::tempdir().unwrap();
-            let dir = tmp.path();
-            std::fs::write(dir.join("stub-tool.cmd"), b"@echo off\n").unwrap();
-            std::fs::write(dir.join("plain-tool"), b"").unwrap();
-
-            let extensions = ".COM;.EXE;.BAT;.CMD";
-            assert_resolves(
-                &dir.join("stub-tool"),
-                extensions,
-                Some(&dir.join("stub-tool.cmd")),
-            );
-            assert_resolves(
-                &dir.join("plain-tool"),
-                extensions,
-                Some(&dir.join("plain-tool")),
-            );
-            assert_resolves(&dir.join("absent"), extensions, None);
-        }
-
-        /// A name that already contains a dot must gain the extension, not
-        /// have its own replaced — `cursor-agent` is fine, but a future
-        /// `foo.js` shim would break under `set_extension`.
-        #[test]
-        fn pathext_appends_and_never_replaces_an_existing_dot() {
-            let tmp = tempfile::tempdir().unwrap();
-            let dir = tmp.path();
-            std::fs::write(dir.join("foo.js.cmd"), b"").unwrap();
-            assert_resolves(
-                &dir.join("foo.js"),
-                ".EXE;.CMD",
-                Some(&dir.join("foo.js.cmd")),
-            );
-        }
-
-        /// The whole point of the lookup: a bare name, found by walking PATH.
-        #[test]
-        fn path_is_walked_in_order_for_a_bare_name() {
-            let tmp = tempfile::tempdir().unwrap();
-            let dir = tmp.path();
-            std::fs::write(dir.join("nebula-probe-stub.exe"), b"").unwrap();
-            let previous = std::env::var_os("PATH");
-            std::env::set_var("PATH", dir);
-            let found = resolve_program("nebula-probe-stub");
-            match previous {
-                Some(v) => std::env::set_var("PATH", v),
-                None => std::env::remove_var("PATH"),
-            }
-            assert!(found.is_some(), "a bare name must be found down PATH");
-        }
 
         /// A `.cmd` shim has to go through `cmd.exe`; a real executable must
         /// not, or every agent would gain a stray `cmd.exe` parent that the
