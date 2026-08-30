@@ -717,7 +717,17 @@ fn try_lock_exclusive(file: &std::fs::File) -> bool {
     unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) == 0 }
 }
 
-/// See `nebula_daemon::lifecycle`: one byte at offset 0, non-blocking.
+/// The byte the PIDFILE LOCK is taken on. Must equal
+/// `nebula_daemon::lifecycle::LOCK_OFFSET`; `nebula-tui` does not depend on
+/// `nebula-daemon`, so the agreement is asserted by the Windows smoke grid
+/// rather than by the compiler.
+#[cfg(windows)]
+const PIDFILE_LOCK_OFFSET: u32 = 0x4000_0000;
+
+/// See `nebula_daemon::lifecycle`: one byte at the same far offset it uses,
+/// non-blocking. The offset has to match or the two never contend — and it
+/// has to be past the content, because a Windows lock is mandatory and would
+/// otherwise make the pidfile unreadable to `kill_by_pidfile` below.
 #[cfg(windows)]
 fn try_lock_exclusive(file: &std::fs::File) -> bool {
     use std::os::windows::io::AsRawHandle;
@@ -744,7 +754,7 @@ fn try_lock_exclusive(file: &std::fs::File) -> bool {
     let mut overlapped = Overlapped {
         internal: 0,
         internal_high: 0,
-        offset: 0,
+        offset: PIDFILE_LOCK_OFFSET,
         offset_high: 0,
         event: std::ptr::null_mut(),
     };

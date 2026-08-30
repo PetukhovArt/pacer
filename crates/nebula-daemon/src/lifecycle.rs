@@ -75,11 +75,24 @@ pub(crate) fn try_lock_exclusive(file: &std::fs::File) -> bool {
     unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) == 0 }
 }
 
+/// The byte the PIDFILE LOCK is taken on: 1 GiB in, so it is past any pidfile
+/// content and the file stays readable while the lock is held. Both the
+/// daemon and the client lock the *same* byte, or they would not contend.
+#[cfg(windows)]
+pub const LOCK_OFFSET: u32 = 0x4000_0000;
+
 /// `LockFileEx` is the Windows equivalent of `flock(LOCK_EX|LOCK_NB)`:
 /// `LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY` returns 0 rather
-/// than waiting when another process holds the range. The range is one byte
-/// at offset 0 — the pidfile's content is informational, so locking byte 0
-/// is enough and works on an empty file, which a whole-file range would not.
+/// than waiting when another process holds the range.
+///
+/// The range is one byte at [`LOCK_OFFSET`], far past any pidfile content,
+/// and that offset is the whole point. Windows file locks are **mandatory**,
+/// not advisory like `flock`: a locked byte 0 would make the pidfile
+/// unreadable to every other process, so `read_to_string` on it fails with
+/// ERROR_LOCK_VIOLATION — breaking exactly the two readers that exist,
+/// `nebula kill`'s pid lookup and the VERSION SKEW message's daemon path.
+/// Locking past the end of the file is legal and leaves the content readable
+/// while still refusing a second holder.
 #[cfg(windows)]
 pub(crate) fn try_lock_exclusive(file: &std::fs::File) -> bool {
     #[repr(C)]
@@ -105,7 +118,7 @@ pub(crate) fn try_lock_exclusive(file: &std::fs::File) -> bool {
     let mut overlapped = Overlapped {
         internal: 0,
         internal_high: 0,
-        offset: 0,
+        offset: LOCK_OFFSET,
         offset_high: 0,
         event: std::ptr::null_mut(),
     };
