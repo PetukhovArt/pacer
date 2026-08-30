@@ -279,23 +279,13 @@ fn wait_until_serving(child: &mut Child, addr: SocketAddr) -> Result<()> {
     }
 }
 
-/// Hand the URL to the desktop browser, mirroring the TUI's opener: `open` on
-/// macOS, `xdg-open` on Linux.
+/// Hand the URL to the desktop browser — the TUI's opener, shared as
+/// `nebula_core::spawn::open_in_browser`.
 pub(crate) fn open_url(url: &str) -> bool {
     if cfg!(test) {
         return true;
     }
-    let opener = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    Command::new(opener)
-        .arg(url)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+    nebula_core::spawn::open_in_browser(url)
 }
 
 #[cfg(test)]

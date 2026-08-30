@@ -5555,7 +5555,7 @@ fn copy_to_clipboard(text: &str) -> bool {
     }
 }
 
-/// Open a URL in the default browser via open(1) (this tool targets macOS).
+/// Open a URL in the default browser (`nebula_core::spawn::open_in_browser`).
 /// The scheme allowlist is defense in depth — the link scanner only ever
 /// produces http(s) URLs, but the text originates from untrusted PTY output.
 fn open_url(url: &str) -> bool {
@@ -5565,20 +5565,7 @@ fn open_url(url: &str) -> bool {
     if cfg!(test) {
         return true;
     }
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::{Command, Stdio};
-        Command::new("open")
-            .arg(url)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
+    nebula_core::spawn::open_in_browser(url)
 }
 
 /// Two clicks on the same cell within this window make a double-click.

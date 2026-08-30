@@ -43,3 +43,47 @@ impl NoWindow for tokio::process::Command {
         self
     }
 }
+
+/// Hand `url` to the desktop's default browser: `open` on macOS, `xdg-open`
+/// on Linux, `cmd /c start` on Windows. Returns whether the opener reported
+/// success (it hands off and exits; nothing waits on the browser).
+///
+/// Callers own their scheme allowlists and test shortcuts — a `cfg!(test)`
+/// here would be false in every crate that depends on this one.
+pub fn open_in_browser(url: &str) -> bool {
+    use std::process::{Command, Stdio};
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // `start` is a cmd builtin (ShellExecute under the hood), so the URL
+        // crosses cmd's own parser. std quotes an argv item only when it has
+        // whitespace, and an unquoted `&` in a query string would split the
+        // command — so the URL is quoted by hand and passed raw. Embedded
+        // `"` are stripped, not escaped: cmd has no escape `start` survives,
+        // and no http(s) URL needs one. The empty quoted arg is `start`'s
+        // window-title slot.
+        let quoted = format!("\"{}\"", url.replace('"', ""));
+        Command::new("cmd.exe")
+            .args(["/c", "start", ""])
+            .raw_arg(quoted)
+            .no_window()
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+    #[cfg(unix)]
+    {
+        let opener = if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
+        Command::new(opener)
+            .arg(url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+}
