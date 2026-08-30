@@ -362,7 +362,22 @@ mod tests {
         drop(held);
 
         // Free again: back to the default, so the usual case is unchanged.
-        assert_eq!(resolve_port(None, DEFAULT_BIND).unwrap(), DEFAULT_PORT);
+        //
+        // Polled rather than asserted outright: dropping a listener asks the
+        // OS to close it, and Windows does not always make the port bindable
+        // again by the time the next statement runs. That is the test racing
+        // the OS, not the fallback misbehaving — so wait for the condition
+        // the assertion is actually about.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            match resolve_port(None, DEFAULT_BIND).unwrap() {
+                DEFAULT_PORT => break,
+                other if std::time::Instant::now() >= deadline => {
+                    panic!("the default port never came back; got {other}")
+                }
+                _ => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
     }
 
     /// `--port 0` used to be refused outright. It now means "any free one",
