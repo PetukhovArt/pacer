@@ -28,6 +28,11 @@ const READER_CHANNEL_BOUND: usize = 64;
 /// After the polite SIGHUP, how long the child gets to exit before its whole
 /// process group is SIGKILLed.
 const KILL_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+/// Windows only: how long the child waiter holds its `Eof` after the child
+/// exits, so the ConPTY host's final output beats it through the channel
+/// (there is no EOF race to lose on Unix — see `spawn_reader_thread`).
+#[cfg(windows)]
+const EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(100);
 /// Size a session is spawned at when no client is attached to say better
 /// (prewarms, respawns after a move, restarts). The first attach resizes it
 /// to the real pane, so these only shape the child's first paint.
@@ -99,6 +104,10 @@ pub struct PtySession {
     last_size: Mutex<(u16, u16)>,
     /// Kitty keyboard negotiation state, fed by the pump from live output.
     kitty: Mutex<kitty::KittyScanner>,
+    /// ConPTY's `INHERIT_CURSOR` handshake blocks the child until its
+    /// `ESC[6n` is answered; the pump answers from here (see `core::dsr`).
+    #[cfg(windows)]
+    dsr: Mutex<nebula_core::dsr::DsrScanner>,
     /// OSC 9;4 busy/idle tracking, likewise fed from live output.
     progress: Mutex<ProgressScanner>,
     /// Claude Cloud session id / attach-refusal scanner; `None` until a
@@ -172,6 +181,8 @@ impl PtySession {
             events,
             last_size: Mutex::new((spec.cols, spec.rows)),
             kitty: Mutex::new(kitty::KittyScanner::new()),
+            #[cfg(windows)]
+            dsr: Mutex::new(nebula_core::dsr::DsrScanner::new()),
             progress: Mutex::new(ProgressScanner::new()),
             cloud: Mutex::new(None),
             input_seen: AtomicBool::new(false),
@@ -187,6 +198,13 @@ impl PtySession {
         if !data.is_empty() {
             self.input_seen.store(true, Ordering::Relaxed);
         }
+        self.write_reply(data)
+    }
+
+    /// Write bytes the *daemon* owes the child (kitty/DA1/DSR replies) —
+    /// same pipe as `write_input`, but not user input, so it must not trip
+    /// `input_seen` (the Cloud mirror's "typed into" rule).
+    fn write_reply(&self, data: &[u8]) -> Result<()> {
         let mut w = self.writer.lock().unwrap();
         w.write_all(data)?;
         w.flush()?;
@@ -296,13 +314,37 @@ impl PtySession {
     }
 }
 
-/// PTY reads are blocking → dedicated thread per session. After EOF it reaps
-/// the child to get the exit code.
+/// PTY reads are blocking → dedicated thread per session.
+///
+/// Who notices the exit differs by platform. On Unix the child's death
+/// closes the slave, the read returns EOF, and the same thread reaps the
+/// child for its exit code. On Windows the ConPTY host holds the master
+/// pipe open until `ClosePseudoConsole`, so EOF never announces the exit —
+/// a separate waiter thread reaps the child and sends `Eof` itself, after
+/// [`EXIT_DRAIN`] so the host's final bytes beat it through the channel.
 fn spawn_reader_thread(
     mut reader: Box<dyn Read + Send>,
-    mut child: Box<dyn portable_pty::Child + Send + Sync>,
+    #[allow(unused_mut)] mut child: Box<dyn portable_pty::Child + Send + Sync>,
     tx: mpsc::Sender<ReaderMsg>,
 ) {
+    #[cfg(windows)]
+    let tx_reader = {
+        let mut child = child;
+        let tx_waiter = tx.clone();
+        std::thread::Builder::new()
+            .name("pty-child-waiter".into())
+            .stack_size(64 * 1024)
+            .spawn(move || {
+                let exit_code = child.wait().ok().map(|st| st.exit_code() as i32);
+                std::thread::sleep(EXIT_DRAIN);
+                let _ = tx_waiter.blocking_send(ReaderMsg::Eof { exit_code });
+            })
+            .expect("spawn pty child waiter thread");
+        tx
+    };
+    #[cfg(unix)]
+    let tx_reader = tx;
+
     std::thread::Builder::new()
         .name("pty-reader".into())
         .stack_size(256 * 1024)
@@ -312,7 +354,7 @@ fn spawn_reader_thread(
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        if tx
+                        if tx_reader
                             .blocking_send(ReaderMsg::Data(buf[..n].to_vec()))
                             .is_err()
                         {
@@ -321,8 +363,13 @@ fn spawn_reader_thread(
                     }
                 }
             }
-            let exit_code = child.wait().ok().map(|st| st.exit_code() as i32);
-            let _ = tx.blocking_send(ReaderMsg::Eof { exit_code });
+            // Unix: EOF is how the exit announces itself — reap here.
+            // Windows: the waiter owns the child and already reported it.
+            #[cfg(unix)]
+            {
+                let exit_code = child.wait().ok().map(|st| st.exit_code() as i32);
+                let _ = tx_reader.blocking_send(ReaderMsg::Eof { exit_code });
+            }
         })
         .expect("spawn pty reader thread");
 }
@@ -336,11 +383,22 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
         if pending.is_empty() {
             return;
         }
+        // The ConPTY host's cursor query gates the child's launch, so it is
+        // answered first, before anything else looks at the bytes.
+        #[cfg(windows)]
+        {
+            let hits = session.dsr.lock().unwrap().feed(pending);
+            for _ in 0..hits {
+                if let Err(e) = session.write_reply(nebula_core::dsr::DSR_REPLY) {
+                    tracing::warn!(error = %e, "DSR reply write failed");
+                }
+            }
+        }
         // Kitty keyboard negotiation rides in the output stream; nothing else
         // would ever answer the child's queries (tmux does the same).
         let actions = session.kitty.lock().unwrap().feed(pending);
         if !actions.reply.is_empty() {
-            if let Err(e) = session.write_input(&actions.reply) {
+            if let Err(e) = session.write_reply(&actions.reply) {
                 tracing::warn!(error = %e, "kitty/DA reply write failed");
             }
         }
@@ -406,25 +464,36 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use super::*;
-    #[cfg(unix)]
     use nebula_core::AgentId;
 
     /// Any long-lived child will do — the assertions are about what the
     /// session records, not what the child does with it. It just has to be a
     /// program that exists: `/bin/sh` is an MSYS mapping, not a path
-    /// `CreateProcess` can resolve.
-    #[cfg(unix)]
-    const IDLE_CHILD: &str = "/bin/cat";
+    /// `CreateProcess` can resolve, so Windows idles in PowerShell.
+    fn idle_child() -> (String, Vec<String>) {
+        #[cfg(unix)]
+        {
+            ("/bin/cat".into(), vec![])
+        }
+        #[cfg(windows)]
+        {
+            (
+                "powershell.exe".into(),
+                ["-NoProfile", "-Command", "Start-Sleep 30"]
+                    .map(String::from)
+                    .to_vec(),
+            )
+        }
+    }
 
-    #[cfg(unix)]
     fn echo_session() -> Arc<PtySession> {
+        let (program, args) = idle_child();
         PtySession::spawn(
             SessionRef::Agent(AgentId::generate()),
             SpawnSpec {
-                program: IDLE_CHILD.into(),
-                args: vec![],
+                program,
+                args,
                 cwd: std::env::temp_dir(),
                 env: vec![],
                 scrub_env: &[],
@@ -435,13 +504,78 @@ mod tests {
         .unwrap()
     }
 
+    /// A child that prints `marker` and exits — for asserting on both ends
+    /// of a session's life.
+    fn print_child(marker: &str) -> (String, Vec<String>) {
+        #[cfg(unix)]
+        {
+            (
+                "/bin/sh".into(),
+                vec!["-c".into(), format!("printf '{marker}'")],
+            )
+        }
+        #[cfg(windows)]
+        {
+            (
+                "powershell.exe".into(),
+                vec![
+                    "-NoProfile".into(),
+                    "-Command".into(),
+                    format!("Write-Host {marker}"),
+                ],
+            )
+        }
+    }
+
+    /// The whole life of a PTY SESSION: the child runs, its output lands in
+    /// the SCROLLBACK RING, and its exit is broadcast. On Windows each step
+    /// has its own machinery to regress — the pump's DSR reply is what lets
+    /// the ConPTY child start at all, and the waiter thread is what turns
+    /// its exit into `Exited` (the master pipe never EOFs on it).
+    #[tokio::test]
+    async fn child_output_reaches_the_ring_and_the_exit_is_reported() {
+        let (program, args) = print_child("PTY_RING_MARKER");
+        let session = PtySession::spawn(
+            SessionRef::Agent(AgentId::generate()),
+            SpawnSpec {
+                program,
+                args,
+                cwd: std::env::temp_dir(),
+                env: vec![],
+                scrub_env: &[],
+                cols: DEFAULT_COLS,
+                rows: DEFAULT_ROWS,
+            },
+        )
+        .unwrap();
+        let mut rx = session.events.subscribe();
+        let exited = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match rx.recv().await {
+                    Ok(PtyEvent::Exited { .. }) => break,
+                    Ok(_) => continue,
+                    Err(e) => panic!("event stream ended without Exited: {e}"),
+                }
+            }
+        })
+        .await;
+        let (_, replay) = session.snapshot(None);
+        let text = String::from_utf8_lossy(&replay);
+        assert!(
+            exited.is_ok(),
+            "no Exited within 10s; ring so far: {text:?}"
+        );
+        assert!(
+            text.contains("PTY_RING_MARKER"),
+            "child output never reached the ring: {text:?}"
+        );
+    }
+
     /// The Cloud mirror stops refreshing a pane once its user has typed
     /// into it, so `input_seen` must track keystrokes only — an attach's
     /// resize jiggle happens without anyone touching the keyboard.
-    /// Opens a real PTY. Unix-only for now: on Windows the ConPTY child
-    /// never runs, so it can never be reaped either and the test binary
-    /// hangs at exit rather than failing. See `nebula_tui::editor_stub`.
-    #[cfg(unix)]
+    /// Opens a real PTY; on Windows the pump's DSR reply is what lets the
+    /// ConPTY child start (and thus be reaped) at all.
     #[tokio::test]
     async fn input_seen_tracks_keystrokes_not_resizes() {
         let session = echo_session();

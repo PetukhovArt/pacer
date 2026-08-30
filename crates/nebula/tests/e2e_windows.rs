@@ -12,11 +12,10 @@
 //! both verdicts, the ENDPOINT FILE, the PIDFILE LOCK refusing a second
 //! daemon, and the daemon outliving the client that spawned it.
 //!
-//! What is **not**, and why: everything downstream of a live PTY SESSION.
-//! `portable-pty` 0.9 on this machine opens the pseudo console but the child
-//! spawned into it never runs — see the note at the bottom of
-//! `nebula-tui/src/editor_stub.rs`. A PTY SESSION spawn, SCROLLBACK RING
-//! replay, the process-tree kill and AGENT ENV are all waiting on that.
+//! PTY SESSIONS themselves are covered where they live: the ConPTY child's
+//! launch is gated on nebula answering the host's `ESC[6n` (see
+//! `nebula_core::dsr`), and `nebula-daemon`'s and `nebula-tui`'s own PTY
+//! tests run the full child lifecycle on Windows.
 
 #![cfg(windows)]
 

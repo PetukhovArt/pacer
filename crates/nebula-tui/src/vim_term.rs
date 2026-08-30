@@ -37,6 +37,10 @@ pub struct VimTerm {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    /// ConPTY's `INHERIT_CURSOR` handshake blocks the child until its
+    /// `ESC[6n` is answered; `process` answers (see `nebula_core::dsr`).
+    #[cfg(windows)]
+    dsr: nebula_core::dsr::DsrScanner,
 }
 
 impl VimTerm {
@@ -110,6 +114,24 @@ impl VimTerm {
             .take_writer()
             .map_err(|e| format!("pty writer: {e}"))?;
 
+        // On Windows the ConPTY host holds the master pipe open after the
+        // child exits (EOF arrives only at ClosePseudoConsole), so a blocked
+        // read can't be what notices the exit: a separate waiter reaps the
+        // child and sends `Exited`, after a short drain window so the host's
+        // final bytes beat it through the channel.
+        #[cfg(windows)]
+        let tx_reader = {
+            let tx_waiter = tx.clone();
+            std::thread::spawn(move || {
+                let _ = child.wait(); // reap
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                let _ = tx_waiter.send(VimEvent::Exited { generation });
+            });
+            tx
+        };
+        #[cfg(unix)]
+        let tx_reader = tx;
+
         std::thread::spawn(move || {
             let mut buf = [0u8; 8192];
             loop {
@@ -117,14 +139,22 @@ impl VimTerm {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
                         let data = buf[..n].to_vec();
-                        if tx.send(VimEvent::Output { generation, data }).is_err() {
+                        if tx_reader
+                            .send(VimEvent::Output { generation, data })
+                            .is_err()
+                        {
                             break; // main loop gone
                         }
                     }
                 }
             }
-            let _ = child.wait(); // reap
-            let _ = tx.send(VimEvent::Exited { generation });
+            // Unix: EOF is how the exit announces itself — reap here.
+            // Windows: the waiter owns the child and already reported it.
+            #[cfg(unix)]
+            {
+                let _ = child.wait(); // reap
+                let _ = tx_reader.send(VimEvent::Exited { generation });
+            }
         });
 
         Ok(Self {
@@ -138,11 +168,23 @@ impl VimTerm {
             master: pair.master,
             writer,
             killer,
+            #[cfg(windows)]
+            dsr: nebula_core::dsr::DsrScanner::new(),
         })
     }
 
     /// Feed reader-thread output into the emulator.
     pub fn process(&mut self, data: &[u8]) {
+        #[cfg(windows)]
+        {
+            let hits = self.dsr.feed(data);
+            for _ in 0..hits {
+                let _ = self
+                    .writer
+                    .write_all(nebula_core::dsr::DSR_REPLY)
+                    .and_then(|_| self.writer.flush());
+            }
+        }
         self.parser.process(data);
     }
 
@@ -181,10 +223,8 @@ impl VimTerm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
     use std::time::Duration;
 
-    #[cfg(unix)]
     async fn recv_until(
         rx: &mut tokio::sync::mpsc::UnboundedReceiver<VimEvent>,
         term: &mut VimTerm,
@@ -209,16 +249,9 @@ mod tests {
         );
     }
 
-    // Blocked on Windows, not skipped: on this machine `portable-pty` 0.9
-    // spawns a ConPTY child that never runs — the host's own handshake
-    // (`ESC[?9001h ESC[?1004h ESC[6n`) reaches the master, the child's output
-    // never does, and the child either hangs or dies with
-    // STATUS_DLL_INIT_FAILED (0xC0000142). It reproduces outside nebula, with
-    // `cmd.exe /c echo` as the child, with the sideloaded WezTerm `conpty.dll`
-    // both on and off `PATH`. Everything that only needs the *spawn* to
-    // succeed still runs here; these three need the child to execute.
-    // See the MEMORY LOG entry for the port.
-    #[cfg(unix)]
+    // On Windows this test only passes because `process` answers the ConPTY
+    // host's `ESC[6n` — the child's launch is gated on that reply
+    // (see `nebula_core::dsr`).
     #[tokio::test]
     async fn output_reaches_parser_and_kill_exits() {
         let dir = tempfile::tempdir().unwrap();
@@ -239,16 +272,6 @@ mod tests {
         .await;
     }
 
-    // Blocked on Windows, not skipped: on this machine `portable-pty` 0.9
-    // spawns a ConPTY child that never runs — the host's own handshake
-    // (`ESC[?9001h ESC[?1004h ESC[6n`) reaches the master, the child's output
-    // never does, and the child either hangs or dies with
-    // STATUS_DLL_INIT_FAILED (0xC0000142). It reproduces outside nebula, with
-    // `cmd.exe /c echo` as the child, with the sideloaded WezTerm `conpty.dll`
-    // both on and off `PATH`. Everything that only needs the *spawn* to
-    // succeed still runs here; these three need the child to execute.
-    // See the MEMORY LOG entry for the port.
-    #[cfg(unix)]
     #[tokio::test]
     async fn input_reaches_the_child() {
         let dir = tempfile::tempdir().unwrap();

@@ -92,20 +92,11 @@ fn shell(command: &str) -> (String, Vec<String>) {
 }
 
 // ---------------------------------------------------------------------------
-// Known blocker: the ConPTY child never runs on this Windows machine.
-//
-// `portable-pty` 0.9 opens the pseudo console fine — its handshake
-// (`ESC[?9001h ESC[?1004h ESC[6n`) reaches the master reader — but the child
-// spawned into it produces no output and either hangs or exits with
-// STATUS_DLL_INIT_FAILED (0xC0000142). It reproduces outside nebula with
-// `cmd.exe /c echo` as the child, with the sideloaded WezTerm `conpty.dll`
-// both on and off `PATH`, and inside and outside the agent's sandbox.
-//
-// A child that never runs also never exits, so it cannot be reaped: the
-// reader thread never sees EOF and the *test binary* hangs at exit instead of
-// failing. That is why every test that opens a real PTY is `#[cfg(unix)]` for
-// now, not merely expected to fail. Everything that does not need a live
-// child — the DAEMON SOCKET, the PIDFILE LOCK, path handling, PATH/PATHEXT
-// resolution, the whole TUI render grid — runs on Windows and passes.
-//
-// Until it is resolved, PTY SESSIONS cannot be verified end-to-end here.
+// The "ConPTY child never runs" blocker was the `INHERIT_CURSOR` handshake:
+// `portable-pty` opens the pseudo console with that flag, the host sends
+// `ESC[6n` to the master reader, and the child's console connection blocks
+// until someone replies. Whoever reads the master must answer — nebula now
+// does (`nebula_core::dsr`), and every PTY test runs on Windows again.
+// A child that *does* fail to run also never exits and cannot be reaped, so
+// the failure mode of regressing this is the test binary hanging at exit,
+// not a red test.
