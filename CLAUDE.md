@@ -1,5 +1,58 @@
 # Nebula
 
+> ## LOCAL HARNESS OVERRIDES — this checkout (Windows 10, no Mission Control)
+>
+> This fork is checked out on Windows with no `make`, no `python3` alias, no `tmux`/`ttyd`, and no
+> Mission Control. The rules below **override** everything later in this file; where they conflict,
+> these win. Everything not listed here still applies.
+>
+> **Disabled — the tooling is not present:**
+> - **RECALL HOOK, GUARD HOOK and the `terms-suggest` fileSuggestion** are off (`.claude/settings.json`
+>   is removed in this checkout; its hooks shell out to `python3`, which does not exist here — only
+>   `python`). Nothing is injected under `[nebula recall]` and no Bash command is guarded. Read the
+>   MEMORY LOG yourself: `.claude/MEMORY.md`, `.claude/memory/gotchas.md`, and grep
+>   `.claude/memory/entries/` for the TERMS in the prompt.
+> - **The `recall` MCP server and the `recall` / `diagram` skills** are off — they need a Mission
+>   Control session (`MC_API_URL`, `MC_API_TOKEN`), and the server's path is a macOS app bundle.
+>   Use the MEMORY LOG for project memory; render diagrams as fenced `mermaid` blocks.
+> - **`make` is not installed.** Every `make <target>` in this file, in the README and in the Makefile
+>   is unavailable. Use the underlying commands: `cargo check --workspace`, `cargo fmt --all`,
+>   `cargo clippy --workspace`, `cargo test --workspace`, and `python .claude/memory/check.py` for
+>   `make memory-check`. `make dev` / `make browser` / `make install` have no Windows equivalent.
+> - **The workspace builds, tests and runs here** — this is no longer a read/edit-only checkout. As of
+>   the `windows` branch, `cargo check --workspace --all-targets`, `cargo build --workspace`,
+>   `cargo clippy --workspace --all-targets` and `cargo test --workspace` are all green on
+>   `x86_64-pc-windows-msvc`. Build and test your changes here before you claim them; only the two
+>   things below still need a Unix host.
+>   - **The Unix e2e grids do not run here.** `crates/nebula/tests/e2e_pty.rs` and `e2e_tui.rs` are
+>     `#![cfg(unix)]` in this fork (they assert the AF_UNIX DAEMON SOCKET, `#!/bin/sh` STUB AGENTs,
+>     `chmod` bits and `$SHELL -l -i -c` wrapping), so a protocol or registry change still wants a run
+>     on a Unix host. `crates/nebula/tests/e2e_windows.rs` is the local complement and covers what the
+>     port replaced: the loopback-TCP DAEMON SOCKET, its bearer token, the PIDFILE LOCK, DETACHED_PROCESS.
+>   - **PTY SESSIONS cannot be verified here.** `portable-pty` 0.9 on this machine opens the pseudo
+>     console but the child spawned into it never runs — no output, then a hang or `0xC0000142`. It
+>     reproduces outside nebula with `cmd.exe /c echo` as the child. Every test needing a live PTY
+>     child is `#[cfg(unix)]` until it is resolved; the full write-up is at the bottom of
+>     `crates/nebula-tui/src/editor_stub.rs`. **A child that never runs also never exits**, so it
+>     cannot be reaped and the *test binary hangs at exit* — if `cargo test` ever hangs here, that is
+>     why: look for orphaned `conhost`/`OpenConsole`/agent processes and reap them.
+> - **`.github/workflows/claude.yml` and `claude-code-review.yml`** have no `CLAUDE_CODE_OAUTH_TOKEN`
+>   secret on this fork — they cannot succeed. Do not rely on them for review.
+> - **`.cursor/` and `.agents/`** are other harnesses' copies of the same skills. Ignore them; do not
+>   edit them to keep them in sync.
+>
+> **Disabled — conflicts with this user's harness:**
+> - **`output-doctor` and its `==== YOU ASKED ====` layout are off.** The user's global terse output
+>   style governs every reply instead: answer directly, no section banners, no restatement of the
+>   prompt. The "Before you reply" section below does not apply.
+> - **`prompt-daddy` is off.** Do not rewrite the prompt or log a `Refined prompt:` block; act on the
+>   prompt as written and ask only when genuinely blocked. The "Refine the prompt before acting on it"
+>   section below does not apply.
+>
+> **Still in force:** the MEMORY LOG (read it, and run `nebula-memory` at the end of a task that
+> changed code or behavior), `TERMS.md` and speaking in TERMS, `project-terms`, and "Keep modules
+> small".
+
 ## Project memory and vocabulary
 
 This repo keeps a shared, committed memory that every agent and every session reads and maintains:
