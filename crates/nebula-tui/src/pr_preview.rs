@@ -147,26 +147,32 @@ pub fn lines(detail: &PrDetail, width: usize, th: Theme) -> Vec<Line<'static>> {
         ));
     }
     out.push(fit(meta, width));
-    out.push(fit(
-        vec![
-            Span::styled(INDENT.to_string(), dim),
-            Span::styled(format!("+{}", detail.additions), Style::default().fg(th.ok)),
-            Span::styled(" ", dim),
-            Span::styled(
-                format!("-{}", detail.deletions),
-                Style::default().fg(th.err),
-            ),
-            Span::styled(
-                format!(
-                    " · {} file{}",
-                    detail.changed_files,
-                    if detail.changed_files == 1 { "" } else { "s" }
-                ),
-                dim,
-            ),
-        ],
-        width,
+    let mut stats = vec![Span::styled(INDENT.to_string(), dim)];
+    // GitLab reports files without line counts; a real "+0 -0" next to
+    // changed files would be a lie, so the counts only show when they
+    // carry information.
+    let has_line_counts = detail.additions > 0 || detail.deletions > 0 || detail.changed_files == 0;
+    if has_line_counts {
+        stats.push(Span::styled(
+            format!("+{}", detail.additions),
+            Style::default().fg(th.ok),
+        ));
+        stats.push(Span::styled(" ", dim));
+        stats.push(Span::styled(
+            format!("-{}", detail.deletions),
+            Style::default().fg(th.err),
+        ));
+    }
+    stats.push(Span::styled(
+        format!(
+            "{}{} file{}",
+            if has_line_counts { " · " } else { "" },
+            detail.changed_files,
+            if detail.changed_files == 1 { "" } else { "s" }
+        ),
+        dim,
     ));
+    out.push(fit(stats, width));
     out.push(Line::from(""));
 
     // ---- description ----
