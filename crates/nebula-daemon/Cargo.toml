@@ -31,6 +31,8 @@ nix = { version = "0.31", features = ["process", "fs", "signal", "term"] }
 # crate is already in the tree under tokio.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Threading"] }
+# The machine-wide process table `metrics` sums over; `ps` on Unix.
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -18,6 +18,8 @@ tokio = { version = "1", features = ["io-util", "net", "time"] }
 [target.'cfg(windows)'.dependencies]
 rand = "0.10"
 subtle = "2"
+# `mem`'s working-set and installed-RAM probes; Unix shells out to ps/sysctl.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-util", "rt", "macros", "net", "time"] }

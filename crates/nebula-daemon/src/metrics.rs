@@ -1,25 +1,61 @@
-//! Memory readings for the TUI's metrics modal: one machine-wide `ps` sweep,
-//! then a per-session sum over each PTY child's process subtree (an agent CLI
-//! fans out into node workers, shells, MCP servers — the user cares about the
-//! whole tree, not just the root).
+//! Memory readings for the TUI's metrics modal: one machine-wide process
+//! sweep, then a per-session sum over each PTY child's process subtree (an
+//! agent CLI fans out into node workers, shells, MCP servers — the user cares
+//! about the whole tree, not just the root).
 
 use nebula_core::{MetricsSnapshot, PrewarmInfo, SessionMetrics, SessionRef};
 use std::collections::{HashMap, HashSet};
 
-/// Take one reading. Blocking (shells out to `ps`); call via spawn_blocking.
+/// Take one reading. Blocking; call via spawn_blocking.
 pub fn collect(sessions: Vec<(SessionRef, u32, Option<PrewarmInfo>)>) -> MetricsSnapshot {
-    let table = std::process::Command::new("ps")
-        .args(["-axo", "pid=,ppid=,rss="])
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .unwrap_or_default();
     snapshot_from_table(
-        &table,
+        &process_table(),
         std::process::id(),
         &sessions,
         nebula_core::mem::system_total_bytes().unwrap_or(0),
     )
+}
+
+/// Every process on the machine as `pid ppid rss-in-KB`, one per line.
+///
+/// The text shape is the seam: [`snapshot_from_table`] is the tested part and
+/// takes nothing else, so a platform only has to say how it enumerates
+/// processes.
+#[cfg(unix)]
+fn process_table() -> String {
+    std::process::Command::new("ps")
+        .args(["-axo", "pid=,ppid=,rss="])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default()
+}
+
+/// Windows has no `ps`, and the two candidates that ship with it are both
+/// worse than a crate here: `wmic` is deprecated and absent on newer builds,
+/// and a PowerShell `Get-CimInstance` costs a second of shell start per poll.
+#[cfg(windows)]
+fn process_table() -> String {
+    use std::fmt::Write;
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+
+    let mut system = System::new_with_specifics(
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_memory()),
+    );
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+    let mut table = String::new();
+    for (pid, process) in system.processes() {
+        let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
+        // `ps` reports KB and the parser multiplies back up, so match it
+        // rather than teach the parser a second unit.
+        let kb = process.memory() / 1024;
+        let _ = writeln!(table, "{} {ppid} {kb}", pid.as_u32());
+    }
+    table
 }
 
 /// Pure core, unit-testable: `table` is `ps -axo pid=,ppid=,rss=` output

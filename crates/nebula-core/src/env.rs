@@ -42,15 +42,36 @@ pub fn non_empty(var: &str) -> Option<String> {
     std::env::var(var).ok().filter(|v| !v.is_empty())
 }
 
-/// `$HOME`, when the environment has one. Read as an `OsString` so a
-/// non-UTF-8 home still resolves — every `~/` expansion goes through here.
+/// The user's home directory, when the environment has one. Read as an
+/// `OsString` so a non-UTF-8 home still resolves — every `~/` expansion goes
+/// through here.
+///
+/// `HOME` first on both platforms: a Windows shell that sets it (Git Bash,
+/// MSYS, WSL interop) means it, and the `~/` the user typed is the one that
+/// shell would expand. `USERPROFILE` is the native fallback — a nebula
+/// launched from Explorer or PowerShell has no `HOME` at all, and without
+/// this every `~/` path would silently resolve relative to nothing.
 pub fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    let home = std::env::var_os("HOME").filter(|v| !v.is_empty());
+    #[cfg(windows)]
+    let home = home.or_else(|| std::env::var_os("USERPROFILE").filter(|v| !v.is_empty()));
+    home.map(PathBuf::from)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every `~/` expansion rests on this answering, and on Windows the
+    /// native environment has no `HOME` at all.
+    #[test]
+    fn the_home_dir_resolves_on_this_platform() {
+        let home = home_dir();
+        assert!(
+            home.as_ref().is_some_and(|p| p.is_absolute()),
+            "no home directory resolved: {home:?}"
+        );
+    }
 
     #[test]
     fn non_empty_treats_unset_and_empty_alike() {

@@ -3,9 +3,26 @@
 //! install.sh already knows how to pick the right prebuilt binary, fall back
 //! to cargo, and report where it landed — this subcommand just saves the user
 //! from remembering the curl one-liner.
+//!
+//! **The subcommand is Unix-only**, and this is the one place in the Windows
+//! port that cuts rather than `#[cfg]`s a Unix path. Everything else has a
+//! Windows spelling worth writing; this does not. It is a wrapper around a
+//! `sh` script that fetches a prebuilt binary from the release assets — a
+//! script this platform cannot run and assets that do not exist for it, since
+//! nothing publishes a Windows build. A `#[cfg(windows)]` branch here would
+//! be a branch that could only ever fail, so the subcommand refuses with the
+//! reason instead.
+//!
+//! `install_url` and `KILL_HINT` stay on both platforms: `nebula ssh` and
+//! `nebula tunnel` install nebula on the *remote*, which is POSIX whatever
+//! this machine is.
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
+#[cfg(unix)]
+use anyhow::{bail, Context};
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 
 const INSTALL_URL: &str =
@@ -23,6 +40,19 @@ pub(crate) fn install_url() -> String {
 pub(crate) const KILL_HINT: &str =
     "      run 'nebula kill' to restart onto the new binary (stops all sessions).";
 
+/// Refused on Windows — see the module docs. The message names the reason
+/// and the way out rather than a bare "unsupported": a user who typed this
+/// wants a newer nebula, and `cargo install --path .` is how they get one.
+#[cfg(windows)]
+pub fn run_upgrade(_force: bool) -> Result<()> {
+    anyhow::bail!(
+        "nebula upgrade is not available on Windows: it runs install.sh, which \
+         fetches a prebuilt binary, and no Windows build is published. Update \
+         from a checkout instead — `git pull && cargo install --path crates/nebula`."
+    )
+}
+
+#[cfg(unix)]
 pub fn run_upgrade(force: bool) -> Result<()> {
     let url = install_url();
     // The runtime dir is already the 0700 auth boundary; staging the script
@@ -38,6 +68,7 @@ pub fn run_upgrade(force: bool) -> Result<()> {
 /// the next launch spawns the new binary; live sessions would die with the
 /// daemon, so that restart stays the user's call. Never fails the upgrade:
 /// the install already succeeded.
+#[cfg(unix)]
 fn finish_daemon_handoff() {
     use nebula_tui::ipc::IdleShutdown;
     match nebula_tui::shutdown_daemon_if_idle() {
@@ -60,6 +91,7 @@ fn finish_daemon_handoff() {
     }
 }
 
+#[cfg(unix)]
 fn upgrade_with(url: &str, staging_dir: &Path, force: bool) -> Result<()> {
     if !force {
         if let Some(exe) = dev_build() {
@@ -95,6 +127,7 @@ fn upgrade_with(url: &str, staging_dir: &Path, force: bool) -> Result<()> {
 /// Download the installer to a file before running it. `curl … | sh` executes
 /// whatever arrived when a connection drops mid-transfer; a staged file either
 /// passes the shebang check below or never runs at all.
+#[cfg(unix)]
 fn stage_script(url: &str, dir: &Path) -> Result<PathBuf> {
     let path = dir.join(format!("install-{}.sh", std::process::id()));
     let output = Command::new("curl")
@@ -128,6 +161,7 @@ fn stage_script(url: &str, dir: &Path) -> Result<PathBuf> {
 /// `target/debug`, or the `deps/` dir test binaries run from). Symlinks
 /// resolve first: the usual dev setup is a `~/.cargo/bin/nebula` symlink
 /// pointing into `target/release`, and it's that symlink an upgrade replaces.
+#[cfg(unix)]
 fn dev_build() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
@@ -141,7 +175,7 @@ fn dev_build() -> Option<PathBuf> {
     is_target_dir.then_some(exe)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
