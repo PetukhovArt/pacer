@@ -17,6 +17,7 @@ Line shape: `- DATE · [Title](memory/entries/DATE-slug.md) · TERMS: A; B · fi
 
 ## Index
 
+- 2026-08-30 · [The Workspace Builds And Tests On Windows; ConPTY Blocks Every PTY SESSION](memory/entries/2026-08-30-the-workspace-builds-and-tests-on-windows-conpty-blocks-ptys.md) · TERMS: DAEMON SOCKET; PIDFILE LOCK; DAEMON SETSID; PTY SESSION; RUNTIME DIR; E2E PTY · files: transport.rs; lifecycle.rs; kill.rs; launch.rs · gotchas: 10
 - 2026-08-28 · [Released v0.17.0: `origin/main` Moved Under The Gate, A Pinned-SHA Push Guard Caught It](memory/entries/2026-08-28-released-v0-17-0-origin-main-moved-under-the-gate.md) · TERMS: RELEASE SKILL; RELEASE WORKTREE; SHARED CHECKOUT; GUARD HOOK; PROTOCOL VERSION; RELEASE WORKFLOW · files: guard.py; gotchas.md; release/SKILL.md; theme.rs · gotchas: 6
 - 2026-08-28 · [PIN And The RECENT Group Are Gone: SESSIONS And WORKTREES Are One Flat List In RECENCY ORDER](memory/entries/2026-08-28-pin-and-the-recent-group-are-gone-one-flat-list-in-recency.md) · TERMS: PIN; RECENT WINDOW; SESSION GROUPS; RECENCY ORDER; IDLE REAPER; E2E TUI · files: app.rs; ui.rs; store.rs; e2e_tui.rs · gotchas: 5
 - 2026-08-28 · [`agent-N` Rows After Prompting Are VERSION SKEW, Not A Broken AUTO-TITLE](memory/entries/2026-08-28-agent-n-rows-after-prompting-are-version-skew-not-auto-title.md) · TERMS: AUTO-TITLE; VERSION SKEW; NEBULA RENAME; DEV INSTANCE; PROTOCOL VERSION; SESSIONS PANEL · files: hooks/mod.rs; ipc.rs; Makefile; registry.rs · gotchas: 3
