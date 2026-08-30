@@ -17,6 +17,7 @@
 //! * **Local clones.** `/srv/git/repo` and `../sibling` are perfectly good
 //!   remotes with no web page at all. Those are a flash, not a bad URL.
 
+use nebula_core::spawn::NoWindow;
 use std::path::Path;
 use std::process::Command;
 
@@ -56,6 +57,7 @@ fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
         .arg("-C")
         .arg(root)
         .args(args)
+        .no_window()
         .output()
         .map_err(|e| format!("failed to run git: {e}"))?;
     if !out.status.success() {

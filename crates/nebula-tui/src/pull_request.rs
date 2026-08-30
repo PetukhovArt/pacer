@@ -35,8 +35,10 @@ fn state_is_open(state: &str) -> bool {
 /// stdout on success. Every failure — no `gh`, bad exit, timeout — is
 /// `None`, since each is an ordinary "couldn't ask" to every caller.
 async fn gh(dir: Option<&Path>, args: &[&str], timeout: std::time::Duration) -> Option<String> {
+    use nebula_core::spawn::NoWindow;
     let mut cmd = tokio::process::Command::new("gh");
     cmd.args(args).stdin(std::process::Stdio::null());
+    cmd.no_window();
     if let Some(dir) = dir {
         cmd.current_dir(dir);
     }

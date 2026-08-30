@@ -198,6 +198,7 @@ fn exe_path_of_pid(pid: &str) -> Option<String> {
 /// process handle for a string.
 #[cfg(windows)]
 fn exe_path_of_pid(pid: &str) -> Option<String> {
+    use nebula_core::spawn::NoWindow;
     let out = std::process::Command::new("wmic")
         .args([
             "process",
@@ -207,6 +208,7 @@ fn exe_path_of_pid(pid: &str) -> Option<String> {
             "ExecutablePath",
             "/value",
         ])
+        .no_window()
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);

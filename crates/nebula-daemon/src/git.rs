@@ -3,6 +3,7 @@
 //! and git's stderr is the best error message we could show.
 
 use anyhow::{anyhow, bail, Result};
+use nebula_core::spawn::NoWindow;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
@@ -35,6 +36,7 @@ async fn git(repo: &Path, args: &[&str]) -> Result<String> {
         .arg("-C")
         .arg(repo)
         .args(args)
+        .no_window()
         .output()
         .await
         .map_err(spawn_err)?;

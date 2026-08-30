@@ -10,6 +10,7 @@ use crate::store::Store;
 use anyhow::{bail, Context, Result};
 use nebula_core::env;
 use nebula_core::paths;
+use nebula_core::spawn::NoWindow;
 use nebula_core::{
     Agent, AgentId, AgentKind, AgentStatus, EnterOutcome, Entity, EntityId, Link, LinkId,
     PrewarmInfo, Project, ProjectId, ServerEvent, SessionRef, TerminalId, TerminalTab, Workspace,
@@ -1927,6 +1928,7 @@ impl Daemon {
         let output = tokio::process::Command::new(&program)
             .args(&args)
             .current_dir(&worktree.path)
+            .no_window()
             .output()
             .await
             .context("run claude -p --cloud")?;
@@ -2925,6 +2927,7 @@ fn shell_has_children(session: &PtySession) -> bool {
             .arg(pid.to_string())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .no_window()
             .status(),
         Ok(status) if !status.success()
     )

@@ -8,6 +8,7 @@ pub mod ids;
 pub mod mem;
 pub mod paths;
 pub mod protocol;
+pub mod spawn;
 pub mod transport;
 
 pub use entities::*;

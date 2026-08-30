@@ -5,6 +5,7 @@
 //! switching files — and per-file diffs are fast.
 
 use crate::app::DiffView;
+use nebula_core::spawn::NoWindow;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -77,6 +78,7 @@ pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<Output, String> {
         .arg("-C")
         .arg(root)
         .args(args)
+        .no_window()
         .output()
         .map_err(|e| format!("failed to run git: {e}"))
 }
