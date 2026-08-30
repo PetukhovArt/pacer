@@ -16277,6 +16277,9 @@ diff --git a/src/b.rs b/src/b.rs
         }
     }
 
+    /// Opens a real PTY, so it is Unix-only for now — see
+    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
+    #[cfg(unix)]
     #[test]
     fn f_opens_file_finder_listing_tracked_and_untracked() {
         let dir = tempfile::tempdir().unwrap();
@@ -16304,10 +16307,10 @@ diff --git a/src/b.rs b/src/b.rs
         assert_eq!(finder(&app).selected_path(), Some("fresh.txt"));
 
         // Enter opens the selection in the editor modal; the finder stays
-        // open underneath. A shell stands in for vim (`sh +1 fresh.txt`
-        // still spawns fine).
+        // open underneath. A stub stands in for vim — it is handed
+        // `+1 fresh.txt` and only has to spawn.
         if let Some(Overlay::Files(f)) = &mut app.overlay {
-            f.editor = "/bin/sh".into();
+            f.editor = crate::editor_stub::program().into();
         }
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
         let vim = app.vim.as_ref().expect("enter spawns the editor modal");
@@ -16431,6 +16434,9 @@ diff --git a/src/b.rs b/src/b.rs
             .collect()
     }
 
+    /// Opens a real PTY, so it is Unix-only for now — see
+    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
+    #[cfg(unix)]
     #[test]
     fn t_opens_tree_browser_folds_dirs_and_filters_hierarchies() {
         let dir = tempfile::tempdir().unwrap();
@@ -16477,7 +16483,7 @@ diff --git a/src/b.rs b/src/b.rs
         // Enter opens the selected file in an editor embedded in the
         // preview pane; the browser stays open. A shell stands in for vim.
         if let Some(Overlay::Tree(v)) = &mut app.overlay {
-            v.editor = "/bin/sh".into();
+            v.editor = crate::editor_stub::program().into();
         }
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
         let vim = app.vim.as_ref().expect("enter spawns the editor");
@@ -16621,6 +16627,9 @@ diff --git a/src/b.rs b/src/b.rs
         );
     }
 
+    /// Opens a real PTY, so it is Unix-only for now — see
+    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
+    #[cfg(unix)]
     #[test]
     fn embedded_editor_takes_over_the_preview_pane() {
         let dir = tempfile::tempdir().unwrap();
@@ -16637,7 +16646,7 @@ diff --git a/src/b.rs b/src/b.rs
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
         terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
         if let Some(Overlay::Tree(v)) = &mut app.overlay {
-            v.editor = "/bin/sh".into();
+            v.editor = crate::editor_stub::program().into();
         }
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
         let pane = tree_view(&app).preview_area;
@@ -16671,6 +16680,7 @@ diff --git a/src/b.rs b/src/b.rs
         }
     }
 
+    #[cfg(unix)]
     fn fake_grep_view(hits: Vec<crate::grep_search::GrepHit>) -> GrepView {
         let mut view = GrepView::new(
             "/nonexistent-nebula-grep-test".into(),
@@ -16724,6 +16734,9 @@ diff --git a/src/b.rs b/src/b.rs
         assert_eq!(app.flash.as_deref(), Some("no worktree selected"));
     }
 
+    /// Opens a real PTY, so it is Unix-only for now — see
+    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
+    #[cfg(unix)]
     #[test]
     fn grep_enter_spawns_editor_and_ctrl_q_closes_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -16741,7 +16754,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert_eq!(grep_view(&app).selected_hit().unwrap().path, "a.txt");
         // A shell stands in for vim (`sh +1 a.txt` still spawns fine).
         if let Some(Overlay::Grep(v)) = &mut app.overlay {
-            v.editor = "/bin/sh".into();
+            v.editor = crate::editor_stub::program().into();
         }
 
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
@@ -16772,14 +16785,18 @@ diff --git a/src/b.rs b/src/b.rs
         );
     }
 
+    /// Opens a real PTY, so it is Unix-only for now — see
+    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
+    #[cfg(unix)]
     #[test]
     fn stale_generation_editor_events_are_dropped() {
         let mut app = App::new();
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let dir = tempfile::tempdir().unwrap();
+        let idle = crate::editor_stub::idles();
         let mut vim = crate::vim_term::VimTerm::spawn_cmd(
-            "/bin/sh",
-            &["-c".into(), "sleep 30".into()],
+            &idle.0,
+            &idle.1,
             dir.path(),
             "a.txt:1".into(),
             80,
@@ -16817,6 +16834,9 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(app.vim.is_none());
     }
 
+    /// Opens a real PTY, so it is Unix-only for now — see
+    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
+    #[cfg(unix)]
     #[test]
     fn grep_overlay_renders_hits_and_editor_modal_renders_on_top() {
         let mut app = App::new();
@@ -16849,9 +16869,10 @@ diff --git a/src/b.rs b/src/b.rs
         // back for the PTY resize sync.
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let dir = tempfile::tempdir().unwrap();
+        let idle = crate::editor_stub::idles();
         let mut vim = crate::vim_term::VimTerm::spawn_cmd(
-            "/bin/sh",
-            &["-c".into(), "sleep 30".into()],
+            &idle.0,
+            &idle.1,
             dir.path(),
             "src/alpha.rs:3".into(),
             80,

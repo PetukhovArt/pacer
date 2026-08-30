@@ -3,6 +3,9 @@ pub mod app;
 pub mod branch_name;
 pub mod completion;
 pub mod config;
+// Test-only: the stand-in editors the EDITOR modal tests spawn.
+#[cfg(test)]
+pub mod editor_stub;
 pub mod event_loop;
 pub mod fuzzy;
 pub mod git_diff;

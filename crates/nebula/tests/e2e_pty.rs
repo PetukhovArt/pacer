@@ -2,6 +2,14 @@
 //! attach/detach with scrollback replay, git worktree ops, and persistence
 //! across a daemon restart.
 
+// This grid runs only on Unix. It is the pre-existing regression net and it
+// stays the platform's gate: `make ci` runs it on a Unix host, and it asserts
+// things the Windows port replaces rather than shares — the AF_UNIX DAEMON
+// SOCKET, `#!/bin/sh` STUB AGENTs, `chmod` bits, `$SHELL -l -i -c` wrapping.
+// The Windows equivalent is `e2e_windows.rs`; this file is untouched below
+// this line so it never conflicts with upstream.
+#![cfg(unix)]
+
 use nebula_core::codec::{read_frame, write_frame};
 use nebula_core::env;
 use nebula_core::{

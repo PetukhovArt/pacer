@@ -1,26 +1,33 @@
-//! Unix-socket server: accept loop, per-client request handling, PTY
-//! attach/forward plumbing.
+//! DAEMON SOCKET server: accept loop, per-client request handling, PTY
+//! attach/forward plumbing. The stream type and how a client is authorized
+//! are the transport's business (`nebula_core::transport`) — this module
+//! sees one shape on every platform.
 
 use crate::pty::PtyEvent;
 use crate::registry::{CreateAgentSpec, Daemon};
 use anyhow::Result;
 use nebula_core::codec::{read_frame, write_frame};
+use nebula_core::transport::{Authorizer, Listener, Stream};
 use nebula_core::{ClientRequest, ServerEvent, SessionRef, WorkspaceId, PROTOCOL_VERSION};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
-pub async fn accept_loop(daemon: Arc<Daemon>, listener: UnixListener) {
+pub async fn accept_loop(daemon: Arc<Daemon>, listener: Listener) {
+    // Cloned once and moved into every served task: the authorization check
+    // must not run on the accept loop, or one client that connects and then
+    // says nothing stalls every other client behind it.
+    let authorizer = listener.authorizer();
     loop {
         tokio::select! {
             _ = daemon.shutdown.cancelled() => break,
             accepted = listener.accept() => match accepted {
-                Ok((stream, _)) => {
+                Ok(stream) => {
                     let daemon = daemon.clone();
+                    let authorizer = authorizer.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = handle_client(daemon, stream).await {
+                        if let Err(e) = handle_client(daemon, stream, authorizer).await {
                             tracing::debug!(error = %e, "client connection ended with error");
                         }
                     });
@@ -34,7 +41,15 @@ pub async fn accept_loop(daemon: Arc<Daemon>, listener: UnixListener) {
     }
 }
 
-async fn handle_client(daemon: Arc<Daemon>, stream: UnixStream) -> Result<()> {
+async fn handle_client(
+    daemon: Arc<Daemon>,
+    mut stream: Stream,
+    authorizer: Authorizer,
+) -> Result<()> {
+    // Ahead of `Hello`: on Unix a no-op, on Windows the bearer-token frame.
+    // A client that fails it is never handed a protocol version, so a wrong
+    // token and a version skew stay distinguishable.
+    authorizer.authorize(&mut stream).await?;
     let (read_half, write_half) = stream.into_split();
     let mut reader = tokio::io::BufReader::new(read_half);
 

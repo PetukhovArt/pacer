@@ -9,6 +9,14 @@
 //!   create an agent (auto-attach) → per-worktree session isolation →
 //!   j/k toggling between projects updates the worktree panel.
 
+// This grid runs only on Unix. It is the pre-existing regression net and it
+// stays the platform's gate: `make ci` runs it on a Unix host, and it asserts
+// things the Windows port replaces rather than shares — the AF_UNIX DAEMON
+// SOCKET, `#!/bin/sh` STUB AGENTs, `chmod` bits, `$SHELL -l -i -c` wrapping.
+// The Windows equivalent is `e2e_windows.rs`; this file is untouched below
+// this line so it never conflicts with upstream.
+#![cfg(unix)]
+
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};

@@ -350,11 +350,11 @@ mod tests {
         );
 
         // Paths come back canonical from git; the tempdir may be a symlink.
-        let wt_canon = wt.canonicalize().unwrap();
+        let wt_canon = nebula_core::paths::canonical_or_raw(&wt);
         let branch_of = |entries: &[WorktreeEntry]| {
             entries
                 .iter()
-                .find(|e| e.path.canonicalize().ok() == Some(wt_canon.clone()))
+                .find(|e| nebula_core::paths::canonical_or_raw(&e.path) == wt_canon)
                 .map(|e| e.branch.clone())
                 .expect("the worktree is listed")
         };

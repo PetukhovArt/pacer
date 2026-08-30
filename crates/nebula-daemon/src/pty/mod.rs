@@ -1,4 +1,5 @@
 pub mod cloud;
+pub mod kill;
 pub mod kitty;
 pub mod progress;
 pub mod ring;
@@ -103,6 +104,9 @@ pub struct PtySession {
     /// Claude Cloud session id / attach-refusal scanner; `None` until a
     /// `--cloud` launch arms it, so ordinary sessions pay nothing.
     cloud: Mutex<Option<CloudScanner>>,
+    /// The child's process tree, claimed at spawn: what the kill watchdog
+    /// reaches for when the child outlives its hangup (see `pty::kill`).
+    group: kill::ProcessGroup,
     /// Set by the first `write_input`. A Cloud mirror stops re-teleporting
     /// once its pane has been typed into: the moment the user talks to the
     /// local session, replacing it under them would eat their turn.
@@ -150,6 +154,9 @@ impl PtySession {
 
         let killer = child.clone_killer();
         let child_pid = child.process_id();
+        // Claimed here, at the earliest moment the child exists, because the
+        // group is what reaches its grandchildren later (see `pty::kill`).
+        let group = kill::ProcessGroup::claim(child_pid);
         let reader = pair.master.try_clone_reader().context("clone pty reader")?;
         let writer = pair.master.take_writer().context("take pty writer")?;
 
@@ -160,6 +167,7 @@ impl PtySession {
             master: Mutex::new(pair.master),
             killer: Mutex::new(killer),
             child_pid,
+            group,
             ring: Mutex::new(ScrollbackRing::new(RING_CAPACITY)),
             events,
             last_size: Mutex::new((spec.cols, spec.rows)),
@@ -207,16 +215,19 @@ impl PtySession {
         }
     }
 
-    /// SIGHUP the child, then SIGKILL its whole process group if it hasn't
-    /// exited within [`KILL_GRACE`]. The group kill also reaps grandchildren
-    /// that would otherwise hold the slave fd open (no EOF → reader thread,
-    /// pump task, and the 1MB ring all pinned forever).
+    /// Hang the child up politely, then kill its whole process group if it
+    /// hasn't exited within [`KILL_GRACE`]. The group kill also reaps
+    /// grandchildren that would otherwise hold the slave open (no EOF →
+    /// reader thread, pump task, and the 1MB ring all pinned forever).
     pub fn kill(&self) {
         // Subscribe before signalling so an immediate exit can't be missed.
         let mut rx = self.events.subscribe();
         let _ = self.killer.lock().unwrap().kill();
         let Some(pid) = self.child_pid else { return };
         let sref = self.sref.clone();
+        // The watchdog carries its own clone of the group, so the group
+        // outlives this session being dropped mid-grace.
+        let group = self.group.clone();
         // Watchdog on a plain thread: it must not hold the session Arc (that
         // would pin the ring), and it outlives any tokio context `kill` was
         // called from.
@@ -225,7 +236,6 @@ impl PtySession {
             .stack_size(64 * 1024)
             .spawn(move || {
                 let deadline = std::time::Instant::now() + KILL_GRACE;
-                let nix_pid = nix::unistd::Pid::from_raw(pid as i32);
                 while std::time::Instant::now() < deadline {
                     loop {
                         use tokio::sync::broadcast::error::TryRecvError;
@@ -235,15 +245,15 @@ impl PtySession {
                             Err(TryRecvError::Empty) => break,
                         }
                     }
-                    // Reaped (ESRCH) strictly precedes the Exited broadcast,
-                    // so this also covers an Exited lost to channel lag.
-                    if nix::sys::signal::kill(nix_pid, None).is_err() {
+                    // The leader being gone strictly precedes the Exited
+                    // broadcast, so this also covers an Exited lost to lag.
+                    if !group.leader_alive() {
                         return;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                tracing::warn!(session = ?sref, pid, "child ignored SIGHUP — SIGKILLing its process group");
-                let _ = nix::sys::signal::killpg(nix_pid, nix::sys::signal::Signal::SIGKILL);
+                tracing::warn!(session = ?sref, pid, "child ignored the hangup — killing its process group");
+                group.kill_all();
             })
             .expect("spawn pty kill watchdog");
     }
@@ -396,14 +406,24 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
+    #[cfg(unix)]
     use nebula_core::AgentId;
 
+    /// Any long-lived child will do — the assertions are about what the
+    /// session records, not what the child does with it. It just has to be a
+    /// program that exists: `/bin/sh` is an MSYS mapping, not a path
+    /// `CreateProcess` can resolve.
+    #[cfg(unix)]
+    const IDLE_CHILD: &str = "/bin/cat";
+
+    #[cfg(unix)]
     fn echo_session() -> Arc<PtySession> {
         PtySession::spawn(
             SessionRef::Agent(AgentId::generate()),
             SpawnSpec {
-                program: "/bin/cat".into(),
+                program: IDLE_CHILD.into(),
                 args: vec![],
                 cwd: std::env::temp_dir(),
                 env: vec![],
@@ -418,6 +438,10 @@ mod tests {
     /// The Cloud mirror stops refreshing a pane once its user has typed
     /// into it, so `input_seen` must track keystrokes only — an attach's
     /// resize jiggle happens without anyone touching the keyboard.
+    /// Opens a real PTY. Unix-only for now: on Windows the ConPTY child
+    /// never runs, so it can never be reaped either and the test binary
+    /// hangs at exit rather than failing. See `nebula_tui::editor_stub`.
+    #[cfg(unix)]
     #[tokio::test]
     async fn input_seen_tracks_keystrokes_not_resizes() {
         let session = echo_session();

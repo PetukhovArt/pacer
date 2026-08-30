@@ -3,11 +3,11 @@
 
 use anyhow::{bail, Context, Result};
 use nebula_core::codec::{read_frame, write_frame};
+use nebula_core::transport::{self, Stream};
 use nebula_core::{
     env, paths, AgentId, AgentKind, ClientRequest, EnterOutcome, ServerEvent, PROTOCOL_VERSION,
 };
 use std::time::Duration;
-use tokio::net::UnixStream;
 
 /// Request id for the one-shot CLIs: each opens a fresh connection, sends a
 /// single request and waits for its reply, so there is never a second id.
@@ -18,15 +18,13 @@ const CLOSED_BEFORE_REPLY: &str = "daemon closed the connection before replying"
 const POLL_STEP: Duration = Duration::from_millis(50);
 
 pub struct Connection {
-    pub stream: UnixStream,
+    pub stream: Stream,
     pub daemon_pid: u32,
 }
 
 /// Connect, auto-spawning `current_exe() daemon` when nothing is listening.
 pub async fn connect_or_spawn() -> Result<Connection> {
-    let sock = paths::socket_path();
-
-    if let Ok(conn) = try_connect(&sock).await {
+    if let Ok(conn) = try_connect().await {
         return handshake(conn).await;
     }
 
@@ -35,7 +33,7 @@ pub async fn connect_or_spawn() -> Result<Connection> {
     // Poll-connect while the daemon boots.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     loop {
-        match try_connect(&sock).await {
+        match try_connect().await {
             Ok(conn) => return handshake(conn).await,
             Err(_) if tokio::time::Instant::now() < deadline => {
                 tokio::time::sleep(POLL_STEP).await;
@@ -44,7 +42,7 @@ pub async fn connect_or_spawn() -> Result<Connection> {
                 return Err(e).with_context(|| {
                     format!(
                         "daemon did not come up on {} — check {}",
-                        sock.display(),
+                        transport::endpoint_description(),
                         paths::daemon_log_path().display()
                     )
                 })
@@ -53,24 +51,34 @@ pub async fn connect_or_spawn() -> Result<Connection> {
     }
 }
 
-async fn try_connect(sock: &std::path::Path) -> Result<UnixStream> {
-    Ok(UnixStream::connect(sock).await?)
+/// Reach the daemon over whatever the DAEMON SOCKET is on this platform,
+/// clearing its authorization gate on the way (`nebula_core::transport`).
+async fn try_connect() -> Result<Stream> {
+    Ok(transport::connect().await?)
 }
 
 fn spawn_daemon() -> Result<()> {
-    use std::os::unix::process::CommandExt;
     let exe = std::env::current_exe().context("resolve current_exe")?;
     let mut cmd = std::process::Command::new(exe);
     cmd.arg("daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    // New *session*, not just a new process group: besides outliving this
-    // client and skipping its terminal signals (Ctrl+C etc.), the daemon must
-    // hold no controlling terminal. It shells out to the user's interactive
-    // shell (CLI probes, login-shell agent wrap), and an interactive zsh that
-    // can reach a tty via /dev/tty grabs its foreground process group —
-    // SIGTTIN-stopping the TUI running on this terminal mid-frame.
+    detach(&mut cmd);
+    cmd.spawn().context("spawn nebula daemon")?;
+    Ok(())
+}
+
+/// DAEMON SETSID: put the daemon in a new *session*, not just a new process
+/// group. Besides outliving this client and skipping its terminal signals
+/// (Ctrl+C etc.), the daemon must hold no controlling terminal. It shells out
+/// to the user's interactive shell (CLI probes, login-shell agent wrap), and
+/// an interactive zsh that can reach a tty via /dev/tty grabs its foreground
+/// process group — SIGTTIN-stopping the TUI running on this terminal
+/// mid-frame.
+#[cfg(unix)]
+fn detach(cmd: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
     unsafe {
         cmd.pre_exec(|| {
             if libc_setsid() < 0 {
@@ -79,11 +87,10 @@ fn spawn_daemon() -> Result<()> {
             Ok(())
         });
     }
-    cmd.spawn().context("spawn nebula daemon")?;
-    Ok(())
 }
 
 // Avoid a libc dependency for one call (same pattern as nebula-core's geteuid).
+#[cfg(unix)]
 fn libc_setsid() -> i32 {
     extern "C" {
         fn setsid() -> i32;
@@ -91,7 +98,24 @@ fn libc_setsid() -> i32 {
     unsafe { setsid() }
 }
 
-async fn handshake(mut stream: UnixStream) -> Result<Connection> {
+/// The Windows spelling of DAEMON SETSID.
+///
+/// `DETACHED_PROCESS` is the part that matters and the reason this is not
+/// `CREATE_NO_WINDOW`: it gives the daemon *no console at all*, which is
+/// what "no controlling terminal" means here. A daemon sharing this TUI's
+/// console would let every child it starts write over the rendered frame and
+/// would route the console's Ctrl+C to it as well. `CREATE_NEW_PROCESS_GROUP`
+/// adds what `setsid` also gives: console control events aimed at this
+/// client's group stop at the boundary.
+#[cfg(windows)]
+fn detach(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+}
+
+async fn handshake(mut stream: Stream) -> Result<Connection> {
     write_frame(
         &mut stream,
         &ClientRequest::Hello {
@@ -153,6 +177,11 @@ fn daemon_exe_path() -> Option<String> {
     if pid.is_empty() || !pid.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
+    exe_path_of_pid(pid)
+}
+
+#[cfg(unix)]
+fn exe_path_of_pid(pid: &str) -> Option<String> {
     if let Ok(path) = std::fs::read_link(format!("/proc/{pid}/exe")) {
         return Some(path.display().to_string());
     }
@@ -161,6 +190,31 @@ fn daemon_exe_path() -> Option<String> {
         .output()
         .ok()?;
     let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!path.is_empty()).then_some(path)
+}
+
+/// Windows has neither `/proc` nor `ps`. This only ever feeds the VERSION
+/// SKEW diagnostic, so a query that ships with the OS beats opening a
+/// process handle for a string.
+#[cfg(windows)]
+fn exe_path_of_pid(pid: &str) -> Option<String> {
+    let out = std::process::Command::new("wmic")
+        .args([
+            "process",
+            "where",
+            &format!("ProcessId={pid}"),
+            "get",
+            "ExecutablePath",
+            "/value",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let path = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("ExecutablePath="))?
+        .trim()
+        .to_string();
     (!path.is_empty()).then_some(path)
 }
 
@@ -271,8 +325,7 @@ pub enum RenameMode {
 /// auto-title is a settled answer, not a failure to retry.
 pub async fn rename_current_agent(title: &str, mode: RenameMode) -> Result<()> {
     let agent_id = current_agent_id("rename")?;
-    let sock = paths::socket_path();
-    let Ok(stream) = try_connect(&sock).await else {
+    let Ok(stream) = try_connect().await else {
         bail!("no nebula daemon is running — title unchanged");
     };
     let mut conn = handshake(stream).await?;
@@ -306,8 +359,7 @@ pub async fn spawn_sibling_for_current_agent(task: &str, kind: Option<AgentKind>
     if task.is_empty() {
         bail!("the task is empty — `nebula spawn \"<task>\"` needs the work the new session starts on");
     }
-    let sock = paths::socket_path();
-    let Ok(stream) = try_connect(&sock).await else {
+    let Ok(stream) = try_connect().await else {
         bail!("no nebula daemon is running — no session started");
     };
     let mut conn = handshake(stream).await?;
@@ -349,8 +401,7 @@ pub async fn enter_worktree_for_current_agent(name: &str, base: Option<String>) 
         slug if slug.is_empty() => crate::branch_name::random_name(&[]),
         slug => slug,
     };
-    let sock = paths::socket_path();
-    let Ok(stream) = try_connect(&sock).await else {
+    let Ok(stream) = try_connect().await else {
         bail!("no nebula daemon is running — nothing to move");
     };
     let mut conn = handshake(stream).await?;
@@ -422,8 +473,12 @@ pub async fn add_project(path: &str) -> Result<()> {
         (Some(rest), Some(home)) => home.join(rest),
         _ => std::path::PathBuf::from(path),
     };
-    let dir = std::fs::canonicalize(&expanded)
+    // Canonicalizing is the existence check, but the *stored* path has to be
+    // one every consumer can take: this one is handed back to git, so a
+    // verbatim `\\?\D:\…` would be a project nebula could never run git in.
+    std::fs::canonicalize(&expanded)
         .with_context(|| format!("{} does not exist", expanded.display()))?;
+    let dir = paths::canonical_or_raw(&expanded);
     if !dir.is_dir() {
         bail!("{} is not a directory", dir.display());
     }
@@ -544,11 +599,10 @@ pub async fn run_workspace_op(op: WorkspaceOp) -> Result<()> {
 ///
 /// A daemon on a different protocol version closes the socket right after
 /// the handshake, so `Shutdown` can never reach it — exactly the situation
-/// `nebula kill` exists to fix. Fall back to SIGTERM via the pidfile, guarded
-/// by the daemon's flock so a stale pid is never signalled.
+/// `nebula kill` exists to fix. Fall back to terminating the pid in the
+/// pidfile, guarded by the daemon's own lock so a stale pid is never hit.
 pub async fn kill_daemon() -> Result<bool> {
-    let sock = paths::socket_path();
-    if let Ok(stream) = try_connect(&sock).await {
+    if let Ok(stream) = try_connect().await {
         if let Ok(mut conn) = handshake(stream).await {
             write_frame(&mut conn.stream, &ClientRequest::Shutdown).await?;
             wait_for_daemon_exit().await;
@@ -580,8 +634,7 @@ pub enum IdleShutdown {
 /// from the new binary on disk); live sessions would be killed with it, so
 /// their daemon is left alone and the restart stays the user's call.
 pub async fn shutdown_if_idle() -> Result<IdleShutdown> {
-    let sock = paths::socket_path();
-    let Ok(stream) = try_connect(&sock).await else {
+    let Ok(stream) = try_connect().await else {
         return Ok(IdleShutdown::NoDaemon);
     };
     let Ok(mut conn) = handshake(stream).await else {
@@ -608,8 +661,8 @@ pub async fn shutdown_if_idle() -> Result<IdleShutdown> {
     }
 }
 
-/// SIGTERM the daemon recorded in the pidfile (its SIGTERM handler runs the
-/// same clean shutdown as `Shutdown`). Ok(false) when no daemon is alive.
+/// Terminate the daemon recorded in the pidfile, guarded by the pidfile lock
+/// so a stale pid is never signalled. Ok(false) when no daemon is alive.
 async fn kill_by_pidfile() -> Result<bool> {
     let path = paths::pidfile_path();
     if !daemon_holds_pidfile_lock(&path) {
@@ -620,17 +673,16 @@ async fn kill_by_pidfile() -> Result<bool> {
         .and_then(|s| s.trim().parse().ok())
         .filter(|pid| *pid > 0)
         .context("daemon is running but its pidfile is unreadable — kill it manually")?;
-    if send_sigterm(pid) != 0 {
+    if !request_termination(pid) {
         bail!("failed to signal daemon pid {pid} — kill it manually");
     }
     wait_for_daemon_exit().await;
     Ok(true)
 }
 
-/// Liveness = flock possession (mirrors the daemon's PidfileLock): if we can
+/// Liveness = lock possession (mirrors the daemon's PidfileLock): if we can
 /// take the lock ourselves, nobody holds it. Released on drop.
 fn daemon_holds_pidfile_lock(path: &std::path::Path) -> bool {
-    use std::os::fd::AsRawFd;
     let Ok(file) = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -638,7 +690,7 @@ fn daemon_holds_pidfile_lock(path: &std::path::Path) -> bool {
     else {
         return false;
     };
-    flock_try_exclusive(file.as_raw_fd()) != 0
+    !try_lock_exclusive(&file)
 }
 
 /// Poll until the daemon releases its pidfile lock, so a relaunch right after
@@ -651,22 +703,95 @@ async fn wait_for_daemon_exit() {
     }
 }
 
-// Tiny extern shims, same dep-light idiom as nebula_core::paths.
-fn flock_try_exclusive(fd: i32) -> i32 {
+// Tiny extern shims, same dep-light idiom as nebula_core::paths. They must
+// stay equivalent to the daemon's own `lifecycle` versions: this side asks
+// the same question of the same file from another process.
+#[cfg(unix)]
+fn try_lock_exclusive(file: &std::fs::File) -> bool {
+    use std::os::fd::AsRawFd;
     extern "C" {
         fn flock(fd: i32, operation: i32) -> i32;
     }
     const LOCK_EX: i32 = 2;
     const LOCK_NB: i32 = 4;
-    unsafe { flock(fd, LOCK_EX | LOCK_NB) }
+    unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) == 0 }
 }
 
-fn send_sigterm(pid: i32) -> i32 {
+/// See `nebula_daemon::lifecycle`: one byte at offset 0, non-blocking.
+#[cfg(windows)]
+fn try_lock_exclusive(file: &std::fs::File) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    #[repr(C)]
+    struct Overlapped {
+        internal: usize,
+        internal_high: usize,
+        offset: u32,
+        offset_high: u32,
+        event: *mut core::ffi::c_void,
+    }
+    extern "system" {
+        fn LockFileEx(
+            handle: *mut core::ffi::c_void,
+            flags: u32,
+            reserved: u32,
+            bytes_low: u32,
+            bytes_high: u32,
+            overlapped: *mut Overlapped,
+        ) -> i32;
+    }
+    const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x1;
+    const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x2;
+    let mut overlapped = Overlapped {
+        internal: 0,
+        internal_high: 0,
+        offset: 0,
+        offset_high: 0,
+        event: std::ptr::null_mut(),
+    };
+    unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0,
+            1,
+            0,
+            &mut overlapped,
+        ) != 0
+    }
+}
+
+/// Ask the daemon at `pid` to stop, the hard way. True when the request was
+/// delivered.
+#[cfg(unix)]
+fn request_termination(pid: i32) -> bool {
     extern "C" {
         fn kill(pid: i32, sig: i32) -> i32;
     }
     const SIGTERM: i32 = 15;
-    unsafe { kill(pid, SIGTERM) }
+    unsafe { kill(pid, SIGTERM) == 0 }
+}
+
+/// Windows has no SIGTERM, and a DETACHED_PROCESS daemon has its own console,
+/// so no console control event of ours reaches it either. What is left is
+/// `TerminateProcess` — abrupt, so it skips the daemon's PTY SESSION
+/// teardown; the Job Objects in `pty::kill` are what keeps that from
+/// stranding agent CLIs (they die when the daemon's handles close).
+///
+/// This is the fallback path only: an ordinary NEBULA KILL reaches the daemon
+/// over the DAEMON SOCKET and gets the clean shutdown.
+#[cfg(windows)]
+fn request_termination(pid: i32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as u32);
+        if handle.is_null() {
+            return false;
+        }
+        let ok = TerminateProcess(handle, 1) != 0;
+        CloseHandle(handle);
+        ok
+    }
 }
 
 #[cfg(test)]

@@ -3,11 +3,13 @@
 
 use crate::git;
 use crate::hooks::{self, HookEnv};
+use crate::launch;
 use crate::pty::{PtyEvent, PtySession, SpawnSpec, DEFAULT_COLS, DEFAULT_ROWS};
 use crate::status::{AgentStatusMachine, Effect, HookEvent};
 use crate::store::Store;
 use anyhow::{bail, Context, Result};
 use nebula_core::env;
+use nebula_core::paths;
 use nebula_core::{
     Agent, AgentId, AgentKind, AgentStatus, EnterOutcome, Entity, EntityId, Link, LinkId,
     PrewarmInfo, Project, ProjectId, ServerEvent, SessionRef, TerminalId, TerminalTab, Workspace,
@@ -51,7 +53,6 @@ const CLOUD_MIRROR_MIN: Duration = Duration::from_secs(2);
 /// ~/.zprofile and ~/.zshrc both and the child sees the PATH the user's
 /// terminal has. The CLI probe and the spawn wrapper share it so they can
 /// never disagree about what "on the user's PATH" means.
-const LOGIN_SHELL_ARGS: [&str; 3] = ["-l", "-i", "-c"];
 /// Cap on one CLI probe. A heavy rc file costs ~1s; a hung one must not
 /// stall a create forever, so on timeout the CLI is assumed present and
 /// the spawn itself gets to report.
@@ -1266,39 +1267,24 @@ impl Daemon {
         self.cli_available(kind).await || self.probe_cli(kind).await
     }
 
-    /// Uncached `command -v` through the user's login shell; caches the answer.
+    /// Uncached "is this CLI on the PATH it will be launched with"; caches
+    /// the answer. *How* the question is asked belongs to the launch
+    /// environment (`crate::launch`) — it differs per platform, the caching
+    /// does not.
+    ///
+    /// A probe that could not answer at all reports available and caches
+    /// nothing: refusing a create over a shell that would not start would
+    /// blame the user's CLI for the daemon's problem.
     async fn probe_cli(&self, kind: AgentKind) -> bool {
-        let check = format!("command -v '{}' >/dev/null 2>&1", kind.cli_program());
-        let mut probe = tokio::process::Command::new(user_shell());
-        probe
-            .args(LOGIN_SHELL_ARGS)
-            .arg(&check)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            // A timed-out probe must die with the dropped future, not linger.
-            .kill_on_drop(true);
-        // Own session: the interactive shell must not reach the daemon's
-        // controlling terminal (--foreground runs have one). zsh's job-control
-        // init opens /dev/tty and makes itself the foreground process group,
-        // SIGTTIN-stopping whatever TUI owns that terminal.
-        unsafe {
-            probe.pre_exec(|| match nix::unistd::setsid() {
-                Ok(_) => Ok(()),
-                Err(errno) => Err(std::io::Error::from_raw_os_error(errno as i32)),
-            });
-        }
-        let status = tokio::time::timeout(CLI_PROBE_TIMEOUT, probe.status()).await;
-        match status {
-            Ok(Ok(status)) => {
-                let ok = status.success();
+        match launch::program_is_installed(kind.cli_program(), CLI_PROBE_TIMEOUT).await {
+            Some(ok) => {
                 self.cli_probes
                     .lock()
                     .unwrap()
                     .insert(kind, (ok, Instant::now()));
                 ok
             }
-            _ => true,
+            None => true,
         }
     }
 
@@ -1562,7 +1548,7 @@ impl Daemon {
                 }
             }
         }
-        let cwd = canonical_or_raw(Path::new(cwd));
+        let cwd = paths::canonical_or_raw(Path::new(cwd));
         // Remembered even when it resolves to nothing: an agent that just ran
         // `git worktree add` and stepped into the result reports a cwd nebula
         // has no row for yet, and the worktree sync replays this to finish the
@@ -1589,10 +1575,12 @@ impl Daemon {
             .into_iter()
             .filter(|w| w.project_id == current.project_id)
             .map(|w| {
-                let canonical = canonical_or_raw(&w.path);
+                let canonical = paths::canonical_or_raw(&w.path);
                 (w, canonical)
             })
-            .filter(|(_, canonical)| cwd.starts_with(canonical))
+            // Both sides went through `canonical_or_raw` above — the
+            // pairing `paths::contains` requires.
+            .filter(|(_, canonical)| paths::contains(canonical, cwd))
             .max_by_key(|(_, canonical)| canonical.components().count());
         if let Some((worktree, _)) = target {
             if worktree.id != agent.worktree_id {
@@ -1927,8 +1915,7 @@ impl Daemon {
         let cmd_override = std::env::var(env::AGENT_CMD).ok();
         let (program, args) = match cmd_override.as_deref() {
             Some(over) => (over.to_string(), Vec::new()),
-            None => login_shell_wrap(
-                &user_shell(),
+            None => launch::wrap_for_user_env(
                 "claude",
                 &[
                     "-p".to_string(),
@@ -2385,14 +2372,12 @@ impl Daemon {
                 true,
             ),
         };
-        // Run the agent through the user's login+interactive shell so it sees
-        // the same env as a Terminal.app tab (~/.zprofile, ~/.zshrc,
-        // path_helper) instead of the daemon's inherited-at-boot env.
-        // Overrides (tests) stay verbatim.
+        // Put the agent in the environment the user's own terminal would
+        // give it (see `crate::launch`). Overrides (tests) stay verbatim.
         let (program, args) = if cmd_override.is_some() {
             (program, args)
         } else {
-            login_shell_wrap(&user_shell(), &program, &args)
+            launch::wrap_for_user_env(&program, &args)
         };
 
         let spec = SpawnSpec {
@@ -2499,11 +2484,10 @@ impl Daemon {
         cols: u16,
         rows: u16,
     ) -> Result<Arc<PtySession>> {
-        // `-l` makes it a login shell, matching Terminal.app: zsh then sources
-        // /etc/zprofile (path_helper), ~/.zprofile, and ~/.zshrc.
+        let (program, args) = launch::interactive_shell();
         let spec = SpawnSpec {
-            program: user_shell(),
-            args: vec!["-l".into()],
+            program,
+            args,
             cwd: worktree.path.clone(),
             env: vec![],
             scrub_env: env::AGENT_SESSION_VARS,
@@ -2928,13 +2912,6 @@ fn sanitize_title(raw: &str) -> String {
     title
 }
 
-/// Canonicalize for path containment tests, falling back to the raw path
-/// when it doesn't resolve (deleted checkout, not-yet-created dir). macOS
-/// symlinks (`/tmp` → `/private/tmp`) otherwise break `starts_with`.
-fn canonical_or_raw(path: &Path) -> std::path::PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
-}
-
 /// Does this terminal's shell have any child processes (a command or job
 /// still running)? An unknown child pid or a failed probe counts as busy —
 /// never kill what can't be inspected.
@@ -2988,10 +2965,6 @@ fn normalize_url(url: &str) -> Result<String> {
     Ok(normalized)
 }
 
-fn user_shell() -> String {
-    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
-}
-
 /// Why a create was refused when the agent CLI isn't installed. One line —
 /// the TUI shows it in the footer flash, which truncates. Unlike git (which
 /// the daemon runs with its own inherited PATH), agent CLIs are spawned
@@ -3002,25 +2975,6 @@ fn cli_missing_message(kind: AgentKind) -> String {
         "{} was not found on your PATH — install it, then try again.",
         kind.cli_program()
     )
-}
-
-/// Wrap `program args…` in a login + interactive shell (`$SHELL -l -i -c
-/// 'exec …'`) so the child gets the user's real environment — ~/.zprofile
-/// and ~/.zshrc on zsh — rather than the daemon's. `exec` keeps the child
-/// as the PTY's direct process (exit codes and signals pass through).
-fn login_shell_wrap(shell: &str, program: &str, args: &[String]) -> (String, Vec<String>) {
-    let mut cmdline = String::from("exec");
-    for part in std::iter::once(program).chain(args.iter().map(String::as_str)) {
-        cmdline.push_str(" '");
-        cmdline.push_str(&part.replace('\'', "'\\''"));
-        cmdline.push('\'');
-    }
-    let args = LOGIN_SHELL_ARGS
-        .iter()
-        .map(|s| s.to_string())
-        .chain([cmdline])
-        .collect();
-    (shell.to_string(), args)
 }
 
 #[cfg(test)]
@@ -3414,23 +3368,6 @@ mod tests {
         assert!(err.contains("message"), "{err}");
     }
 
-    #[test]
-    fn login_shell_wrap_quotes_and_execs() {
-        let (program, args) = login_shell_wrap(
-            "/bin/zsh",
-            "claude",
-            &["--resume".to_string(), "sid-1".to_string()],
-        );
-        assert_eq!(program, "/bin/zsh");
-        assert_eq!(
-            args,
-            vec!["-l", "-i", "-c", "exec 'claude' '--resume' 'sid-1'"]
-        );
-        // Single quotes in an arg survive the wrapping.
-        let (_, args) = login_shell_wrap("/bin/zsh", "echo", &["it's".to_string()]);
-        assert_eq!(args[3], r"exec 'echo' 'it'\''s'");
-    }
-
     fn test_daemon() -> Arc<Daemon> {
         let store = Arc::new(Store::open_in_memory().unwrap());
         Daemon::new(
@@ -3768,7 +3705,7 @@ mod tests {
     #[tokio::test]
     async fn enter_worktree_creates_the_checkout_in_nebulas_layout() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);
@@ -3953,7 +3890,7 @@ mod tests {
     #[tokio::test]
     async fn worktree_sync_replays_a_cwd_reported_before_adoption() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);
@@ -4060,7 +3997,7 @@ mod tests {
     #[tokio::test]
     async fn rename_project_relabels_the_row_and_leaves_the_folder_alone() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("acme-api");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);
@@ -4099,7 +4036,7 @@ mod tests {
     #[tokio::test]
     async fn add_project_from_inside_a_worktree_roots_at_the_repo() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);
@@ -4144,7 +4081,7 @@ mod tests {
     #[tokio::test]
     async fn adding_a_worktree_of_a_known_repo_is_a_duplicate() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);
@@ -4174,7 +4111,7 @@ mod tests {
     #[tokio::test]
     async fn reconcile_moves_root_ness_onto_the_checkout_git_lists_first() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);
@@ -4215,7 +4152,7 @@ mod tests {
     #[tokio::test]
     async fn reconcile_drops_a_vanished_row_that_still_claims_to_be_root() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);

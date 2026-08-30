@@ -1,6 +1,7 @@
 pub mod config;
 pub mod git;
 pub mod hooks;
+pub mod launch;
 pub mod lifecycle;
 pub mod metrics;
 pub mod pty;
@@ -11,7 +12,7 @@ pub mod status;
 pub mod store;
 
 use anyhow::{bail, Context, Result};
-use nebula_core::{env, paths};
+use nebula_core::{env, paths, transport};
 
 /// Floor on any env-tunable loop period: the overrides exist to make tests
 /// fast, and a zero or near-zero tick would just spin the daemon.
@@ -51,11 +52,11 @@ async fn serve() -> Result<()> {
     // up-to-date daemon from a stale one (`nebula _stale-daemon-note`).
     lifecycle::write_buildstamp();
 
-    let sock = paths::socket_path();
-    lifecycle::unlink_stale_socket(&sock);
-    let listener = tokio::net::UnixListener::bind(&sock)
-        .with_context(|| format!("bind {}", sock.display()))?;
-    tracing::info!(pid = std::process::id(), socket = %sock.display(), "nebula daemon listening");
+    let endpoint = transport::endpoint_description();
+    let listener = transport::bind()
+        .await
+        .with_context(|| format!("bind {endpoint}"))?;
+    tracing::info!(pid = std::process::id(), socket = %endpoint, "nebula daemon listening");
 
     let store = std::sync::Arc::new(store::Store::open(&paths::db_path())?);
     // Agents persisted as live had their PTYs die with the previous daemon.
@@ -200,19 +201,11 @@ async fn serve() -> Result<()> {
         });
     }
 
-    // SIGTERM/SIGINT → clean shutdown.
+    // A termination signal → clean shutdown.
     {
         let daemon = daemon.clone();
         tokio::spawn(async move {
-            let mut term =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("install SIGTERM handler");
-            let mut int = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-                .expect("install SIGINT handler");
-            tokio::select! {
-                _ = term.recv() => {}
-                _ = int.recv() => {}
-            }
+            wait_for_termination_signal().await;
             tracing::info!("signal received; shutting down");
             daemon.shutdown.cancel();
         });
@@ -223,9 +216,41 @@ async fn serve() -> Result<()> {
     // Cleanup: kill PTYs, remove the socket. (Status persistence joins in
     // phase 4/5 when the store exists.)
     daemon.kill_all();
-    let _ = std::fs::remove_file(&sock);
+    transport::unlink_stale();
     tracing::info!("daemon exited cleanly");
     Ok(())
+}
+
+/// Resolve when the OS asks this daemon to stop.
+#[cfg(unix)]
+async fn wait_for_termination_signal() {
+    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("install SIGTERM handler");
+    let mut int = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .expect("install SIGINT handler");
+    tokio::select! {
+        _ = term.recv() => {}
+        _ = int.recv() => {}
+    }
+}
+
+/// Windows has no SIGTERM. The console control events are the equivalent,
+/// and the DETACHED_PROCESS launch (see `nebula-tui`'s `spawn_daemon`) gives
+/// the daemon its own console, so neither reaches it from the TUI's terminal
+/// — they arrive only from a deliberate `taskkill` or a `nebula kill`
+/// fallback. A pidfile-lock holder that ignored them would have to be killed
+/// hard, losing the PTY SESSION teardown.
+#[cfg(windows)]
+async fn wait_for_termination_signal() {
+    let mut brk = tokio::signal::windows::ctrl_break().expect("install Ctrl+Break handler");
+    let mut close = tokio::signal::windows::ctrl_close().expect("install console-close handler");
+    let mut shutdown = tokio::signal::windows::ctrl_shutdown().expect("install shutdown handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = brk.recv() => {}
+        _ = close.recv() => {}
+        _ = shutdown.recv() => {}
+    }
 }
 
 /// Latest mtime across the git files a worktree change touches: the
@@ -275,7 +300,7 @@ fn git_common_dir(repo_path: &std::path::Path) -> Option<std::path::PathBuf> {
         Ok(common) => rebase_on(&git_dir, common.trim()),
         Err(_) => git_dir,
     };
-    Some(std::fs::canonicalize(&common).unwrap_or(common))
+    Some(paths::canonical_or_raw(&common))
 }
 
 /// Git writes these pointers as either an absolute path or one relative to the
@@ -347,7 +372,7 @@ mod probe_tests {
     #[test]
     fn probe_follows_a_linked_worktrees_gitdir_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let root = paths::canonical_or_raw(tmp.path());
         let repo = root.join("repo");
         std::fs::create_dir(&repo).unwrap();
         git_in(&repo, &["init", "-b", "main"]);

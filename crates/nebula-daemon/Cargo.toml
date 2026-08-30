@@ -19,10 +19,18 @@ ulid = { workspace = true }
 portable-pty = "0.9"
 rusqlite = { version = "0.40", features = ["bundled"] }
 axum = "0.8"
-nix = { version = "0.31", features = ["process", "fs", "signal", "term"] }
 tokio-util = "0.7"
 rand = "0.10"
 subtle = "2"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["process", "fs", "signal", "term"] }
+
+# Job Objects (`pty::kill`) and DETACHED_PROCESS: the struct layout of
+# JOBOBJECT_EXTENDED_LIMIT_INFORMATION is not worth hand-declaring, and this
+# crate is already in the tree under tokio.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1148,9 +1148,11 @@ name = "nebula-core"
 version = "0.17.0"
 dependencies = [
  "directories",
+ "rand 0.10.2",
  "rmp-serde",
  "serde",
  "serde_bytes",
+ "subtle",
  "tokio",
  "ulid",
 ]
@@ -1178,6 +1180,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ulid",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1199,6 +1202,7 @@ dependencies = [
  "tracing-subscriber",
  "tui-term",
  "vt100",
+ "windows-sys",
 ]
 
 [[package]]

@@ -1,8 +1,13 @@
 //! `nebula ssh HOST [PATH]`: open nebula on a remote machine.
 //!
-//! Execs `ssh -t HOST <cmd>` so the remote TUI renders in this terminal. The
+//! Runs `ssh -t HOST <cmd>` so the remote TUI renders in this terminal. The
 //! remote command installs nebula via the published install script when it
 //! isn't on the remote PATH, then launches it.
+//!
+//! The remote is POSIX either way — the script below is what a remote login
+//! shell runs, and nothing about it changes with the local platform. Only
+//! *how this process hands over the terminal* differs: see
+//! [`hand_terminal_to_ssh`].
 //!
 //! Quoting: sshd hands the command string to the user's login shell, which
 //! may be bash, zsh, or fish. The script below is a fixed constant with no
@@ -11,7 +16,6 @@
 //! POSIX-single-quoted. csh/tcsh login shells are the one unsupported case.
 
 use anyhow::{bail, Context, Result};
-use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 /// The opening half of every remote script: leave a usable `nebula` on the
@@ -52,13 +56,79 @@ pub fn run_ssh(host: &str, path: Option<&str>) -> Result<()> {
     // and `d` can drop it.
     nebula_tui::hosts::record(host, path);
     let cmd = remote_command(&crate::upgrade::install_url(), path);
-    // exec: ssh owns the tty from here and its exit status propagates
-    // natively. Only returns on failure.
-    let err = Command::new("ssh").args(["-t", "--", host, &cmd]).exec();
+    hand_terminal_to_ssh(host, &cmd)
+}
+
+/// Give `ssh` this terminal and this process's exit status.
+///
+/// `exec` is the exact fit: ssh replaces us, so it owns the tty outright and
+/// its exit status *is* ours, with no wrapper process left to forward
+/// signals through. Only returns on failure.
+#[cfg(unix)]
+fn hand_terminal_to_ssh(host: &str, cmd: &str) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    let err = Command::new("ssh").args(["-t", "--", host, cmd]).exec();
     if err.kind() == std::io::ErrorKind::NotFound {
         bail!("ssh not found on PATH — nebula ssh requires the OpenSSH client");
     }
     Err(err).context("failed to exec ssh")
+}
+
+/// Windows has no `exec`, so this process stays alive as ssh's parent and
+/// has to reproduce by hand the two things `exec` gave for free.
+///
+/// *The terminal*: ssh inherits the console, so the remote TUI renders here
+/// as it should. But Ctrl+C at that console is delivered to every process in
+/// the group — us included — and the default handler would kill this parent
+/// out from under the running session. So the handler is disabled for the
+/// duration: ssh in `-t` mode forwards the keystroke to the remote as input,
+/// which is where it belongs, and the local process must not act on it.
+///
+/// *The exit status*: propagated by exiting with the child's code rather
+/// than returning, so a caller cannot accidentally reframe it as success.
+#[cfg(windows)]
+fn hand_terminal_to_ssh(host: &str, cmd: &str) -> Result<()> {
+    let mut child = match Command::new("ssh").args(["-t", "--", host, cmd]).spawn() {
+        Ok(child) => child,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            bail!("ssh not found on PATH — nebula ssh requires the OpenSSH client")
+        }
+        Err(e) => return Err(e).context("failed to spawn ssh"),
+    };
+    let _ctrl_c = IgnoreCtrlC::install();
+    let status = child.wait().context("failed to wait for ssh")?;
+    std::process::exit(status.code().unwrap_or(1));
+}
+
+/// Suppresses this process's own Ctrl+C handling while it is alive, and puts
+/// it back on drop. `SetConsoleCtrlHandler(NULL, TRUE)` is the documented way
+/// to say "ignore Ctrl+C" — it is inherited by children, but ssh installs its
+/// own handler over it, so the keystroke still reaches the remote.
+#[cfg(windows)]
+struct IgnoreCtrlC(bool);
+
+#[cfg(windows)]
+impl IgnoreCtrlC {
+    fn install() -> Self {
+        Self(set_ignore_ctrl_c(true))
+    }
+}
+
+#[cfg(windows)]
+impl Drop for IgnoreCtrlC {
+    fn drop(&mut self) {
+        if self.0 {
+            set_ignore_ctrl_c(false);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn set_ignore_ctrl_c(ignore: bool) -> bool {
+    extern "system" {
+        fn SetConsoleCtrlHandler(handler: *const core::ffi::c_void, add: i32) -> i32;
+    }
+    unsafe { SetConsoleCtrlHandler(std::ptr::null(), i32::from(ignore)) != 0 }
 }
 
 fn remote_command(install_url: &str, path: Option<&str>) -> String {

@@ -1,11 +1,15 @@
-//! Daemon lifecycle: pidfile + flock liveness, socket path hygiene,
+//! Daemon lifecycle: pidfile + advisory-lock liveness, socket path hygiene,
 //! auto-spawn from the client side.
 
 use anyhow::{Context, Result};
 use nebula_core::paths;
 use std::fs::{self, OpenOptions};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 
 /// Guard holding the exclusive pidfile flock for the daemon's lifetime.
@@ -28,8 +32,7 @@ impl PidfileLock {
             .write(true)
             .open(&path)
             .with_context(|| format!("open pidfile {}", path.display()))?;
-        let ret = libc_flock(file.as_raw_fd());
-        if ret != 0 {
+        if !try_lock_exclusive(&file) {
             return Ok(None);
         }
         // Informational only; liveness is the lock.
@@ -49,18 +52,73 @@ impl PidfileLock {
 
 impl Drop for PidfileLock {
     fn drop(&mut self) {
-        // flock released automatically on close; keep for explicitness.
-        let _ = self.file.as_raw_fd();
+        // The lock is released automatically when the handle closes on both
+        // platforms; naming the file here keeps that dependency explicit.
+        let _ = &self.file;
     }
 }
 
-fn libc_flock(fd: i32) -> i32 {
+/// Take the daemon lock on an open pidfile without blocking. True when this
+/// process now holds it.
+///
+/// Both platforms lock the *open handle*, not the path, so the lock dies with
+/// the process however it dies — that is what makes lock possession, rather
+/// than file existence, the liveness test.
+#[cfg(unix)]
+pub(crate) fn try_lock_exclusive(file: &std::fs::File) -> bool {
+    // Tiny extern shim, same dep-light idiom as nebula_core::paths.
     extern "C" {
         fn flock(fd: i32, operation: i32) -> i32;
     }
     const LOCK_EX: i32 = 2;
     const LOCK_NB: i32 = 4;
-    unsafe { flock(fd, LOCK_EX | LOCK_NB) }
+    unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) == 0 }
+}
+
+/// `LockFileEx` is the Windows equivalent of `flock(LOCK_EX|LOCK_NB)`:
+/// `LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY` returns 0 rather
+/// than waiting when another process holds the range. The range is one byte
+/// at offset 0 — the pidfile's content is informational, so locking byte 0
+/// is enough and works on an empty file, which a whole-file range would not.
+#[cfg(windows)]
+pub(crate) fn try_lock_exclusive(file: &std::fs::File) -> bool {
+    #[repr(C)]
+    struct Overlapped {
+        internal: usize,
+        internal_high: usize,
+        offset: u32,
+        offset_high: u32,
+        event: *mut core::ffi::c_void,
+    }
+    extern "system" {
+        fn LockFileEx(
+            handle: *mut core::ffi::c_void,
+            flags: u32,
+            reserved: u32,
+            bytes_low: u32,
+            bytes_high: u32,
+            overlapped: *mut Overlapped,
+        ) -> i32;
+    }
+    const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x1;
+    const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x2;
+    let mut overlapped = Overlapped {
+        internal: 0,
+        internal_high: 0,
+        offset: 0,
+        offset_high: 0,
+        event: std::ptr::null_mut(),
+    };
+    unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0,
+            1,
+            0,
+            &mut overlapped,
+        ) != 0
+    }
 }
 
 /// Record this process's binary fingerprint so installers can tell whether
@@ -112,6 +170,7 @@ fn fingerprint_file(path: &Path) -> Option<String> {
 }
 
 /// Create the runtime dir with 0700 perms — this is the auth boundary.
+#[cfg(unix)]
 pub fn ensure_runtime_dir() -> Result<()> {
     let dir = paths::runtime_dir();
     if !dir.exists() {
@@ -130,14 +189,54 @@ pub fn ensure_runtime_dir() -> Result<()> {
     Ok(())
 }
 
-/// Remove a socket file left behind by a dead daemon.
-pub fn unlink_stale_socket(path: &Path) {
-    let _ = fs::remove_file(path);
+/// Create the runtime dir. No explicit ACL: the Windows default RUNTIME DIR
+/// sits under `%TEMP%` inside the user's profile, which already inherits an
+/// ACL granting only that user and the administrators. Writing a bespoke
+/// DACL here would be strictly weaker than what it inherits and would need
+/// `windows-sys` for no gain — the 0700 the Unix branch sets is the same
+/// boundary, expressed the way that platform expresses it.
+#[cfg(windows)]
+pub fn ensure_runtime_dir() -> Result<()> {
+    let dir = paths::runtime_dir();
+    fs::create_dir_all(&dir).with_context(|| format!("create runtime dir {}", dir.display()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The PIDFILE LOCK is what refuses a second DAEMON, and its two
+    /// implementations (`flock` / `LockFileEx`) are the only place the
+    /// platforms differ — so the contract is asserted directly on an open
+    /// handle rather than through `try_acquire`, which would need the
+    /// process-global RUNTIME DIR override.
+    #[test]
+    fn a_second_holder_is_refused_and_closing_the_first_releases_the_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("daemon.pid");
+        let open = || {
+            OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(&path)
+                .unwrap()
+        };
+
+        let held = open();
+        assert!(try_lock_exclusive(&held), "an unlocked pidfile is takeable");
+        assert!(
+            !try_lock_exclusive(&open()),
+            "a second daemon must be refused while the first holds the lock"
+        );
+
+        drop(held);
+        assert!(
+            try_lock_exclusive(&open()),
+            "closing the holder's handle releases the lock"
+        );
+    }
 
     #[test]
     fn fingerprint_is_stable_for_identical_content() {
