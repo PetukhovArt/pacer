@@ -1,3 +1,4 @@
+pub mod capture;
 pub mod cloud;
 pub mod kill;
 pub mod kitty;
@@ -5,6 +6,7 @@ pub mod progress;
 pub mod ring;
 
 use anyhow::{Context, Result};
+use capture::{Capture, CaptureExt};
 use cloud::CloudScanner;
 use nebula_core::SessionRef;
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
@@ -68,6 +70,11 @@ pub enum PtyEvent {
     KittyFlags {
         flags: u8,
     },
+    /// win32-input-mode toggled (ConPTY requests it at open; a raw-VT child
+    /// may turn it off); clients re-encode keys. Never fires on Unix.
+    Win32Input {
+        on: bool,
+    },
     /// The child's OSC 9;4 progress state flipped. For agent CLIs this is a
     /// busy/idle edge the status machine trusts — notably it is the *only*
     /// end-of-turn signal after the user cancels, which fires no hook.
@@ -116,6 +123,8 @@ pub struct PtySession {
     /// The child's process tree, claimed at spawn: what the kill watchdog
     /// reaches for when the child outlives its hangup (see `pty::kill`).
     group: kill::ProcessGroup,
+    /// Raw-output capture, off unless `NEBULA_PTY_CAPTURE` is set.
+    capture: Mutex<Option<Capture>>,
     /// Set by the first `write_input`. A Cloud mirror stops re-teleporting
     /// once its pane has been typed into: the moment the user talks to the
     /// local session, replacing it under them would eat their turn.
@@ -170,6 +179,8 @@ impl PtySession {
         let writer = pair.master.take_writer().context("take pty writer")?;
 
         let (events, _) = broadcast::channel(256);
+        let mut capture = Capture::open(&sref);
+        capture.resize(spec.cols, spec.rows);
         let session = Arc::new(Self {
             sref,
             writer: Mutex::new(writer),
@@ -185,6 +196,7 @@ impl PtySession {
             dsr: Mutex::new(nebula_core::dsr::DsrScanner::new()),
             progress: Mutex::new(ProgressScanner::new()),
             cloud: Mutex::new(None),
+            capture: Mutex::new(capture),
             input_seen: AtomicBool::new(false),
         });
 
@@ -215,6 +227,7 @@ impl PtySession {
         let master = self.master.lock().unwrap();
         master.resize(pty_size(cols, rows))?;
         *self.last_size.lock().unwrap() = (cols, rows);
+        self.capture.lock().unwrap().resize(cols, rows);
         Ok(())
     }
 
@@ -284,6 +297,11 @@ impl PtySession {
     /// The child's current kitty keyboard flags (0 = legacy).
     pub fn kitty_flags(&self) -> u8 {
         self.kitty.lock().unwrap().flags()
+    }
+
+    /// Whether the session's terminal side is in win32-input-mode.
+    pub fn win32_input(&self) -> bool {
+        self.kitty.lock().unwrap().win32_input()
     }
 
     /// The child's advertised OSC 9;4 busy state, or `None` if it never
@@ -407,6 +425,7 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
             Some(scanner) => scanner.feed(pending),
             None => Vec::new(),
         };
+        session.capture.lock().unwrap().output(pending);
         let seq = session.ring.lock().unwrap().append(pending);
         let _ = session.events.send(PtyEvent::Output {
             seq,
@@ -415,6 +434,10 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
         if let Some(flags) = actions.flags_changed {
             tracing::debug!(session = ?session.sref, flags, "child kitty flags changed");
             let _ = session.events.send(PtyEvent::KittyFlags { flags });
+        }
+        if let Some(on) = actions.win32_changed {
+            tracing::debug!(session = ?session.sref, on, "win32-input-mode toggled");
+            let _ = session.events.send(PtyEvent::Win32Input { on });
         }
         if let Some(busy) = busy_edge {
             tracing::debug!(session = ?session.sref, busy, "child progress state changed");
@@ -569,6 +592,33 @@ mod tests {
             text.contains("PTY_RING_MARKER"),
             "child output never reached the ring: {text:?}"
         );
+    }
+
+    /// ConPTY opens every session with `CSI ? 9001 h`; the pump must turn
+    /// that into a `Win32Input { on: true }` broadcast, or no client ever
+    /// switches to the encoding that carries Shift+Enter to cooked children.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn conpty_win32_input_mode_is_broadcast() {
+        let session = echo_session();
+        let mut rx = session.events.subscribe();
+        let seen = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match rx.recv().await {
+                    Ok(PtyEvent::Win32Input { on: true }) => break,
+                    Ok(_) => continue,
+                    Err(e) => panic!("event stream ended first: {e}"),
+                }
+            }
+        })
+        .await;
+        assert!(
+            seen.is_ok(),
+            "no Win32Input within 10s — is ConPTY no longer requesting ?9001h, \
+             or did the scanner stop seeing it?"
+        );
+        assert!(session.win32_input(), "the attach-time accessor agrees");
+        session.kill();
     }
 
     /// The Cloud mirror stops refreshing a pane once its user has typed

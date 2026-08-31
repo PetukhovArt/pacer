@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 /// Bump on any breaking change to these enums. The daemon refuses mismatched
 /// clients; the client then offers a kill-and-restart of the old daemon.
-pub const PROTOCOL_VERSION: u32 = 34;
+pub const PROTOCOL_VERSION: u32 = 35;
 
 /// Max IPC frame size (length prefix sanity bound).
 pub const MAX_FRAME_LEN: u32 = 4 * 1024 * 1024;
@@ -480,6 +480,15 @@ pub enum ServerEvent {
     KittyFlags {
         session: SessionRef,
         flags: u8,
+    },
+    /// win32-input-mode toggled (or, right after Scrollback on attach, the
+    /// current value). ConPTY requests it at session open, so on Windows it
+    /// is on for every cooked child; clients then encode the chords legacy
+    /// bytes flatten (Shift+Enter) as `CSI Vk;Sc;Uc;Kd;Cs;Rc _`. On Unix it
+    /// never turns on.
+    Win32Input {
+        session: SessionRef,
+        on: bool,
     },
 
     /// Reply to `ClientRequest::GetMetrics`.

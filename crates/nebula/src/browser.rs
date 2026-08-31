@@ -56,6 +56,9 @@ binary so the TUI renders in a browser tab. Install it, then try again:
   macOS          brew install ttyd
   Debian/Ubuntu  sudo apt install ttyd
   Arch           sudo pacman -S ttyd
+  Windows        a ttyd.exe from the releases page, on PATH — but note
+                 ttyd's Windows support is best-effort, and this command
+                 is untested there
   elsewhere      https://github.com/tsl0922/ttyd#installation";
 
 /// Everything `nebula browser` was asked for, straight off the CLI.

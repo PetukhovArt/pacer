@@ -32,16 +32,17 @@ pub fn coalesce(events: Vec<Event>) -> Vec<Event> {
     let mut text = String::new();
     let mut presses = 0usize;
     let mut raw: Vec<Event> = Vec::new();
-    let flush = |text: &mut String, presses: &mut usize, raw: &mut Vec<Event>, out: &mut Vec<Event>| {
-        if *presses >= 2 && text.contains('\n') {
-            out.push(Event::Paste(std::mem::take(text)));
-            raw.clear();
-        } else {
-            out.append(raw);
-            text.clear();
-        }
-        *presses = 0;
-    };
+    let flush =
+        |text: &mut String, presses: &mut usize, raw: &mut Vec<Event>, out: &mut Vec<Event>| {
+            if *presses >= 2 && text.contains('\n') {
+                out.push(Event::Paste(std::mem::take(text)));
+                raw.clear();
+            } else {
+                out.append(raw);
+                text.clear();
+            }
+            *presses = 0;
+        };
     for event in events {
         match &event {
             Event::Key(key) if text_of(key).is_some() => {

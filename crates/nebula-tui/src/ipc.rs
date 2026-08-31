@@ -193,31 +193,32 @@ fn exe_path_of_pid(pid: &str) -> Option<String> {
     (!path.is_empty()).then_some(path)
 }
 
-/// Windows has neither `/proc` nor `ps`. This only ever feeds the VERSION
-/// SKEW diagnostic, so a query that ships with the OS beats opening a
-/// process handle for a string.
+/// Windows has neither `/proc` nor `ps`; ask the kernel directly. This used
+/// to shell out to `wmic`, which Windows 11 24H2 no longer ships.
 #[cfg(windows)]
 fn exe_path_of_pid(pid: &str) -> Option<String> {
-    use nebula_core::spawn::NoWindow;
-    let out = std::process::Command::new("wmic")
-        .args([
-            "process",
-            "where",
-            &format!("ProcessId={pid}"),
-            "get",
-            "ExecutablePath",
-            "/value",
-        ])
-        .no_window()
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    let path = text
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("ExecutablePath="))?
-        .trim()
-        .to_string();
-    (!path.is_empty()).then_some(path)
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let pid: u32 = pid.parse().ok()?;
+    // SAFETY: OpenProcess returns null on failure; the handle is closed on
+    // every path out, and the buffer outlives the query that fills it.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut len);
+        CloseHandle(handle);
+        if ok == 0 || len == 0 {
+            return None;
+        }
+        Some(String::from_utf16_lossy(&buf[..len as usize]))
+    }
 }
 
 /// Channel-based IPC handle for the TUI event loop: outbound requests go

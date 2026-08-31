@@ -178,6 +178,12 @@ async fn handle_client(
                                     flags: session.kitty_flags(),
                                 })
                                 .await;
+                            let _ = out_tx
+                                .send(ServerEvent::Win32Input {
+                                    session: sref.clone(),
+                                    on: session.win32_input(),
+                                })
+                                .await;
                             let _ = session.resize_with_jiggle(cols, rows);
 
                             let rebind = attached.remove(&sref);
@@ -649,6 +655,18 @@ async fn forward_pty(
                     .send(ServerEvent::KittyFlags {
                         session: sref.clone(),
                         flags,
+                    })
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Ok(PtyEvent::Win32Input { on }) => {
+                if out_tx
+                    .send(ServerEvent::Win32Input {
+                        session: sref.clone(),
+                        on,
                     })
                     .await
                     .is_err()

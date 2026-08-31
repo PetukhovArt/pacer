@@ -36,3 +36,6 @@ sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 tempfile = "3"
+# The ConPTY unicode probe rebuilds a captured stream in the same grid the
+# TUI renders from, so it has to be the same vendored vt100.
+vt100 = "0.16"

@@ -7,6 +7,14 @@
 //! Also answers DA1 (`CSI c`) — the common detection recipe is "send the
 //! kitty query then DA1, protocol is supported iff the kitty reply arrives
 //! before the DA1 reply", which needs a DA1 reply to terminate promptly.
+//!
+//! The same scan tracks win32-input-mode (`CSI ? 9001 h/l`). On Windows the
+//! ConPTY host requests it the moment the session opens, and a child that
+//! wants raw VT input (Claude Code's stack) turns it back off — both arrive
+//! in this output stream. While it is on, clients may encode keys as
+//! `CSI Vk;Sc;Uc;Kd;Cs;Rc _`, which is the only way a cooked Win32 child
+//! (PSReadLine) ever sees Shift+Enter. On Unix nothing emits it, so the
+//! flag simply stays false.
 
 use super::ESC;
 
@@ -22,6 +30,8 @@ pub struct ScanActions {
     pub reply: Vec<u8>,
     /// Set when the effective flags changed; broadcast to attached clients.
     pub flags_changed: Option<u8>,
+    /// Set when win32-input-mode toggled; broadcast to attached clients.
+    pub win32_changed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -39,6 +49,7 @@ pub struct KittyScanner {
     state: State,
     params: Vec<u8>,
     stack: Vec<u8>,
+    win32_input: bool,
 }
 
 impl Default for KittyScanner {
@@ -53,6 +64,7 @@ impl KittyScanner {
             state: State::Ground,
             params: Vec::new(),
             stack: Vec::new(),
+            win32_input: false,
         }
     }
 
@@ -61,17 +73,26 @@ impl KittyScanner {
         self.stack.last().copied().unwrap_or(0)
     }
 
+    /// Whether win32-input-mode is on (`CSI ? 9001 h` seen, no `l` since).
+    pub fn win32_input(&self) -> bool {
+        self.win32_input
+    }
+
     /// Scan a chunk of child output. Sequences split across chunks are fine —
     /// the state machine persists between calls.
     pub fn feed(&mut self, data: &[u8]) -> ScanActions {
         let mut actions = ScanActions::default();
         let before = self.flags();
+        let win32_before = self.win32_input;
         for &b in data {
             self.step(b, &mut actions);
         }
         let after = self.flags();
         if after != before {
             actions.flags_changed = Some(after);
+        }
+        if self.win32_input != win32_before {
+            actions.win32_changed = Some(self.win32_input);
         }
         actions
     }
@@ -166,6 +187,11 @@ impl KittyScanner {
             b'c' if params.is_empty() || params == [b'0'] => {
                 actions.reply.extend_from_slice(b"\x1b[?6c");
             }
+            // win32-input-mode. Sent by the ConPTY host at open (`h`) and by
+            // raw-VT children turning it off (`l`); a mid-stream mode toggle
+            // never fits the kitty `u` grammar, so no ambiguity with above.
+            b'h' if params == b"?9001" => self.win32_input = true,
+            b'l' if params == b"?9001" => self.win32_input = false,
             _ => {}
         }
     }
@@ -234,6 +260,24 @@ mod tests {
         let a = s.feed(b"\x1b[31mred\x1b[H\x1b[u\x1b[12345678901234567890u");
         assert_eq!(a, ScanActions::default());
         assert_eq!(s.flags(), 0);
+    }
+
+    #[test]
+    fn win32_input_mode_tracks_h_and_l() {
+        let mut s = KittyScanner::new();
+        assert!(!s.win32_input());
+        // The ConPTY host's opening request.
+        let a = s.feed(b"\x1b[?9001h");
+        assert_eq!(a.win32_changed, Some(true));
+        assert!(s.win32_input());
+        // No edge, no event.
+        assert_eq!(s.feed(b"\x1b[?9001h").win32_changed, None);
+        // A raw-VT child turning it back off.
+        let a = s.feed(b"\x1b[?9001l");
+        assert_eq!(a.win32_changed, Some(false));
+        assert!(!s.win32_input());
+        // Other private modes don't touch it.
+        assert_eq!(s.feed(b"\x1b[?2004h\x1b[?1004l").win32_changed, None);
     }
 
     #[test]

@@ -1,10 +1,12 @@
 //! Encode crossterm key events into the byte sequences a PTY child expects.
 //!
-//! Two dialects: conventional xterm-style encoding for legacy children
-//! (shells, vim without extras), and kitty-keyboard-protocol CSI-u encoding
+//! Three dialects: conventional xterm-style encoding for legacy children
+//! (shells, vim without extras); kitty-keyboard-protocol CSI-u encoding
 //! when the child has pushed enhancement flags (Claude Code does — that's
-//! how Cmd/Option combos and Shift+Enter reach it). The daemon tracks the
-//! child's flag stack and tells us via `ServerEvent::KittyFlags`.
+//! how Cmd/Option combos and Shift+Enter reach it); and, on Windows,
+//! win32-input-mode records for the few chords the legacy dialect flattens,
+//! when ConPTY has the mode on. The daemon tracks both via the output
+//! stream and tells us with `ServerEvent::KittyFlags` / `::Win32Input`.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -13,12 +15,51 @@ const DISAMBIGUATE: u8 = 0x1;
 /// Kitty flag bit: ALL keys are reported as escape codes, even plain text.
 const REPORT_ALL: u8 = 0x8;
 
-pub fn encode_key(key: &KeyEvent, kitty_flags: u8) -> Option<Vec<u8>> {
+pub fn encode_key(key: &KeyEvent, kitty_flags: u8, win32_input: bool) -> Option<Vec<u8>> {
     if kitty_flags & DISAMBIGUATE != 0 {
-        encode_kitty(key, kitty_flags)
-    } else {
-        encode_legacy(key)
+        return encode_kitty(key, kitty_flags);
     }
+    if win32_input {
+        if let Some(seq) = encode_win32(key) {
+            return Some(seq);
+        }
+    }
+    encode_legacy(key)
+}
+
+// ---- win32-input-mode dialect ----
+
+/// `CSI Vk;Sc;Uc;Kd;Cs;Rc _` — ConPTY's own input encoding, which it turns
+/// back into full `INPUT_RECORD`s for the child. Only the chords legacy
+/// bytes flatten are encoded here: Shift+Enter is the one users notice
+/// (PSReadLine's insert-newline), and Ctrl/Alt on Enter, Tab, Backspace and
+/// Esc travel the same way. Everything else stays on the portable dialects,
+/// which ConPTY's input parser understands fine — a mixed stream is legal.
+fn encode_win32(key: &KeyEvent) -> Option<Vec<u8>> {
+    let mods = key.modifiers & (KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL);
+    if mods.is_empty() || mods != key.modifiers {
+        // Plain keys need no rescue; Super/Hyper/Meta have no VK to claim.
+        return None;
+    }
+    let (vk, uc): (u8, u8) = match key.code {
+        KeyCode::Enter => (0x0d, b'\r'),
+        KeyCode::Tab => (0x09, b'\t'),
+        KeyCode::Backspace => (0x08, 0x08),
+        KeyCode::Esc => (0x1b, 0x1b),
+        _ => return None,
+    };
+    let mut cs = 0u32; // dwControlKeyState
+    if mods.contains(KeyModifiers::SHIFT) {
+        cs |= 0x10; // SHIFT_PRESSED
+    }
+    if mods.contains(KeyModifiers::ALT) {
+        cs |= 0x02; // LEFT_ALT_PRESSED
+    }
+    if mods.contains(KeyModifiers::CONTROL) {
+        cs |= 0x08; // LEFT_CTRL_PRESSED
+    }
+    // Key-down then key-up, like a real console delivers.
+    Some(format!("\x1b[{vk};0;{uc};1;{cs};1_\x1b[{vk};0;{uc};0;{cs};1_").into_bytes())
 }
 
 // ---- kitty CSI-u dialect ----
@@ -253,7 +294,7 @@ mod tests {
     #[test]
     fn plain_char() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0, false),
             Some(b"a".to_vec())
         );
     }
@@ -261,7 +302,7 @@ mod tests {
     #[test]
     fn ctrl_c() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), 0),
+            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), 0, false),
             Some(vec![0x03])
         );
     }
@@ -269,7 +310,7 @@ mod tests {
     #[test]
     fn alt_char_prefixes_esc() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('f'), KeyModifiers::ALT), 0),
+            encode_key(&key(KeyCode::Char('f'), KeyModifiers::ALT), 0, false),
             Some(vec![0x1b, b'f'])
         );
     }
@@ -277,11 +318,11 @@ mod tests {
     #[test]
     fn arrows() {
         assert_eq!(
-            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), 0, false),
             Some(b"\x1b[A".to_vec())
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Left, KeyModifiers::CONTROL), 0),
+            encode_key(&key(KeyCode::Left, KeyModifiers::CONTROL), 0, false),
             Some(b"\x1b[1;5D".to_vec())
         );
     }
@@ -289,7 +330,7 @@ mod tests {
     #[test]
     fn utf8_char() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('é'), KeyModifiers::NONE), 0),
+            encode_key(&key(KeyCode::Char('é'), KeyModifiers::NONE), 0, false),
             Some("é".as_bytes().to_vec())
         );
     }
@@ -297,12 +338,64 @@ mod tests {
     #[test]
     fn legacy_swallows_super_combos() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('c'), KeyModifiers::SUPER), 0),
+            encode_key(&key(KeyCode::Char('c'), KeyModifiers::SUPER), 0, false),
             None
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Backspace, KeyModifiers::SUPER), 0),
+            encode_key(&key(KeyCode::Backspace, KeyModifiers::SUPER), 0, false),
             None
+        );
+    }
+
+    // ---- win32-input-mode dialect ----
+
+    /// The chord that motivated the dialect: PSReadLine's insert-newline.
+    #[test]
+    fn win32_shift_enter_sends_a_down_up_record_pair() {
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 0, true),
+            Some(b"\x1b[13;0;13;1;16;1_\x1b[13;0;13;0;16;1_".to_vec())
+        );
+    }
+
+    /// Plain keys must stay on the byte encodings — a mixed stream is legal,
+    /// and bytes are what raw-VT children expect.
+    #[test]
+    fn win32_leaves_plain_and_char_keys_to_legacy() {
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 0, true),
+            Some(b"\r".to_vec())
+        );
+        assert_eq!(
+            encode_key(&key(KeyCode::Char('u'), KeyModifiers::CONTROL), 0, true),
+            Some(vec![0x15])
+        );
+        assert_eq!(
+            encode_key(&key(KeyCode::Char('c'), KeyModifiers::SUPER), 0, true),
+            None,
+            "no VK to claim for Super — swallow, as legacy does"
+        );
+    }
+
+    /// Kitty wins when the child pushed disambiguation: it asked for CSI-u,
+    /// and ConPTY passes those bytes through to its raw-VT input.
+    #[test]
+    fn win32_yields_to_kitty() {
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 1, true),
+            Some(b"\x1b[13;2u".to_vec())
+        );
+    }
+
+    #[test]
+    fn win32_ctrl_esc_and_alt_enter() {
+        assert_eq!(
+            encode_key(&key(KeyCode::Esc, KeyModifiers::CONTROL), 0, true),
+            Some(b"\x1b[27;0;27;1;8;1_\x1b[27;0;27;0;8;1_".to_vec())
+        );
+        assert_eq!(
+            encode_key(&key(KeyCode::Enter, KeyModifiers::ALT), 0, true),
+            Some(b"\x1b[13;0;13;1;2;1_\x1b[13;0;13;0;2;1_".to_vec())
         );
     }
 
@@ -311,15 +404,15 @@ mod tests {
     #[test]
     fn kitty_plain_text_stays_text() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 1),
+            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 1, false),
             Some(b"a".to_vec())
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Char('A'), KeyModifiers::SHIFT), 1),
+            encode_key(&key(KeyCode::Char('A'), KeyModifiers::SHIFT), 1, false),
             Some(b"A".to_vec())
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 1),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 1, false),
             Some(b"\r".to_vec())
         );
     }
@@ -327,7 +420,7 @@ mod tests {
     #[test]
     fn kitty_option_p() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('p'), KeyModifiers::ALT), 1),
+            encode_key(&key(KeyCode::Char('p'), KeyModifiers::ALT), 1, false),
             Some(b"\x1b[112;3u".to_vec())
         );
     }
@@ -335,7 +428,7 @@ mod tests {
     #[test]
     fn kitty_cmd_backspace() {
         assert_eq!(
-            encode_key(&key(KeyCode::Backspace, KeyModifiers::SUPER), 1),
+            encode_key(&key(KeyCode::Backspace, KeyModifiers::SUPER), 1, false),
             Some(b"\x1b[127;9u".to_vec())
         );
     }
@@ -343,11 +436,11 @@ mod tests {
     #[test]
     fn kitty_shift_enter_and_esc() {
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 1),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 1, false),
             Some(b"\x1b[13;2u".to_vec())
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Esc, KeyModifiers::NONE), 1),
+            encode_key(&key(KeyCode::Esc, KeyModifiers::NONE), 1, false),
             Some(b"\x1b[27u".to_vec())
         );
     }
@@ -355,7 +448,7 @@ mod tests {
     #[test]
     fn kitty_ctrl_char_uses_csi_u() {
         assert_eq!(
-            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), 1),
+            encode_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), 1, false),
             Some(b"\x1b[99;5u".to_vec())
         );
     }
@@ -368,7 +461,8 @@ mod tests {
                     KeyCode::Char('P'),
                     KeyModifiers::CONTROL | KeyModifiers::SHIFT
                 ),
-                1
+                1,
+                false
             ),
             Some(b"\x1b[112;6u".to_vec())
         );
@@ -377,11 +471,11 @@ mod tests {
     #[test]
     fn kitty_arrows_keep_legacy_form() {
         assert_eq!(
-            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), 1),
+            encode_key(&key(KeyCode::Up, KeyModifiers::NONE), 1, false),
             Some(b"\x1b[A".to_vec())
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Up, KeyModifiers::SUPER), 1),
+            encode_key(&key(KeyCode::Up, KeyModifiers::SUPER), 1, false),
             Some(b"\x1b[1;9A".to_vec())
         );
     }
@@ -390,11 +484,11 @@ mod tests {
     fn kitty_report_all_escapes_plain_keys() {
         // flags = disambiguate | report-all (0x9)
         assert_eq!(
-            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0x9),
+            encode_key(&key(KeyCode::Char('a'), KeyModifiers::NONE), 0x9, false),
             Some(b"\x1b[97u".to_vec())
         );
         assert_eq!(
-            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 0x9),
+            encode_key(&key(KeyCode::Enter, KeyModifiers::NONE), 0x9, false),
             Some(b"\x1b[13u".to_vec())
         );
     }

@@ -1183,6 +1183,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ulid",
+ "vt100",
  "windows-sys",
 ]
 
