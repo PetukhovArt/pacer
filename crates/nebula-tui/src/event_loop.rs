@@ -1555,7 +1555,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             Focus::Sessions => {
                 if let Some(w) = app.selected_worktree() {
                     let worktree = w.id.clone();
-                    open_new_agent_picker(app, worktree);
+                    open_new_agent_picker(app, worktree, out);
                 }
             }
             Focus::Terminal => {}
@@ -2523,6 +2523,19 @@ fn open_menu(app: &mut App, items: Vec<MenuItem>, at: (u16, u16)) {
     }));
 }
 
+/// A NEW SESSION PICKER row: the kind, with model and effort left to the
+/// configured defaults and no PR or cloud attached.
+fn new_agent_of_kind(worktree: WorktreeId, kind: AgentKind) -> MenuAction {
+    MenuAction::NewAgentOfKind {
+        worktree,
+        kind,
+        model: None,
+        effort: None,
+        cloud: false,
+        pr_url: None,
+    }
+}
+
 /// Step 1 of new-session creation: pick which CLI the session runs. The
 /// kind chains into the name prompt via `MenuAction::NewAgentOfKind` —
 /// unless `skip_session_naming` is on, which creates it right there.
@@ -2530,32 +2543,36 @@ fn open_menu(app: &mut App, items: Vec<MenuItem>, at: (u16, u16)) {
 /// anywhere takes the configured defaults for whatever wasn't drilled into.
 /// A plain TERMINAL SESSION is not offered here: NEW TERMINAL (`t`) and the
 /// CONTEXT MENU's "New terminal" already cover it.
-fn open_new_agent_picker(app: &mut App, worktree: WorktreeId) {
+///
+/// With one harness enabled there is no step 1 at all: the picker resolves
+/// to that harness and creation goes straight on to naming.
+fn open_new_agent_picker(app: &mut App, worktree: WorktreeId, out: &mut Vec<ClientRequest>) {
     // Only the AGENT KINDS still enabled in the SETTINGS OVERLAY's Agents
     // tab are offered; a disabled harness is absent, not greyed.
     let kinds = crate::config::Config::load().enabled_kinds();
-    if kinds.is_empty() {
+    match kinds.as_slice() {
         // Only a hand-edited config gets here (the overlay refuses to turn
         // off the last harness). An empty ContextMenu would index past its
         // rows on Enter and `j`, so flash instead of opening one.
-        app.flash = Some("every harness is disabled — enable one in Settings › Agents".into());
-        return;
+        [] => {
+            app.flash = Some("every harness is disabled — enable one in Settings › Agents".into());
+            return;
+        }
+        // One harness left is not a choice: a single-row menu is a
+        // keystroke that can only be answered one way. Take the row Enter
+        // would have taken, which lands on the same configured defaults and
+        // the same naming step. The cost is the model/effort submenu, which
+        // this path could only have reached by expanding that one row —
+        // Settings › Agents holds the defaults it would have offered.
+        [only] => {
+            run_menu_action(app, new_agent_of_kind(worktree, *only), out);
+            return;
+        }
+        _ => {}
     }
     let items = kinds
         .into_iter()
-        .map(|kind| {
-            MenuItem::new(
-                kind_label(kind),
-                MenuAction::NewAgentOfKind {
-                    worktree: worktree.clone(),
-                    kind,
-                    model: None,
-                    effort: None,
-                    cloud: false,
-                    pr_url: None,
-                },
-            )
-        })
+        .map(|kind| MenuItem::new(kind_label(kind), new_agent_of_kind(worktree.clone(), kind)))
         .collect();
     app.overlay = Some(Overlay::Menu(ContextMenu {
         title: Some("New session".into()),
@@ -4299,7 +4316,7 @@ fn run_menu_action(app: &mut App, action: MenuAction, out: &mut Vec<ClientReques
                 app.overlay = Some(Overlay::Confirm(confirm_delete_agent(&a.name, id)));
             }
         }
-        MenuAction::NewAgent(worktree) => open_new_agent_picker(app, worktree),
+        MenuAction::NewAgent(worktree) => open_new_agent_picker(app, worktree, out),
         MenuAction::NewTerminal(worktree) => create_terminal(app, worktree, out),
         MenuAction::RenameTerminal(id) => open_prompt(app, PromptKind::RenameTerminal { id }),
         MenuAction::CloseTerminal(id) => {
@@ -11262,6 +11279,59 @@ diff --git a/src/b.rs b/src/b.rs
                 .any(|r| matches!(r, ClientRequest::CreateAgent { .. })),
             "cancelled picker must not create anything"
         );
+    }
+
+    #[test]
+    fn one_enabled_harness_skips_the_picker() {
+        with_config_json(
+            r#"{"codex_enabled": false, "cursor_enabled": false}"#,
+            || {
+                let mut app = App::new();
+                seed_tree(&mut app);
+                app.focus = Focus::Sessions;
+                let mut out = Vec::new();
+
+                handle_key(
+                    &mut app,
+                    KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+                    &mut out,
+                );
+                assert!(
+                    matches!(
+                        &app.overlay,
+                        Some(Overlay::Prompt(p))
+                            if matches!(&p.kind, PromptKind::NewAgent { kind: AgentKind::Claude, .. })
+                    ),
+                    "a one-row menu is skipped for the naming step: {:?}",
+                    app.overlay.is_some()
+                );
+                assert!(
+                    out.iter()
+                        .any(|r| matches!(r, ClientRequest::PrewarmAgent { .. })),
+                    "the skipped row still warms the CLI behind the prompt: {out:?}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn two_enabled_harnesses_still_open_the_picker() {
+        with_config_json(r#"{"cursor_enabled": false}"#, || {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            app.focus = Focus::Sessions;
+            let mut out = Vec::new();
+
+            handle_key(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+                &mut out,
+            );
+            let Some(Overlay::Menu(menu)) = &app.overlay else {
+                panic!("two harnesses are a real choice — the picker opens");
+            };
+            assert_eq!(menu.items.len(), 2, "one row per enabled harness");
+        });
     }
 
     #[test]
