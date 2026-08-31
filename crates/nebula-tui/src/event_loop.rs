@@ -2820,7 +2820,8 @@ fn switch_workspace(app: &mut App, id: WorkspaceId, out: &mut Vec<ClientRequest>
 }
 
 /// The scope change without the landing: same as [`switch_workspace`] but
-/// it leaves every cursor at the top and the pane on the old session. Only
+/// it parks every cursor at the top and blanks the pane instead of
+/// restoring the remembered session. Only
 /// for callers that place the selection themselves — a `/` jump into
 /// another workspace names the exact row it wants, and restoring that
 /// workspace's remembered session first would attach it just to detach it
@@ -2849,6 +2850,18 @@ fn switch_workspace_inner(
         // wrong project's context.
         restore_workspace_project(app);
         restore_context(app, out);
+    } else {
+        // Quiet switch: the caller will land the selection itself, but the
+        // lists have already re-filtered to the new workspace — stale
+        // numeric cursors would point at arbitrary rows, and the pane would
+        // keep showing the old workspace's session if the caller bails
+        // early ("no longer exists"). Park the cursors and blank the pane
+        // now; a successful landing re-attaches on its own.
+        app.sel_worktree = 0;
+        app.sel_session = 0;
+        if app.term.is_some() {
+            detach_pane(app, out);
+        }
     }
     clamp_selections(app);
     refresh_palette(app);
@@ -17764,6 +17777,56 @@ diff --git a/src/b.rs b/src/b.rs
                 .any(|r| matches!(r, ClientRequest::OpenWorkspace { .. })),
             "the daemon is told which workspace this connection is on"
         );
+    }
+
+    /// A `/` jump into another workspace switches quietly and lets the
+    /// landing place the cursor — but when the landing bails (here: a panel
+    /// filter hides the target project's row), the pane must not keep
+    /// showing the workspace we left. Regression: the quiet switch used to
+    /// leave `term` and the worktree/session cursors untouched, so the
+    /// terminal showed another workspace's session.
+    #[test]
+    fn aborted_cross_workspace_jump_does_not_keep_the_old_workspace_session() {
+        let mut app = App::new();
+        seed_tree(&mut app); // default: demo (p1) / main (w1) / a1
+        seed_other_workspace(&mut app); // client: secret (p9) / main (w9)
+        let mut out = Vec::new();
+
+        // The pane shows a session of the default workspace.
+        attach_now(&mut app, SessionRef::Agent(AgentId("a1".into())), &mut out);
+        assert!(app.term.is_some());
+
+        // A parked Projects filter that "secret" does not match.
+        let mut input = crate::text_input::TextInput::new();
+        input.set_text("demo");
+        app.list_filter = Some(crate::app::ListFilter {
+            focus: Focus::Projects,
+            input,
+            active: false,
+        });
+
+        out.clear();
+        jump_to_target(
+            &mut app,
+            PaletteTarget::Project(nebula_core::ProjectId("p9".into())),
+            Landing::FocusOnly,
+            &mut out,
+        );
+
+        assert_eq!(
+            app.tree.active_workspace,
+            nebula_core::WorkspaceId("ws2".into()),
+            "the quiet switch itself happened"
+        );
+        assert!(app.flash.is_some(), "the aborted landing flashes");
+        assert!(
+            !app.term
+                .as_ref()
+                .is_some_and(|t| t.sref == SessionRef::Agent(AgentId("a1".into()))),
+            "the pane must not keep the left workspace's session"
+        );
+        assert_eq!(app.sel_worktree, 0);
+        assert_eq!(app.sel_session, 0);
     }
 
     /// Switching re-filters everything live: panel rows, an open palette,
