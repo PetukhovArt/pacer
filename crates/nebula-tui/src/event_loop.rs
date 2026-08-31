@@ -401,8 +401,10 @@ async fn main_loop(
             }
             ev = input.next() => match ev {
                 Some(Ok(event)) => {
-                    tracing::debug!(?event, "terminal event");
-                    handle_terminal_event(&mut app, event, &mut out);
+                    for event in gather_events(event, &mut input).await {
+                        tracing::debug!(?event, "terminal event");
+                        handle_terminal_event(&mut app, event, &mut out);
+                    }
                 }
                 Some(Err(_)) | None => app.should_quit = true,
             },
@@ -1169,6 +1171,34 @@ fn close_vim(app: &mut App) {
             view.load_preview();
         }
     }
+}
+
+/// The event(s) to handle for one wake-up of the input stream. On Windows a
+/// Ctrl+V paste never arrives as `Event::Paste` — the terminal injects it as
+/// a burst of keystrokes, and each Enter forwarded alone submits a message.
+/// So a textual keystroke waits out a few-millisecond window for the rest of
+/// its batch, and a multi-line run folds back into the paste it was
+/// (`paste_burst::coalesce`). Elsewhere bracketed paste is real; nothing to
+/// rebuild.
+#[cfg(not(windows))]
+async fn gather_events(first: Event, _input: &mut crossterm::event::EventStream) -> Vec<Event> {
+    vec![first]
+}
+
+#[cfg(windows)]
+async fn gather_events(first: Event, input: &mut crossterm::event::EventStream) -> Vec<Event> {
+    if !crate::paste_burst::starts_burst(&first) {
+        return vec![first];
+    }
+    // Injected batches sit in the queue already; the gap only covers the
+    // reader thread's relay. Typing intervals are an order of magnitude
+    // longer, so a human keystroke pays one quiet window and moves on.
+    const BURST_GAP: Duration = Duration::from_millis(5);
+    let mut batch = vec![first];
+    while let Ok(Some(Ok(event))) = tokio::time::timeout(BURST_GAP, input.next()).await {
+        batch.push(event);
+    }
+    crate::paste_burst::coalesce(batch)
 }
 
 fn handle_terminal_event(app: &mut App, event: Event, out: &mut Vec<ClientRequest>) {
@@ -11343,28 +11373,32 @@ diff --git a/src/b.rs b/src/b.rs
 
     #[test]
     fn esc_cancels_agent_type_picker() {
-        let mut app = App::new();
-        seed_tree(&mut app);
-        app.focus = Focus::Sessions;
-        let mut out = Vec::new();
+        // Hermetic config: a user config with one enabled harness would skip
+        // the picker this test is about.
+        with_config_json("{}", || {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            app.focus = Focus::Sessions;
+            let mut out = Vec::new();
 
-        handle_key(
-            &mut app,
-            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
-            &mut out,
-        );
-        assert!(matches!(&app.overlay, Some(Overlay::Menu(_))));
-        handle_key(
-            &mut app,
-            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
-            &mut out,
-        );
-        assert!(app.overlay.is_none());
-        assert!(
-            !out.iter()
-                .any(|r| matches!(r, ClientRequest::CreateAgent { .. })),
-            "cancelled picker must not create anything"
-        );
+            handle_key(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+                &mut out,
+            );
+            assert!(matches!(&app.overlay, Some(Overlay::Menu(_))));
+            handle_key(
+                &mut app,
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                &mut out,
+            );
+            assert!(app.overlay.is_none());
+            assert!(
+                !out.iter()
+                    .any(|r| matches!(r, ClientRequest::CreateAgent { .. })),
+                "cancelled picker must not create anything"
+            );
+        });
     }
 
     #[test]
@@ -11423,19 +11457,23 @@ diff --git a/src/b.rs b/src/b.rs
     #[test]
     fn menu_new_agent_action_routes_through_picker() {
         use nebula_core::WorktreeId;
-        let mut app = App::new();
-        seed_tree(&mut app);
-        let mut out = Vec::new();
+        // Hermetic config: a user config with one enabled harness would skip
+        // the picker this test is about.
+        with_config_json("{}", || {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            let mut out = Vec::new();
 
-        run_menu_action(
-            &mut app,
-            MenuAction::NewAgent(WorktreeId("w1".into())),
-            &mut out,
-        );
-        assert!(matches!(
-            &app.overlay,
-            Some(Overlay::Menu(m)) if m.title.as_deref() == Some("New session")
-        ));
+            run_menu_action(
+                &mut app,
+                MenuAction::NewAgent(WorktreeId("w1".into())),
+                &mut out,
+            );
+            assert!(matches!(
+                &app.overlay,
+                Some(Overlay::Menu(m)) if m.title.as_deref() == Some("New session")
+            ));
+        });
     }
 
     fn seed_terminal(app: &mut App, id: &str, name: &str) {
