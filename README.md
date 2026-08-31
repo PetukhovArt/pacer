@@ -329,7 +329,9 @@ nebula browser [--port N] [--bind ADDR | --public] [--credential USER:PASSWORD] 
                           # is the firewall/security group in front of the port. That serves a
                           # live, writable terminal, so put something in front of it and use
                           # --credential to add ttyd's HTTP basic auth on top. --no-open serves
-                          # without launching a desktop browser, for a box that has none
+                          # without launching a desktop browser, for a box that has none.
+                          # For reaching this from a phone over any network, see
+                          # docs/remote-access-tailscale.md
 nebula upgrade            # install the latest release (--force on a dev build)
 ```
 

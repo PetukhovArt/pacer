@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прогрев и сборщик — газ и тормоз одной механики</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;600;700;800&family=Wix+Madefor+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#faf8f4; --bg-sunk:#f2eee7; --surface:#ffffff; --line:#e4ded3; --line-soft:#efeae1;
+  --ink:#1d1c1a; --ink-2:#514c45; --ink-3:#8a8377;
+  --accent:oklch(0.52 0.11 176); --accent-soft:oklch(0.94 0.03 176); --accent-ink:oklch(0.38 0.09 176);
+  --warn:oklch(0.62 0.14 55); --warn-soft:oklch(0.95 0.04 65);
+  --risk:oklch(0.56 0.16 22); --risk-soft:oklch(0.95 0.03 22);
+  --c1:oklch(0.52 0.11 176); --c2:oklch(0.66 0.1 176); --c3:oklch(0.78 0.07 176); --c4:oklch(0.88 0.04 176);
+  --shadow:0 1px 2px rgba(29,28,26,.04), 0 8px 24px -12px rgba(29,28,26,.14);
+  --code-bg:#1c1e22; --code-ink:#dcd7cd; --code-dim:#6f6a62; --code-key:oklch(0.78 0.1 300); --code-type:oklch(0.82 0.1 176); --code-str:oklch(0.82 0.11 120); --code-num:oklch(0.82 0.11 60);
+}
+[data-theme="dark"]{
+  --bg:#131417; --bg-sunk:#0e0f11; --surface:#1b1d21; --line:#2c2f35; --line-soft:#23262b;
+  --ink:#f2f0ec; --ink-2:#b6b2ab; --ink-3:#7e7a73;
+  --accent:oklch(0.78 0.11 176); --accent-soft:oklch(0.3 0.05 176); --accent-ink:oklch(0.85 0.09 176);
+  --warn:oklch(0.8 0.12 65); --warn-soft:oklch(0.32 0.05 65);
+  --risk:oklch(0.72 0.14 22); --risk-soft:oklch(0.31 0.06 22);
+  --c1:oklch(0.78 0.11 176); --c2:oklch(0.66 0.1 176); --c3:oklch(0.54 0.09 176); --c4:oklch(0.42 0.06 176);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 32px -14px rgba(0,0,0,.6);
+  --code-bg:#101114; --code-ink:#e4e0d9; --code-dim:#767169;
+}
+:root{--f-head:'Wix Madefor Display',system-ui,sans-serif;--f-body:'Wix Madefor Text',system-ui,sans-serif;--f-ui:'Wix Madefor Text',system-ui,sans-serif;--head-ls:-.025em;--head-w:800}
+h1,h2,h3{font-family:var(--f-head);letter-spacing:var(--head-ls)}
+h1,h2{font-weight:var(--head-w)!important;letter-spacing:var(--head-ls)!important}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);-webkit-font-smoothing:antialiased;transition:background .35s ease,color .35s ease}
+a{color:var(--accent-ink);text-decoration-color:color-mix(in oklch,var(--accent) 45%,transparent);text-underline-offset:3px}
+a:hover{color:var(--accent);text-decoration-color:var(--accent)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes grow-y{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.rv{animation:rise .6s cubic-bezier(.2,.7,.3,1) both}
+.bar{transform-origin:bottom;animation:grow-y .9s cubic-bezier(.2,.8,.2,1) both}
+.tocL{display:block;padding:7px 12px;border-radius:8px;color:var(--ink-3);font-size:13.5px;font-weight:500;text-decoration:none;border-left:2px solid transparent;transition:color .2s,background .2s,border-color .2s}
+.tocL:hover{color:var(--ink);background:var(--line-soft);text-decoration:none}
+.tocL[data-on="1"]{color:var(--accent-ink);border-left-color:var(--accent);background:var(--accent-soft);font-weight:600}
+tbody tr{transition:background .2s}
+tbody tr:hover{background:var(--line-soft)}
+#shell{max-width:1180px;transition:max-width .4s cubic-bezier(.2,.8,.2,1)}
+[data-w="wide"] #shell{max-width:1560px}
+[data-w="full"] #shell{max-width:none}
+.prose{max-width:68ch}
+.prose p{max-width:100%}
+.card .prose{max-width:64ch}
+[data-w="full"] .prose{max-width:82ch}
+.card{padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.kpi{transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.kpi:hover{transform:translateY(-3px)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);transition:transform .2s,color .2s,border-color .2s}
+.btn:hover{transform:translateY(-1px);color:var(--ink);border-color:var(--ink-3)}
+.secnum{font-family:var(--f-body);font-size:15px;color:var(--ink-3)}
+.sechead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
+.sechead h2{margin:0;font-size:clamp(24px,3vw,30px);line-height:1.15;letter-spacing:-.02em;font-weight:800}
+.body-text{font-family:var(--f-body);font-size:17.5px;line-height:1.68;color:var(--ink-2);text-wrap:pretty}
+th{padding:13px 18px;text-align:left;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line)}
+td{padding:15px 18px;border-bottom:1px solid var(--line-soft)}
+pre{margin:20px 0 0;padding:18px;background:var(--code-bg);border-radius:12px;overflow-x:auto;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px;line-height:1.85;color:var(--code-ink)}
+.card-title{font-size:15px;font-weight:700}
+.card-sub{margin-top:4px;font-size:13px;color:var(--ink-3)}
+.dg{font-family:var(--f-ui);width:100%;height:auto}
+.dg text{fill:var(--ink);font-size:14px;font-weight:600}
+.dg .dim{fill:var(--ink-3);font-size:12.5px;font-weight:500}
+.dg .edge{stroke:var(--line);stroke-width:2;fill:none}
+.dg .box{fill:var(--bg-sunk);stroke:var(--line);stroke-width:1}
+.dg .box-accent{fill:var(--accent-soft);stroke:color-mix(in oklch,var(--accent) 40%,transparent);stroke-width:1}
+.dg .box-warn{fill:var(--warn-soft);stroke:color-mix(in oklch,var(--warn) 35%,transparent);stroke-width:1}
+.dg .box-plain{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.dg .decision{fill:none;stroke:var(--ink-3);stroke-width:1;stroke-dasharray:5 4}
+.dg .t-accent{fill:var(--accent-ink);font-weight:700}
+@media (max-width:960px){
+  #shell{padding:0 20px!important}
+}
+@media (max-width:560px){
+  #shell{padding:0 16px!important}
+  header{padding-top:36px!important}
+  main{gap:48px!important}
+  .sechead h2{font-size:23px!important}
+  .card{padding:18px!important}
+  pre{font-size:11.5px!important;padding:14px!important}
+}
+@media (max-width:860px){
+  #layout{grid-template-columns:minmax(0,1fr)!important;gap:28px!important}
+  #layout nav{position:static!important;flex-direction:row!important;overflow-x:auto;gap:6px!important;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  #layout nav>div:first-child,#layout nav>div:last-child{display:none!important}
+  #layout nav .tocL{white-space:nowrap;border-left:none!important;border-bottom:2px solid transparent}
+  #layout nav .tocL[data-on="1"]{border-bottom-color:var(--accent)}
+  header{padding-top:44px!important}
+}
+@media print{
+  .noprint{display:none!important}
+  body{background:#fff}
+  section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div style="min-height:100vh">
+  <div class="noprint" style="position:fixed;top:0;left:0;right:0;height:2px;background:transparent;z-index:50">
+    <div id="progress" style="height:100%;width:0%;background:var(--accent);transition:width .1s linear"></div>
+  </div>
+
+  <div id="shell" style="margin:0 auto;padding:0 24px">
+
+    <header style="padding:72px 0 40px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:18px;max-width:760px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Разбор архитектуры</span>
+            <span style="font-size:13px;color:var(--ink-3);font-weight:500">nebula · daemon · registry.rs</span>
+          </div>
+          <h1 style="margin:0;font-size:clamp(34px,5.2vw,56px);line-height:1.04;letter-spacing:-.03em;font-weight:800;text-wrap:balance">Прогрев и сборщик:<br>газ и тормоз одной механики</h1>
+          <p class="prose body-text" style="margin:0;font-size:clamp(17px,2vw,20px);line-height:1.55;max-width:62ch">Два проекта, в каждом два worktree, в каждом две сессии — восемь живых процессов <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">claude</code> и оболочек. Смотреть можно ровно на один worktree. Разбор того, что происходит с остальными шестью, пока вы переключаетесь.</p>
+        </div>
+        <div class="noprint" style="display:flex;gap:8px;align-items:center">
+          <button id="width-btn" class="btn" title="Ширина контента">
+            <span style="font-size:14px;line-height:1">⇔</span><span data-role="label">Обычная</span>
+          </button>
+          <button id="theme-btn" class="btn">
+            <span style="font-size:14px" data-role="icon">☾</span><span data-role="label">Тёмная</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;margin-top:44px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden">
+        <div style="padding:18px 20px;background:var(--surface)">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">Сессий на стенде</div>
+          <div style="margin-top:7px;font-size:15px;font-weight:600">8 = 2 × 2 × 2</div>
+        </div>
+        <div style="padding:18px 20px;background:var(--surface)">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">В поле зрения</div>
+          <div style="margin-top:7px;font-size:15px;font-weight:600">1 worktree · 2 сессии</div>
+        </div>
+        <div style="padding:18px 20px;background:var(--surface)">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">Реап-таймаут</div>
+          <div style="margin-top:7px;font-size:15px;font-weight:600">5 минут <span style="color:var(--ink-3);font-weight:500">(дефолт)</span></div>
+        </div>
+        <div style="padding:18px 20px;background:var(--surface)">
+          <div style="font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">Тик сборщика</div>
+          <div style="margin-top:7px;display:inline-flex;align-items:center;gap:7px;font-size:15px;font-weight:600;color:var(--accent-ink)"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>каждые 15 с</div>
+        </div>
+      </div>
+    </header>
+
+    <div id="layout" style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:56px;align-items:start;padding:48px 0 96px">
+
+      <nav class="noprint" style="position:sticky;top:40px;display:flex;flex-direction:column;gap:2px">
+        <div style="padding:0 12px 10px;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">Содержание</div>
+        <a class="tocL" href="#gloss" data-toc="gloss">00 · Глоссарий</a>
+        <a class="tocL" href="#stand" data-toc="stand">01 · Стенд 2 × 2 × 2</a>
+        <a class="tocL" href="#warm" data-toc="warm">02 · Прогрев — газ</a>
+        <a class="tocL" href="#reap" data-toc="reap">03 · Сборщик — тормоз</a>
+        <a class="tocL" href="#tour" data-toc="tour">04 · Обход по кругу</a>
+        <a class="tocL" href="#break" data-toc="break">05 · Где это ломается</a>
+        <div style="margin-top:18px;padding:14px 12px 0;border-top:1px solid var(--line);font-size:12.5px;line-height:1.5;color:var(--ink-3)">Источник — код:<br><code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">registry.rs</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">config.rs</code>,<br><code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">event_loop.rs</code></div>
+      </nav>
+
+      <main style="display:flex;flex-direction:column;gap:64px;min-width:0">
+
+        <!-- ============ 00 ГЛОССАРИЙ ============ -->
+        <section id="gloss" data-sec="gloss" class="rv" style="scroll-margin-top:80px">
+          <div class="sechead"><span class="secnum">00</span><h2>Глоссарий</h2></div>
+          <p class="prose body-text" style="margin:0 0 26px">Восемь слов, без которых дальше не читается. Термины — из <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">GLOSSARY.md</code> проекта и из имён в коде.</p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px">
+
+            <div class="card">
+              <div class="card-title">Сессия</div>
+              <div class="card-sub">PtySession</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Один PTY с живым процессом внутри: агент (<code style="font-family:'JetBrains Mono',monospace;font-size:.88em">claude</code>) или терминал. Плюс кольцо прокрутки на 1 МБ, тред-читатель и таска-насос.</p>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Attach / Detach</div>
+              <div class="card-sub">клиент ↔ демон</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Подписка TUI на вывод сессии. Detach только отменяет пересылку — процесс он не трогает.</p>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Прогрев</div>
+              <div class="card-sub">prewarm</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Спекулятивный запуск сессий до того, как вы их открыли, чтобы attach попал на уже загруженный экран.</p>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Тёплая заготовка</div>
+              <div class="card-sub">warm spare</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Заранее поднятый CLI без строки в базе — ждёт усыновления, когда вы создадите агента. Живёт максимум 15 минут.</p>
+            </div>
+
+            <div class="card" style="border-color:color-mix(in oklch,var(--accent) 30%,transparent)">
+              <div class="card-title" style="color:var(--accent-ink)">В поле зрения</div>
+              <div class="card-sub">viewed worktree</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Worktree, в котором есть хоть одна attached-сессия. <b style="color:var(--ink)">Единица видимости — worktree, не сессия.</b> Обе сессии worktree считаются увиденными, если открыта любая одна.</p>
+            </div>
+
+            <div class="card" style="border-color:color-mix(in oklch,var(--accent) 30%,transparent)">
+              <div class="card-title" style="color:var(--accent-ink)">Штамп интереса</div>
+              <div class="card-sub">touch_session()</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Отметка «сюда только что смотрели». Общий сигнал: прогрев её ставит, сборщик её читает. Одна педаль на двоих.</p>
+            </div>
+
+            <div class="card" style="border-color:color-mix(in oklch,var(--risk) 26%,transparent)">
+              <div class="card-title" style="color:var(--risk)">Сборщик</div>
+              <div class="card-sub">idle reaper</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Убивает PTY в worktree, на которые никто не смотрит, после <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">session_idle_timeout</code>. Не «усыпляет» — убивает дерево процессов.</p>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Ревайв</div>
+              <div class="card-sub">respawn --resume</div>
+              <p class="prose body-text" style="margin:10px 0 0;font-size:15.5px;line-height:1.55">Воскрешение убитой сессии на следующем attach или прогреве. Агент поднимается с <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">--resume &lt;sid&gt;</code> и продолжает тот же разговор.</p>
+            </div>
+
+          </div>
+
+          <div style="display:flex;gap:14px;margin-top:26px;padding:18px 20px;background:var(--accent-soft);border-radius:14px;border:1px solid color-mix(in oklch,var(--accent) 24%,transparent)">
+            <div style="width:3px;border-radius:2px;background:var(--accent);flex-shrink:0"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-ink)">Главная посылка</div>
+              <p class="prose body-text" style="margin:7px 0 0;font-size:16.5px;line-height:1.6">PTY трактуется как <b style="color:var(--ink)">кэш, а не как состояние</b>. Разговор живёт в сторе Claude Code, процесс — лишь его материализация. Поэтому убить процесс считается дёшево: <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">--resume</code> его восстановит. Вся конструкция стоит на этой посылке — и падает вместе с ней.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 01 СТЕНД ============ -->
+        <section id="stand" data-sec="stand" style="scroll-margin-top:80px">
+          <div class="sechead"><span class="secnum">01</span><h2>Стенд 2 × 2 × 2</h2></div>
+          <div class="prose body-text" style="display:flex;flex-direction:column;gap:18px">
+            <p style="margin:0">Два проекта — <b style="color:var(--ink)">alpha</b> и <b style="color:var(--ink)">beta</b>. В каждом по два worktree. В каждом worktree — агент <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">claude</code> и терминал. Итого восемь сессий, восемь процессов, восемь колец прокрутки по мегабайту.</p>
+            <p style="margin:0">Курсор в дереве стоит в одном месте. Значит в поле зрения — ровно один worktree и две его сессии. Оставшиеся шесть стареют <b style="color:var(--ink)">всегда</b>, что бы вы ни делали: это не редкий случай, это норма работы.</p>
+          </div>
+
+          <div class="card" style="padding:28px 24px;border-radius:16px;margin-top:32px">
+            <div class="card-title">Дерево стенда</div>
+            <div class="card-sub">курсор стоит на alpha / main</div>
+
+            <svg class="dg" viewBox="0 0 660 300" style="margin-top:26px;max-width:660px;display:block;margin-left:auto;margin-right:auto" role="img" aria-label="Дерево: проекты alpha и beta, по два worktree в каждом, по две сессии в каждом worktree. Подсвечен worktree alpha main как находящийся в поле зрения.">
+              <!-- проект alpha -->
+              <rect class="box" x="8" y="18" width="104" height="104" rx="10"></rect>
+              <text x="60" y="65" text-anchor="middle" font-size="13.5">alpha</text>
+              <text class="dim" x="60" y="84" text-anchor="middle" font-size="11.5">проект</text>
+              <!-- проект beta -->
+              <rect class="box" x="8" y="168" width="104" height="104" rx="10"></rect>
+              <text x="60" y="215" text-anchor="middle" font-size="13.5">beta</text>
+              <text class="dim" x="60" y="234" text-anchor="middle" font-size="11.5">проект</text>
+
+              <!-- спайны -->
+              <path class="edge" d="M112 70 H126"></path>
+              <path class="edge" d="M126 40 V100"></path>
+              <path class="edge" d="M126 40 H140"></path>
+              <path class="edge" d="M126 100 H140"></path>
+              <path class="edge" d="M112 220 H126"></path>
+              <path class="edge" d="M126 190 V250"></path>
+              <path class="edge" d="M126 190 H140"></path>
+              <path class="edge" d="M126 250 H140"></path>
+
+              <!-- worktree → сессии -->
+              <path class="edge" d="M315 40 H335"></path>
+              <path class="edge" d="M315 100 H335"></path>
+              <path class="edge" d="M315 190 H335"></path>
+              <path class="edge" d="M315 250 H335"></path>
+
+              <!-- ряд 1: alpha/main — в поле зрения -->
+              <rect class="box-accent" x="140" y="18" width="175" height="44" rx="10"></rect>
+              <text class="t-accent" x="227" y="45" text-anchor="middle" font-size="13.5">main</text>
+              <rect x="335" y="18" width="310" height="44" rx="12" fill="var(--accent-soft)" stroke="color-mix(in oklch,var(--accent) 22%,transparent)"></rect>
+              <rect class="box-accent" x="345" y="24" width="140" height="32" rx="8"></rect>
+              <text class="t-accent" x="415" y="45" text-anchor="middle" font-size="12.5">claude</text>
+              <rect class="box-accent" x="495" y="24" width="140" height="32" rx="8"></rect>
+              <text class="t-accent" x="565" y="45" text-anchor="middle" font-size="12.5">shell</text>
+
+              <!-- ряд 2: alpha/feat-auth -->
+              <rect class="box-plain" x="140" y="78" width="175" height="44" rx="10"></rect>
+              <text x="227" y="105" text-anchor="middle" font-size="13.5" fill="var(--ink-2)">feat-auth</text>
+              <rect class="box" x="335" y="78" width="310" height="44" rx="12"></rect>
+              <rect class="box-plain" x="345" y="84" width="140" height="32" rx="8"></rect>
+              <text class="dim" x="415" y="105" text-anchor="middle">claude</text>
+              <rect class="box-plain" x="495" y="84" width="140" height="32" rx="8"></rect>
+              <text class="dim" x="565" y="105" text-anchor="middle">shell</text>
+
+              <!-- ряд 3: beta/main -->
+              <rect class="box-plain" x="140" y="168" width="175" height="44" rx="10"></rect>
+              <text x="227" y="195" text-anchor="middle" font-size="13.5" fill="var(--ink-2)">main</text>
+              <rect class="box" x="335" y="168" width="310" height="44" rx="12"></rect>
+              <rect class="box-plain" x="345" y="174" width="140" height="32" rx="8"></rect>
+              <text class="dim" x="415" y="195" text-anchor="middle">claude</text>
+              <rect class="box-plain" x="495" y="174" width="140" height="32" rx="8"></rect>
+              <text class="dim" x="565" y="195" text-anchor="middle">shell</text>
+
+              <!-- ряд 4: beta/fix-perf -->
+              <rect class="box-plain" x="140" y="228" width="175" height="44" rx="10"></rect>
+              <text x="227" y="255" text-anchor="middle" font-size="13.5" fill="var(--ink-2)">fix-perf</text>
+              <rect class="box" x="335" y="228" width="310" height="44" rx="12"></rect>
+              <rect class="box-plain" x="345" y="234" width="140" height="32" rx="8"></rect>
+              <text class="dim" x="415" y="255" text-anchor="middle">claude</text>
+              <rect class="box-plain" x="495" y="234" width="140" height="32" rx="8"></rect>
+              <text class="dim" x="565" y="255" text-anchor="middle">shell</text>
+            </svg>
+
+            <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:13px;color:var(--ink-3)">
+              <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:11px;height:11px;border-radius:3px;background:var(--accent-soft);border:1px solid var(--accent);flex-shrink:0"></span>в поле зрения — штамп освежается каждый тик</span>
+              <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:11px;height:11px;border-radius:3px;background:var(--surface);border:1px solid var(--line);flex-shrink:0"></span>стареет — до смерти 5 минут</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:20px">
+            <div class="card kpi">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)">Процессов</div>
+              <div style="margin-top:12px;display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:32px;font-weight:800;letter-spacing:-.03em">8</span>
+                <span style="font-size:13px;font-weight:600;color:var(--ink-3)">при полном прогреве</span>
+              </div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.45;color:var(--ink-3)">4 CLI агента + 4 оболочки</div>
+            </div>
+            <div class="card kpi">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)">Всегда стареют</div>
+              <div style="margin-top:12px;display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:32px;font-weight:800;letter-spacing:-.03em">6</span>
+                <span style="font-size:13px;font-weight:600;color:var(--risk)">из 8</span>
+              </div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.45;color:var(--ink-3)">курсор физически один</div>
+            </div>
+            <div class="card kpi">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)">Колец прокрутки</div>
+              <div style="margin-top:12px;display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:32px;font-weight:800;letter-spacing:-.03em">8 МБ</span>
+                <span style="font-size:13px;font-weight:600;color:var(--ink-3)">1 МБ на PTY</span>
+              </div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.45;color:var(--ink-3)">плюс тред и таска на каждую</div>
+            </div>
+            <div class="card kpi">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)">Обход круга</div>
+              <div style="margin-top:12px;display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:32px;font-weight:800;letter-spacing:-.03em">24 мин</span>
+                <span style="font-size:13px;font-weight:600;color:var(--ink-3)">по 6 на worktree</span>
+              </div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.45;color:var(--ink-3)">длиннее таймаута в 4,8 раза</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 02 ПРОГРЕВ ============ -->
+        <section id="warm" data-sec="warm" style="scroll-margin-top:80px">
+          <div class="sechead"><span class="secnum">02</span><h2>Прогрев — газ</h2></div>
+          <div class="prose body-text" style="display:flex;flex-direction:column;gap:18px">
+            <p style="margin:0">Nebula плодит процессы спекулятивно, и оба механизма включены по умолчанию. Это не побочный эффект — это заявленная фича: attach должен попадать на уже загруженный экран, а не на «booting…».</p>
+            <p style="margin:0">Ключевой момент: <b style="color:var(--ink)">триггер — не открытие сессии, а остановка курсора на строке worktree.</b> Задержались на 250 мс — демон пошёл бутить всё, что под этим worktree мертво. Вы просто листаете дерево, а процессы рождаются.</p>
+          </div>
+
+          <div class="card" style="padding:28px 24px;border-radius:16px;margin-top:32px">
+            <div class="card-title">Цепочка запуска</div>
+            <div class="card-sub">от движения курсора до восьми живых процессов</div>
+
+            <svg class="dg" viewBox="0 0 640 400" style="margin-top:26px;max-width:640px;display:block;margin-left:auto;margin-right:auto" role="img" aria-label="Схема: курсор встал на строку worktree, дебаунс 250 миллисекунд, отправляется прогрев, демон читает список сессий, бутит мёртвые с интервалом полторы секунды и ставит штамп интереса на все, включая живые.">
+              <defs>
+                <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"></path></marker>
+              </defs>
+
+              <path class="edge" marker-end="url(#ah1)" d="M320 58 V 88"></path>
+              <path class="edge" marker-end="url(#ah1)" d="M320 134 V 164"></path>
+              <path class="edge" marker-end="url(#ah1)" d="M320 210 V 240"></path>
+              <path class="edge" d="M320 286 V 306"></path>
+              <path class="edge" d="M150 306 H 490"></path>
+              <path class="edge" marker-end="url(#ah1)" d="M150 306 V 330"></path>
+              <path class="edge" marker-end="url(#ah1)" d="M490 306 V 330"></path>
+
+              <rect class="box" x="200" y="14" width="240" height="44" rx="10"></rect>
+              <text x="320" y="41" text-anchor="middle" font-size="13.5">Курсор встал на worktree</text>
+
+              <rect class="box-plain" x="190" y="88" width="260" height="46" rx="10"></rect>
+              <text x="320" y="110" text-anchor="middle" font-size="13.5">Дебаунс в TUI</text>
+              <text class="dim" x="320" y="127" text-anchor="middle">PREWARM_DEBOUNCE · 250 мс</text>
+
+              <rect class="box-accent" x="190" y="164" width="260" height="46" rx="10"></rect>
+              <text class="t-accent" x="320" y="192" text-anchor="middle" font-size="13.5">prewarm_worktree_sessions</text>
+
+              <rect class="box-plain" x="170" y="240" width="300" height="46" rx="10"></rect>
+              <text x="320" y="262" text-anchor="middle" font-size="13.5">Свип по сессиям worktree</text>
+              <text class="dim" x="320" y="279" text-anchor="middle">агенты + терминалы, кроме архивных</text>
+
+              <rect class="box-accent" x="30" y="330" width="240" height="58" rx="10"></rect>
+              <text class="t-accent" x="150" y="353" text-anchor="middle" font-size="13.5">Штамп интереса — всем</text>
+              <text class="dim" x="150" y="374" text-anchor="middle">включая уже живые</text>
+
+              <rect class="box-warn" x="370" y="330" width="240" height="58" rx="10"></rect>
+              <text x="490" y="353" text-anchor="middle" font-size="13.5">Спавн мёртвых</text>
+              <text class="dim" x="490" y="374" text-anchor="middle" fill="var(--ink-2)">по одной, 1,5 с между</text>
+            </svg>
+
+            <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:13px;line-height:1.5;color:var(--ink-3);max-width:64ch">Свип идёт в отдельной таске, а не в цикле запросов соединения — раньше он был инлайновым и подвешивал ввод клиента на всю пачку форков. Уход на другой worktree отменяет незаконченный свип: его оставшиеся запуски — выброшенная работа.</div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);margin-top:20px">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:14.5px;min-width:560px">
+                <thead>
+                  <tr style="background:var(--bg-sunk)">
+                    <th>Константа</th><th>Значение</th><th>Где</th><th>Что делает</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:13px">PREWARM_DEBOUNCE</td>
+                    <td style="color:var(--ink-2);font-variant-numeric:tabular-nums">250 мс</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">TUI</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">сколько курсор должен постоять, чтобы прогрев ушёл</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:13px">ATTACH_DEBOUNCE</td>
+                    <td style="color:var(--ink-2);font-variant-numeric:tabular-nums">180 мс</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">TUI</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">ходьба по списку не должна воскрешать всё подряд</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:13px">PREWARM_STAGGER</td>
+                    <td style="color:var(--ink-2);font-variant-numeric:tabular-nums">1 500 мс</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">демон</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">пауза между запусками внутри свипа</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:13px">PREWARM_MAX_AGE</td>
+                    <td style="color:var(--ink-2);font-variant-numeric:tabular-nums">15 мин</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">демон</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">срок жизни неусыновлённой тёплой заготовки</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:13px">prewarm_sessions</td>
+                    <td style="font-weight:600;color:var(--accent-ink)">true</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">config.json</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">бутить сессии worktree под курсором</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600;font-family:'JetBrains Mono',monospace;font-size:13px">prewarm_agents</td>
+                    <td style="font-weight:600;color:var(--accent-ink)">true</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">config.json</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">поднимать CLI, пока вы набираете имя сессии</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:14px;margin-top:26px;padding:18px 20px;background:var(--warn-soft);border-radius:14px;border:1px solid color-mix(in oklch,var(--warn) 26%,transparent)">
+            <div style="width:3px;border-radius:2px;background:var(--warn);flex-shrink:0"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)">Цена на стенде</div>
+              <p class="prose body-text" style="margin:7px 0 0;font-size:16.5px;line-height:1.6">Пройти курсором по четырём строкам worktree — это восемь запусков. Без противовеса пятиминутное листание дерева оставляет восемь CLI в памяти навсегда. Отсюда и берётся сборщик.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 03 СБОРЩИК ============ -->
+        <section id="reap" data-sec="reap" style="scroll-margin-top:80px">
+          <div class="sechead"><span class="secnum">03</span><h2>Сборщик — тормоз</h2></div>
+          <div class="prose body-text" style="display:flex;flex-direction:column;gap:18px">
+            <p style="margin:0">Раз в 15 секунд демон проходит по всем живым сессиям. Считает, какие worktree сейчас в поле зрения, сессиям оттуда штампы освежает, остальным даёт стареть. Всё, что перевалило за таймаут и не попало под спасение, получает <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">kill_session()</code> — а это на Windows Job Object и <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">TerminateJobObject</code> по всему дереву процессов.</p>
+            <p style="margin:0">Обратите внимание на симметрию: <b style="color:var(--ink)">прогрев ставит штамп, сборщик его читает</b>. Это не две подсистемы, а две половины одной. Педаль одна — <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">touch_session()</code>.</p>
+          </div>
+
+          <div class="card" style="padding:28px 24px;border-radius:16px;margin-top:32px">
+            <div class="card-title">Жизненный цикл сессии</div>
+            <div class="card-sub">полный круг: смерть здесь считается обратимой</div>
+
+            <svg class="dg" viewBox="0 0 640 290" style="margin-top:26px;max-width:640px;display:block;margin-left:auto;margin-right:auto" role="img" aria-label="Цикл: мёртвая сессия, прогрев или attach поднимает её в состояние живая в поле зрения, уход курсора переводит в стареет, через пять минут без спасения — убита, и обратно в мёртвую; возврат курсора возвращает из стареет в живую.">
+              <defs>
+                <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"></path></marker>
+              </defs>
+
+              <!-- верхнее ребро: мёртвая → живая -->
+              <path class="edge" marker-end="url(#ah2)" d="M215 62 H 395"></path>
+              <text class="dim" x="305" y="43" text-anchor="middle" font-size="11.5">prewarm 250 мс · attach 180 мс</text>
+              <text class="dim" x="305" y="82" text-anchor="middle" font-size="11.5">спавн, 1,5 с на сессию</text>
+
+              <!-- правое ребро: живая → стареет -->
+              <path class="edge" marker-end="url(#ah2)" d="M500 92 V 178"></path>
+              <text class="dim" x="512" y="139" font-size="11.5">курсор ушёл</text>
+
+              <!-- обратное: стареет → живая -->
+              <path class="edge" marker-end="url(#ah2)" style="stroke-dasharray:5 4" d="M420 178 V 92"></path>
+              <text class="dim" x="412" y="139" text-anchor="end" font-size="11.5">курсор вернулся — штамп сброшен</text>
+
+              <!-- нижнее ребро: стареет → убита -->
+              <path class="edge" marker-end="url(#ah2)" d="M395 208 H 215"></path>
+              <text x="305" y="238" text-anchor="middle" font-size="11.5" fill="var(--risk)" font-weight="700">5 мин и не спасена → kill_session</text>
+
+              <!-- левое ребро: убита → мёртвая -->
+              <path class="edge" marker-end="url(#ah2)" style="stroke-dasharray:5 4" d="M130 178 V 92"></path>
+              <text class="dim" x="118" y="139" text-anchor="end" font-size="11.5">--resume</text>
+
+              <rect class="box" x="45" y="36" width="170" height="56" rx="10"></rect>
+              <text x="130" y="61" text-anchor="middle" font-size="13.5">Мёртвая</text>
+              <text class="dim" x="130" y="80" text-anchor="middle">строка есть, процесса нет</text>
+
+              <rect class="box-accent" x="395" y="36" width="200" height="56" rx="10"></rect>
+              <text class="t-accent" x="495" y="61" text-anchor="middle" font-size="13.5">Живая · в поле зрения</text>
+              <text class="dim" x="495" y="80" text-anchor="middle">штамп освежается</text>
+
+              <rect class="box-warn" x="395" y="178" width="200" height="56" rx="10"></rect>
+              <text x="495" y="203" text-anchor="middle" font-size="13.5">Стареет</text>
+              <text class="dim" x="495" y="222" text-anchor="middle" fill="var(--ink-2)">живая, но никто не смотрит</text>
+
+              <rect x="45" y="178" width="170" height="56" rx="10" fill="var(--risk-soft)" stroke="color-mix(in oklch,var(--risk) 30%,transparent)"></rect>
+              <text x="130" y="203" text-anchor="middle" font-size="13.5" fill="var(--risk)">Убита</text>
+              <text class="dim" x="130" y="222" text-anchor="middle">дерево процессов снесено</text>
+            </svg>
+
+            <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:13px;line-height:1.5;color:var(--ink-3);max-width:64ch">Пунктирные рёбра — то, что делает цикл дешёвым в глазах дизайна: возврат курсора отменяет старение, а <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">--resume</code> возвращает разговор после смерти. Обе стрелки приходят <b style="color:var(--ink-2)">только из локального TUI</b>. Запомните это — на этом всё и сломается.</div>
+          </div>
+
+          <h3 style="margin:38px 0 16px;font-size:19px;font-weight:700;letter-spacing:-.01em">Кого щадят</h3>
+          <p class="prose body-text" style="margin:0 0 22px">Список исключений короткий и — на стенде из восьми сессий — контринтуитивный.</p>
+
+          <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:14.5px;min-width:560px">
+                <thead>
+                  <tr style="background:var(--bg-sunk)">
+                    <th>Что за сессия</th><th>Состояние</th><th>Судьба</th><th>Почему</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="font-weight:600">Агент</td>
+                    <td style="color:var(--ink-2)">Running</td>
+                    <td style="font-weight:600;color:var(--accent-ink)">спасён</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">идёт ход — убийство потеряло бы работу</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600">Агент</td>
+                    <td style="color:var(--ink-2)">NeedsFeedback</td>
+                    <td style="font-weight:600;color:var(--accent-ink)">спасён</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">висит вопрос или запрос доступа</td>
+                  </tr>
+                  <tr style="background:var(--risk-soft)">
+                    <td style="font-weight:600">Агент</td>
+                    <td style="color:var(--ink-2)">Finished</td>
+                    <td style="font-weight:700;color:var(--risk)">убит</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">ход завершён — считается «заброшен»</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600">Агент</td>
+                    <td style="color:var(--ink-2)">Fresh</td>
+                    <td style="font-weight:700;color:var(--risk)">убит</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">ни разу не запускался</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600">Терминал</td>
+                    <td style="color:var(--ink-2)">есть дочерние процессы</td>
+                    <td style="font-weight:600;color:var(--accent-ink)">спасён</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">внутри что-то выполняется</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600">Терминал</td>
+                    <td style="color:var(--ink-2)">пустой prompt</td>
+                    <td style="font-weight:700;color:var(--risk)">убит</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">оболочка воссоздаётся мгновенно</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600">Тёплая заготовка</td>
+                    <td style="color:var(--ink-2)">нет строки в базе</td>
+                    <td style="color:var(--ink-2);font-weight:600">не его забота</td>
+                    <td style="color:var(--ink-3);font-size:13.5px">ими занимается <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">reap_prewarmed</code>, срок 15 мин</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:14px;margin-top:26px;padding:18px 20px;background:var(--risk-soft);border-radius:14px;border:1px solid color-mix(in oklch,var(--risk) 26%,transparent)">
+            <div style="width:3px;border-radius:2px;background:var(--risk);flex-shrink:0"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--risk)">Инверсия</div>
+              <p class="prose body-text" style="margin:7px 0 0;font-size:16.5px;line-height:1.6">Чем <b style="color:var(--ink)">меньше</b> агент занят, тем скорее его убьют. Работающий переживёт что угодно; тот, кто ждёт вашей следующей команды, — нет. Для сборщика «ход завершён» и «брошен» — одно состояние.</p>
+            </div>
+          </div>
+
+          <div class="card" style="padding:24px;border-radius:16px;margin-top:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div>
+                <div class="card-title">Проверка спасения</div>
+                <div class="card-sub">registry.rs · reap_idle_sessions</div>
+              </div>
+              <span style="padding:4px 10px;border-radius:7px;background:var(--bg-sunk);border:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:500;color:var(--ink-3)">Rust</span>
+            </div>
+            <pre><span style="color:var(--code-key)">let</span> spared = <span style="color:var(--code-key)">match</span> &amp;sref {
+    <span style="color:var(--code-type)">SessionRef</span>::Agent(id) =&gt; <span style="color:var(--code-key)">match</span> self.store.get_agent(id).ok().flatten() {
+        <span style="color:var(--code-type)">Some</span>(agent) =&gt; matches!(
+            agent.status,
+            <span style="color:var(--code-type)">AgentStatus</span>::Running | <span style="color:var(--code-type)">AgentStatus</span>::NeedsFeedback
+        ),
+        <span style="color:var(--code-dim)">// Строка исчезла на полпути: её удаление и так убьёт PTY.</span>
+        <span style="color:var(--code-type)">None</span> =&gt; <span style="color:var(--code-num)">true</span>,
+    },
+    <span style="color:var(--code-type)">SessionRef</span>::Terminal(_) =&gt; shell_has_children(&amp;session),
+};
+<span style="color:var(--code-key)">if</span> spared { <span style="color:var(--code-key)">continue</span>; }
+
+tracing::info!(session = ?sref, idle_secs = age.as_secs(), <span style="color:var(--code-str)">"reaping idle session"</span>);
+self.kill_session(&amp;sref);</pre>
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:13px;line-height:1.5;color:var(--ink-3)">Персонального исключения не существует: PIN для агентов и worktree был удалён 28 августа 2026 — колонки в базе остались, кода нет. Комментарий в <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">config.rs</code> до сих пор обещает «Pinned agents … are spared». Это стухший комментарий.</div>
+          </div>
+        </section>
+
+        <!-- ============ 04 ОБХОД ============ -->
+        <section id="tour" data-sec="tour" style="scroll-margin-top:80px">
+          <div class="sechead"><span class="secnum">04</span><h2>Обход по кругу</h2></div>
+          <p class="prose body-text" style="margin:0 0 30px">Теперь соберём всё вместе. Начинаем с восьми живых сессий и идём по четырём worktree, задерживаясь в каждом на шесть минут — обычный темп работы. Агент в <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">beta/fix-perf</code> всё это время что-то считает.</p>
+
+          <div class="card" style="padding:28px 24px;border-radius:16px">
+            <div class="card-title">Двадцать четыре минуты жизни восьми сессий</div>
+            <div class="card-sub">полоса — процесс жив; ✕ — момент, когда сборщик его снёс</div>
+
+            <svg class="dg" viewBox="0 0 660 420" style="margin-top:26px;max-width:660px;display:block;margin-left:auto;margin-right:auto" role="img" aria-label="Диаграмма Ганта на 24 минуты: восемь сессий. Сессии worktree, на который смотрят, живут; остальные умирают через пять минут. Только агент beta fix-perf в состоянии Running переживает все двадцать четыре минуты.">
+
+              <!-- фон плота -->
+              <rect x="170" y="28" width="450" height="332" fill="var(--bg-sunk)" opacity="0.45" rx="6"></rect>
+
+              <!-- разделители фаз -->
+              <path d="M282.5 28 V 360" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 4"></path>
+              <path d="M395 28 V 360" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 4"></path>
+              <path d="M507.5 28 V 360" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 4"></path>
+
+              <!-- полоса «в поле зрения» -->
+              <text class="dim" x="160" y="43" text-anchor="end" font-size="10.5">В ПОЛЕ ЗРЕНИЯ</text>
+              <rect x="170" y="28" width="112.5" height="21" fill="var(--accent-soft)" stroke="color-mix(in oklch,var(--accent) 35%,transparent)"></rect>
+              <text class="t-accent" x="226" y="43" text-anchor="middle" font-size="10.5">alpha/main</text>
+              <rect x="282.5" y="28" width="112.5" height="21" fill="var(--accent-soft)" stroke="color-mix(in oklch,var(--accent) 35%,transparent)"></rect>
+              <text class="t-accent" x="339" y="43" text-anchor="middle" font-size="10.5">alpha/feat</text>
+              <rect x="395" y="28" width="112.5" height="21" fill="var(--accent-soft)" stroke="color-mix(in oklch,var(--accent) 35%,transparent)"></rect>
+              <text class="t-accent" x="451" y="43" text-anchor="middle" font-size="10.5">beta/main</text>
+              <rect x="507.5" y="28" width="112.5" height="21" fill="var(--accent-soft)" stroke="color-mix(in oklch,var(--accent) 35%,transparent)"></rect>
+              <text class="t-accent" x="564" y="43" text-anchor="middle" font-size="10.5">beta/fix</text>
+
+              <!-- базовые линии дорожек -->
+              <path d="M170 79 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 117 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 155 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 193 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 231 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 269 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 307 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+              <path d="M170 345 H620" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></path>
+
+              <!-- дорожка 0: alpha/main · claude -->
+              <text class="dim" x="160" y="83" text-anchor="end" font-size="11.5">alpha/main · claude</text>
+              <rect x="170" y="68" width="206" height="22" rx="5" fill="var(--c3)"></rect>
+              <text x="384" y="84" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+
+              <!-- дорожка 1: alpha/main · shell -->
+              <text class="dim" x="160" y="121" text-anchor="end" font-size="11.5">alpha/main · shell</text>
+              <rect x="170" y="106" width="206" height="22" rx="5" fill="var(--c4)"></rect>
+              <text x="384" y="122" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+
+              <!-- дорожка 2: alpha/feat · claude -->
+              <text class="dim" x="160" y="159" text-anchor="end" font-size="11.5">alpha/feat · claude</text>
+              <rect x="170" y="144" width="94" height="22" rx="5" fill="var(--c3)"></rect>
+              <text x="270" y="160" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+              <rect x="282.5" y="144" width="206" height="22" rx="5" fill="var(--c3)"></rect>
+              <text x="496" y="160" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+
+              <!-- дорожка 3: alpha/feat · shell -->
+              <text class="dim" x="160" y="197" text-anchor="end" font-size="11.5">alpha/feat · shell</text>
+              <rect x="170" y="182" width="94" height="22" rx="5" fill="var(--c4)"></rect>
+              <text x="270" y="198" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+              <rect x="282.5" y="182" width="206" height="22" rx="5" fill="var(--c4)"></rect>
+              <text x="496" y="198" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+
+              <!-- дорожка 4: beta/main · claude -->
+              <text class="dim" x="160" y="235" text-anchor="end" font-size="11.5">beta/main · claude</text>
+              <rect x="170" y="220" width="94" height="22" rx="5" fill="var(--c3)"></rect>
+              <text x="270" y="236" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+              <rect x="395" y="220" width="206" height="22" rx="5" fill="var(--c3)"></rect>
+              <text x="608" y="236" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+
+              <!-- дорожка 5: beta/main · shell -->
+              <text class="dim" x="160" y="273" text-anchor="end" font-size="11.5">beta/main · shell</text>
+              <rect x="170" y="258" width="94" height="22" rx="5" fill="var(--c4)"></rect>
+              <text x="270" y="274" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+              <rect x="395" y="258" width="206" height="22" rx="5" fill="var(--c4)"></rect>
+              <text x="608" y="274" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+
+              <!-- дорожка 6: beta/fix · claude — СПАСЁН -->
+              <text x="160" y="311" text-anchor="end" font-size="11.5" fill="var(--accent-ink)" font-weight="700">beta/fix · claude</text>
+              <rect x="170" y="296" width="450" height="22" rx="5" fill="var(--accent)"></rect>
+              <text x="395" y="312" text-anchor="middle" font-size="11" fill="var(--bg)" font-weight="700">Running — спасён все 24 минуты</text>
+
+              <!-- дорожка 7: beta/fix · shell -->
+              <text class="dim" x="160" y="349" text-anchor="end" font-size="11.5">beta/fix · shell</text>
+              <rect x="170" y="334" width="94" height="22" rx="5" fill="var(--c4)"></rect>
+              <text x="270" y="350" font-size="12" fill="var(--risk)" font-weight="700">✕</text>
+              <rect x="507.5" y="334" width="112.5" height="22" rx="5" fill="var(--c4)"></rect>
+
+              <!-- ось -->
+              <path d="M170 372 H620" stroke="var(--line)" stroke-width="1.5"></path>
+              <path d="M170 372 V378" stroke="var(--line)" stroke-width="1.5"></path>
+              <path d="M282.5 372 V378" stroke="var(--line)" stroke-width="1.5"></path>
+              <path d="M395 372 V378" stroke="var(--line)" stroke-width="1.5"></path>
+              <path d="M507.5 372 V378" stroke="var(--line)" stroke-width="1.5"></path>
+              <path d="M620 372 V378" stroke="var(--line)" stroke-width="1.5"></path>
+              <text class="dim" x="170" y="393" text-anchor="middle" font-size="11">0</text>
+              <text class="dim" x="282.5" y="393" text-anchor="middle" font-size="11">6 мин</text>
+              <text class="dim" x="395" y="393" text-anchor="middle" font-size="11">12</text>
+              <text class="dim" x="507.5" y="393" text-anchor="middle" font-size="11">18</text>
+              <text class="dim" x="620" y="393" text-anchor="middle" font-size="11">24</text>
+            </svg>
+
+            <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:13px;color:var(--ink-3)">
+              <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:16px;height:9px;border-radius:2px;background:var(--c3);flex-shrink:0"></span>агент жив</span>
+              <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:16px;height:9px;border-radius:2px;background:var(--c4);flex-shrink:0"></span>терминал жив</span>
+              <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:16px;height:9px;border-radius:2px;background:var(--accent);flex-shrink:0"></span>спасён (Running)</span>
+              <span style="display:inline-flex;align-items:center;gap:8px"><span style="color:var(--risk);font-weight:700">✕</span>убит сборщиком</span>
+            </div>
+          </div>
+
+          <h3 style="margin:38px 0 20px;font-size:19px;font-weight:700;letter-spacing:-.01em">Что происходит по шагам</h3>
+
+          <div style="display:flex;flex-direction:column">
+            <div style="display:grid;grid-template-columns:26px minmax(0,1fr);gap:20px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid var(--accent);background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--bg);flex-shrink:0">1</div>
+                <div style="flex:1;width:2px;background:var(--line)"></div>
+              </div>
+              <div style="padding-bottom:32px;min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <h3 style="margin:0;font-size:18.5px;font-weight:700;letter-spacing:-.01em">alpha / main</h3>
+                  <span style="padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:600">0 → 6 мин</span>
+                </div>
+                <p class="prose body-text" style="margin:9px 0 0;font-size:16.5px;line-height:1.62">Две сессии этого worktree держат штампы свежими. Остальные шесть стареют. На пятой минуте сборщик забирает пятерых сразу — все, кроме <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">beta/fix · claude</code>, который в Running.</p>
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:13px">
+                  <span style="padding:5px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12.5px;font-weight:500;color:var(--ink-2)">живых после: 3</span>
+                  <span style="padding:5px 11px;border:1px solid color-mix(in oklch,var(--risk) 26%,transparent);border-radius:8px;background:var(--risk-soft);font-size:12.5px;font-weight:600;color:var(--risk)">убито: 5</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:26px minmax(0,1fr);gap:20px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid var(--accent);background:transparent;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--accent-ink);flex-shrink:0">2</div>
+                <div style="flex:1;width:2px;background:var(--line)"></div>
+              </div>
+              <div style="padding-bottom:32px;min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <h3 style="margin:0;font-size:18.5px;font-weight:700;letter-spacing:-.01em">alpha / feat-auth</h3>
+                  <span style="padding:3px 9px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:11.5px;font-weight:600">6 → 12 мин</span>
+                </div>
+                <p class="prose body-text" style="margin:9px 0 0;font-size:16.5px;line-height:1.62">Курсор встал — через 250 мс уходит прогрев, обе сессии бутятся заново с интервалом 1,5 с. Агент поднимается с <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">--resume</code>: разговор на месте, но экран грузится с нуля. Тем временем <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">alpha/main</code> начал стареть и умрёт на 11-й минуте.</p>
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:13px">
+                  <span style="padding:5px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12.5px;font-weight:500;color:var(--ink-2)">поднято: 2</span>
+                  <span style="padding:5px 11px;border:1px solid color-mix(in oklch,var(--risk) 26%,transparent);border-radius:8px;background:var(--risk-soft);font-size:12.5px;font-weight:600;color:var(--risk)">убито: 2</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:26px minmax(0,1fr);gap:20px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid var(--line);background:transparent;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--ink-3);flex-shrink:0">3</div>
+                <div style="flex:1;width:2px;background:var(--line)"></div>
+              </div>
+              <div style="padding-bottom:32px;min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <h3 style="margin:0;font-size:18.5px;font-weight:700;letter-spacing:-.01em">beta / main</h3>
+                  <span style="padding:3px 9px;border-radius:999px;background:var(--bg-sunk);color:var(--ink-3);font-size:11.5px;font-weight:600">12 → 18 мин</span>
+                </div>
+                <p class="prose body-text" style="margin:9px 0 0;font-size:16.5px;line-height:1.62">Тот же цикл. К этому моменту вы уже дважды платили за холодный старт worktree, куда заходили десять минут назад. Ни одна сессия из <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">alpha</code> больше не жива.</p>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:26px minmax(0,1fr);gap:20px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid var(--line);background:transparent;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--ink-3);flex-shrink:0">4</div>
+              </div>
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <h3 style="margin:0;font-size:18.5px;font-weight:700;letter-spacing:-.01em">beta / fix-perf → и назад в alpha</h3>
+                  <span style="padding:3px 9px;border-radius:999px;background:var(--bg-sunk);color:var(--ink-3);font-size:11.5px;font-weight:600">18 → 24 мин</span>
+                </div>
+                <p class="prose body-text" style="margin:9px 0 0;font-size:16.5px;line-height:1.62">Агент здесь пережил весь обход — он всё это время работал. Терминал рядом с ним не пережил и бутится заново. На 24-й минуте вы возвращаетесь в <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">alpha/main</code> — там снова пусто, снова холодный старт. Круг замкнулся.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:14px;margin-top:34px;padding:18px 20px;background:var(--accent-soft);border-radius:14px;border:1px solid color-mix(in oklch,var(--accent) 24%,transparent)">
+            <div style="width:3px;border-radius:2px;background:var(--accent);flex-shrink:0"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-ink)">Вывод по стенду</div>
+              <p class="prose body-text" style="margin:7px 0 0;font-size:16.5px;line-height:1.6">При четырёх worktree и работе дольше пяти минут в каждом <b style="color:var(--ink)">прогрев и сборщик работают друг против друга</b>. Прогрев поднимает две сессии на входе, сборщик их же сносит через пять минут после выхода — и на следующем заходе всё заново. Тёплым остаётся ровно тот worktree, в котором вы прямо сейчас, то есть тот, который прогревать уже поздно.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 05 ЛОМАЕТСЯ ============ -->
+        <section id="break" data-sec="break" style="scroll-margin-top:80px">
+          <div class="sechead"><span class="secnum">05</span><h2>Где это ломается</h2></div>
+          <p class="prose body-text" style="margin:0 0 26px">Сборщик не сломан — он работает ровно по спецификации. Сломана посылка, на которой спецификация написана: что у сессии есть ровно один потребитель, и он сидит в локальном TUI.</p>
+
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:14px;padding:18px 20px;background:var(--risk-soft);border:1px solid color-mix(in oklch, var(--risk) 26%, transparent);border-radius:14px">
+              <div style="width:3px;border-radius:2px;background:var(--risk);flex-shrink:0"></div>
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--risk)">Обрыв</span>
+                  <span style="font-size:15px;font-weight:700">Remote Control умирает вместе с процессом</span>
+                </div>
+                <p class="prose body-text" style="margin:7px 0 0;font-size:16px;line-height:1.6">Удалённая сессия — это не копия в облаке, а регистрация конкретного локального процесса. Сборщик убивает процесс, и claude.ai показывает <b style="color:var(--ink)">offline</b> в течение секунд. Агент, ждущий команды с телефона, находится в Finished — то есть в списке на убийство.</p>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:14px;padding:18px 20px;background:var(--risk-soft);border:1px solid color-mix(in oklch, var(--risk) 26%, transparent);border-radius:14px">
+              <div style="width:3px;border-radius:2px;background:var(--risk);flex-shrink:0"></div>
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--risk)">Односторонность</span>
+                  <span style="font-size:15px;font-weight:700">Ревайв недостижим с телефона</span>
+                </div>
+                <p class="prose body-text" style="margin:7px 0 0;font-size:16px;line-height:1.6">Обе стрелки воскрешения — attach и прогрев — приходят только из локального TUI. С телефона запустить их нечем. И <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">--resume</code> тут не спасает: он вернёт разговор при следующем локальном attach, но регистрация удалённой сессии была привязана к мёртвому процессу.</p>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:14px;padding:18px 20px;background:var(--warn-soft);border:1px solid color-mix(in oklch, var(--warn) 26%, transparent);border-radius:14px">
+              <div style="width:3px;border-radius:2px;background:var(--warn);flex-shrink:0"></div>
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)">Стухший контракт</span>
+                  <span style="font-size:15px;font-weight:700">Обещанного исключения не существует</span>
+                </div>
+                <p class="prose body-text" style="margin:7px 0 0;font-size:16px;line-height:1.6">Комментарий к настройке до сих пор говорит, что закреплённые агенты щадятся. PIN удалён — проверки в коде нет. Значит единственный доступный рычаг глобальный: либо сборщик работает для всех, либо ни для кого.</p>
+              </div>
+            </div>
+          </div>
+
+          <h3 style="margin:38px 0 16px;font-size:19px;font-weight:700;letter-spacing:-.01em">Рычаги, которые есть</h3>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px">
+            <div class="card" style="padding:24px;border-radius:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <div>
+                  <div class="card-title">Отключить сборщик</div>
+                  <div class="card-sub">data/config.json</div>
+                </div>
+                <span style="padding:4px 10px;border-radius:7px;background:var(--bg-sunk);border:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:500;color:var(--ink-3)">JSON</span>
+              </div>
+              <pre>{
+  <span style="color:var(--code-str)">"session_idle_timeout"</span>: <span style="color:var(--code-str)">"off"</span>
+}
+
+<span style="color:var(--code-dim)">// компромисс вместо полного off:</span>
+{
+  <span style="color:var(--code-str)">"session_idle_timeout"</span>: <span style="color:var(--code-str)">"2h"</span>,
+  <span style="color:var(--code-str)">"prewarm_sessions"</span>: <span style="color:var(--code-num)">false</span>
+}</pre>
+              <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:13px;line-height:1.5;color:var(--ink-3)">Конфиг читается заново при каждом обращении — рестарт демона не нужен. Отключив прогрев вместе с реапингом, вы убираете и источник роста, и его тормоз: процессов будет ровно столько, сколько сессий вы открыли руками.</div>
+            </div>
+
+            <div class="card" style="padding:24px;border-radius:16px">
+              <div class="card-title">Проверить, что это он</div>
+              <div class="card-sub">state/daemon.log</div>
+              <pre>$ grep <span style="color:var(--code-str)">"reaping idle session"</span> daemon.log
+
+<span style="color:var(--code-dim)">reaping idle session</span>
+  session=<span style="color:var(--code-type)">Agent</span>(<span style="color:var(--code-str)">01M1B0XB34…</span>) <span style="color:var(--code-num)">idle_secs=308</span>
+<span style="color:var(--code-dim)">reaping idle session</span>
+  session=<span style="color:var(--code-type)">Agent</span>(<span style="color:var(--code-str)">01M19SDS72…</span>) <span style="color:var(--code-num)">idle_secs=314</span></pre>
+              <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:13px;line-height:1.5;color:var(--ink-3)">Значения <code style="font-family:'JetBrains Mono',monospace;font-size:.9em">idle_secs</code> кучкуются около 300–315: это таймаут 5 минут плюс запаздывание пятнадцатисекундного тика. Ровный кластер — верный признак, что процесс убил сборщик, а не что-то ещё.</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:14px;margin-top:26px;padding:18px 20px;background:var(--accent-soft);border-radius:14px;border:1px solid color-mix(in oklch,var(--accent) 24%,transparent)">
+            <div style="width:3px;border-radius:2px;background:var(--accent);flex-shrink:0"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-ink)">Чего не хватает</div>
+              <p class="prose body-text" style="margin:7px 0 0;font-size:16.5px;line-height:1.6">Правильное исправление — не глобальный выключатель, а <b style="color:var(--ink)">третье условие спасения</b>: агент с активным Remote Control не подлежит сбору. Тогда прогревный бюджет остаётся осмысленным для всех остальных семи сессий, а та единственная, у которой появился второй, нелокальный потребитель, перестаёт считаться кэшем.</p>
+            </div>
+          </div>
+
+          <div style="margin-top:56px;padding-top:26px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ink-3)">
+            <span>nebula · прогрев и сборщик · стенд 2 × 2 × 2</span>
+            <span>Источник — код на ветке windows</span>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const store = {
+    get(k, fallback) { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+  };
+
+  const themeBtn = document.getElementById('theme-btn');
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let theme = store.get('rs-theme', null) || (prefersDark ? 'dark' : 'light');
+
+  const applyTheme = t => {
+    theme = t;
+    document.documentElement.setAttribute('data-theme', t);
+    store.set('rs-theme', t);
+    themeBtn.querySelector('[data-role="icon"]').textContent = t === 'dark' ? '☀' : '☾';
+    themeBtn.querySelector('[data-role="label"]').textContent = t === 'dark' ? 'Светлая' : 'Тёмная';
+  };
+  applyTheme(theme);
+  themeBtn.addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
+
+  const widths = ['comfort', 'wide', 'full'];
+  const widthNames = { comfort: 'Обычная', wide: 'Широкая', full: 'На всю' };
+  const widthBtn = document.getElementById('width-btn');
+  let width = store.get('rs-width', 'comfort');
+  if (!widths.includes(width)) width = 'comfort';
+
+  const applyWidth = w => {
+    width = w;
+    document.documentElement.setAttribute('data-w', w);
+    store.set('rs-width', w);
+    widthBtn.querySelector('[data-role="label"]').textContent = widthNames[w];
+  };
+  applyWidth(width);
+  widthBtn.addEventListener('click', () => applyWidth(widths[(widths.indexOf(width) + 1) % widths.length]));
+
+  const progress = document.getElementById('progress');
+  const secs = Array.from(document.querySelectorAll('[data-sec]'));
+  const links = Array.from(document.querySelectorAll('[data-toc]'));
+
+  const onScroll = () => {
+    const doc = document.documentElement;
+    const max = doc.scrollHeight - window.innerHeight;
+    progress.style.width = (max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0) + '%';
+    let cur = secs[0]?.getAttribute('data-sec');
+    secs.forEach(s => { if (s.getBoundingClientRect().top < window.innerHeight * 0.35) cur = s.getAttribute('data-sec'); });
+    links.forEach(l => l.setAttribute('data-on', l.getAttribute('data-toc') === cur ? '1' : '0'));
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('rv'); io.unobserve(e.target); } });
+  }, { threshold: 0.08 });
+  secs.forEach(s => { if (!s.classList.contains('rv')) io.observe(s); });
+})();
+</script>
+</body>
+</html>

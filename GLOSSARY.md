@@ -57,6 +57,9 @@ _Avoid_: pull request link
 **Link**
 A URL previously pinned to a Worktree. A legacy of older versions: existing rows stay visible and editable; new ones are not created.
 
+**Pin**
+A row (Workspace, Project, Worktree, Agent, terminal tab) the user marked with `p`. Pinned rows wear a ★ and float to the top of their list, whatever the sort mode; any number can be pinned at once. Persisted client-side in the daemon's `ui_state` blob. Distinct from a Link ("a URL pinned to a Worktree"), which is legacy vocabulary.
+
 **Archive**
 The state of an Agent whose PTY is released and whose row is moved to the ARCHIVED group. Coming back resumes the conversation.
 _Avoid_: deletion (Archive is reversible)
