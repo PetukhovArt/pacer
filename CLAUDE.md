@@ -8,5 +8,6 @@ domain vocabulary before touching IPC, hooks, or the daemon.
 - Never run freshly built code against your real daemon — `make dev` boots an isolated instance
   (own daemon, socket, DB, per checkout); `make dev AGENT=/bin/cat` stubs agent spawns.
 - `vendor/vt100` is a patched fork — don't bump or replace it.
+- On the `windows` branch, every new feature must get a short entry in `BRANCH-FEATURES.md`.
 - Split what you touch: `event_loop.rs`, `ui.rs`, `registry.rs` grew huge by accretion; extract the
   piece you edit instead of adding to the pile.
