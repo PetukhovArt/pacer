@@ -17,6 +17,11 @@ use std::path::{Path, PathBuf};
 /// is reaped).
 pub const SESSION_IDLE_TIMEOUTS: &[&str] = &["off", "1m", "5m", "15m", "30m", "1h"];
 
+/// Values the settings overlay cycles through for `pr_list_filter` — which
+/// open pull requests the project group lists. The words map onto
+/// [`crate::pull_request::ListFilter`]; unknown ones read as `all`.
+pub const PR_LIST_FILTERS: &[&str] = &["all", "mine", "involved"];
+
 /// Editor commands the settings overlay cycles through. Every entry
 /// accepts `+<line> <file>`, which is how the overlays launch it. As with
 /// models, hand-edited configs can name any command the list doesn't.
@@ -121,6 +126,7 @@ pub enum SettingKind {
     SkipSessionNaming,
     SessionIdleTimeout,
     DoneSound,
+    PrListFilter,
     Theme,
     Animations,
     FocusTint,
@@ -157,6 +163,11 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::Editor,
                 label: "File editor",
                 hint: "Editor f/b/F and ⌥click launch (NEBULA_EDITOR overrides)",
+            },
+            SettingSpec {
+                kind: SettingKind::PrListFilter,
+                label: "Open PRs filter",
+                hint: "Which open PRs the project group lists: all, only yours, or ones you took part in",
             },
         ]),
     },
@@ -411,6 +422,11 @@ pub struct Config {
     /// which falls back to the bell wherever `afplay` can't reach the
     /// user's speakers.
     pub done_sound: String,
+    /// Which open pull requests the OPEN PRS group lists: "all", "mine"
+    /// (authored by you) or "involved" (authored or taken part in). Read
+    /// through [`Config::pr_list_filter`]; unknown words mean "all", so a
+    /// hand edit can't hide the list.
+    pub pr_list_filter: String,
     /// Color theme name (see `theme::THEMES`). Unknown names fall back to
     /// the default theme.
     pub theme: String,
@@ -467,6 +483,7 @@ impl Default for Config {
             skip_session_naming: false,
             session_idle_timeout: "5m".into(),
             done_sound: "Glass".into(),
+            pr_list_filter: "all".into(),
             theme: "default".into(),
             animations: true,
             focus_tint: false,
@@ -563,6 +580,10 @@ impl Config {
             serde_json::json!(self.session_idle_timeout),
         );
         obj.insert("done_sound".into(), serde_json::json!(self.done_sound));
+        obj.insert(
+            "pr_list_filter".into(),
+            serde_json::json!(self.pr_list_filter),
+        );
         obj.insert("theme".into(), serde_json::json!(self.theme));
         obj.insert("animations".into(), serde_json::json!(self.animations));
         obj.insert("focus_tint".into(), serde_json::json!(self.focus_tint));
@@ -623,6 +644,11 @@ impl Config {
         )
     }
 
+    /// The `pr_list_filter` SETTING resolved for [`crate::pull_request::list`].
+    pub fn pr_list_filter(&self) -> crate::pull_request::ListFilter {
+        crate::pull_request::ListFilter::from_name(&self.pr_list_filter)
+    }
+
     /// The configured default model for new sessions of `kind`, as the
     /// daemon wants it: None = "default" = don't pass the flag.
     pub fn default_model(&self, kind: AgentKind) -> Option<String> {
@@ -678,6 +704,7 @@ impl Config {
             SettingKind::SkipSessionNaming => on_off(self.skip_session_naming).into(),
             SettingKind::SessionIdleTimeout => self.session_idle_timeout.clone(),
             SettingKind::DoneSound => self.done_sound.clone(),
+            SettingKind::PrListFilter => self.pr_list_filter.clone(),
             SettingKind::Theme => self.theme.clone(),
             SettingKind::Animations => on_off(self.animations).into(),
             SettingKind::FocusTint => on_off(self.focus_tint).into(),
@@ -721,6 +748,10 @@ impl Config {
             }
             SettingKind::DoneSound => {
                 self.done_sound = cycle_choice(&self.done_sound, DONE_SOUNDS, step).into();
+            }
+            SettingKind::PrListFilter => {
+                self.pr_list_filter =
+                    cycle_choice(&self.pr_list_filter, PR_LIST_FILTERS, step).into();
             }
             SettingKind::Theme => {
                 self.theme = cycle_choice(&self.theme, crate::theme::THEMES, step).into();
@@ -1033,6 +1064,36 @@ mod tests {
                 Path::new(MACOS_SOUNDS_DIR).join("Glass.aiff")
             ))
         );
+    }
+
+    #[test]
+    fn pr_list_filter_defaults_to_all_cycles_and_persists() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.pr_list_filter, "all");
+        assert_eq!(
+            cfg.pr_list_filter(),
+            crate::pull_request::ListFilter::All,
+            "a config predating the key hides nothing"
+        );
+
+        let (tab, row) = locate(SettingKind::PrListFilter).unwrap();
+        cfg.cycle(tab, row, 1);
+        assert_eq!(cfg.pr_list_filter, "mine");
+        assert_eq!(cfg.pr_list_filter(), crate::pull_request::ListFilter::Mine);
+        cfg.cycle(tab, row, 1);
+        assert_eq!(cfg.pr_list_filter, "involved");
+        cfg.cycle(tab, row, 1);
+        assert_eq!(cfg.pr_list_filter, "all", "the list wraps");
+        cfg.cycle(tab, row, -1);
+        assert_eq!(cfg.pr_list_filter, "involved");
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        cfg.save_to(&path).unwrap();
+        assert_eq!(load_from(&path).pr_list_filter, "involved");
+        // Unknown words (hand-edited config) resolve to All, never hiding.
+        cfg.pr_list_filter = "sparkle".into();
+        assert_eq!(cfg.pr_list_filter(), crate::pull_request::ListFilter::All);
     }
 
     #[test]

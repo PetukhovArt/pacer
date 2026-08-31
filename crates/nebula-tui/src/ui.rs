@@ -2085,6 +2085,44 @@ fn status_dot(status: Option<AgentStatus>, unseen: bool, th: Theme) -> Span<'sta
     }
 }
 
+/// Columns an OPEN PRS row spends on its status pair: two glyphs and the
+/// space that separates them from the title.
+const STATUS_W: usize = 3;
+
+/// The reviewers-then-CI glyph pair an OPEN PRS row leads with, or nothing
+/// at all when the forge had nothing to say about either — a repo that
+/// requires no review and runs no pipeline gets its three columns back
+/// rather than a row of placeholders.
+///
+/// Within a row, a half the forge is quiet about still holds its cell, so
+/// the two glyphs never swap places and the titles down the group stay on
+/// one column. Shape carries the state and color repeats it: `✓` and `●`
+/// are the settled answers, `○` is "not yet", and red is the only thing
+/// here worth interrupting for.
+fn pr_status_spans(pr: &crate::pull_request::OpenPr, th: Theme) -> Vec<Span<'static>> {
+    use crate::pull_request::{Approval, Checks};
+    if pr.approval == Approval::Unknown && pr.checks == Checks::None {
+        return Vec::new();
+    }
+    let review = match pr.approval {
+        Approval::Approved => ("✓", th.ok),
+        Approval::ChangesRequested => ("✗", th.err),
+        Approval::Pending => ("○", th.dim),
+        Approval::Unknown => (" ", th.dim),
+    };
+    let ci = match pr.checks {
+        Checks::Passed => ("●", th.ok),
+        Checks::Failed => ("●", th.err),
+        Checks::Running => ("◐", th.warn),
+        Checks::None => (" ", th.dim),
+    };
+    vec![
+        Span::styled(review.0, Style::default().fg(review.1)),
+        Span::styled(ci.0, Style::default().fg(ci.1)),
+        Span::raw(" "),
+    ]
+}
+
 /// Base style for a whole list row. Selection reads as a subtly raised
 /// full-width surface (never a reverse-video slab), brighter in the
 /// focused panel than in unfocused ones.
@@ -2886,16 +2924,22 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 let pr = &prs[*i - worktrees.len()];
                 let badge = pr.is_draft.then(|| format!(" {}", pr.badge()));
                 let badge_len = badge.as_ref().map_or(0, |b| b.chars().count());
+                // Two status cells sit between the arrow and the number:
+                // reviewers first, then CI, in the order you'd ask about
+                // them. They cost the title three columns, so they're only
+                // there when this project has something to put in them.
+                let status = pr_status_spans(pr, th);
+                let status_w = if status.is_empty() { 0 } else { STATUS_W };
                 let label_max = (inner.width as usize)
                     .saturating_sub(3)
+                    .saturating_sub(status_w)
                     .saturating_sub(badge_len);
-                let mut spans = vec![
-                    Span::styled("↗ ", Style::default().fg(th.accent)),
-                    Span::styled(
-                        truncate(&pr.label(), label_max),
-                        Style::default().fg(th.muted),
-                    ),
-                ];
+                let mut spans = vec![Span::styled("↗ ", Style::default().fg(th.accent))];
+                spans.extend(status);
+                spans.push(Span::styled(
+                    truncate(&pr.label(), label_max),
+                    Style::default().fg(th.muted),
+                ));
                 if let Some(badge) = badge {
                     spans.push(Span::styled(badge, Style::default().fg(th.dim)));
                 }

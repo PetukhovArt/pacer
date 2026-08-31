@@ -173,12 +173,78 @@ pub async fn lookup(dir: &Path) -> Option<PullRequest> {
 /// for the group at the bottom of the worktrees panel. It deliberately
 /// carries no conversation: reading comment counts for a hundred rows would
 /// be a request each, so the unread badge stays a per-worktree affair.
-/// One page, one call, however many PRs the repo has.
+/// One page, however many PRs the repo has — and one call, except on
+/// GitLab, whose REST list omits approvals and pipelines and so costs a
+/// second (see `gitlab::statuses`).
 ///
 /// The CLIs page past their own defaults, so the cap is ours to set: a
 /// repo with hundreds of open pull requests would spend several API calls
 /// per refresh filling rows nobody scrolls to.
 pub const LIST_LIMIT: usize = 100;
+
+/// Which open pull requests the project group lists — the `pr_list_filter`
+/// user setting. Applied forge-side where the CLI can say it, so the
+/// [`LIST_LIMIT`] page isn't spent on rows the filter would drop anyway.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListFilter {
+    /// Every open pull request on the repo.
+    #[default]
+    All,
+    /// Only the ones you authored.
+    Mine,
+    /// The ones you authored or took part in — commented, reviewed.
+    Involved,
+}
+
+impl ListFilter {
+    /// The filter a config value names. Unknown words are [`Self::All`],
+    /// so a hand-edited config can never hide the list by accident.
+    pub fn from_name(name: &str) -> Self {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "mine" => Self::Mine,
+            "involved" => Self::Involved,
+            _ => Self::All,
+        }
+    }
+}
+
+/// Where a pull request stands with its reviewers — the left half of the
+/// status pair an OPEN PRS row leads with. Deliberately coarse: the row
+/// has one cell to say this in, so *who* approved and *how many* are still
+/// owed is the preview's job, not the glyph's.
+///
+/// The order of the variants is the order of alarm, least first — see
+/// [`Checks`], which is read the same way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Approval {
+    /// Nothing to say: the forge asks nobody to review this, or it didn't
+    /// answer. An empty cell rather than a pending one — a repo with no
+    /// review rules must not read as if every row were blocked on someone.
+    #[default]
+    Unknown,
+    Approved,
+    /// Somebody still has to look.
+    Pending,
+    /// A reviewer asked for changes.
+    ChangesRequested,
+}
+
+/// Where a pull request stands with CI — the right half of the pair.
+///
+/// A pull request has many checks and one cell to report them in, so the
+/// variants are ordered least to most alarming and the row shows the
+/// **worst** one: a single red check makes a red row however many green
+/// ones surround it, and something still running only outranks a pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Checks {
+    /// Nothing ran, or the forge didn't answer.
+    #[default]
+    None,
+    Passed,
+    /// Queued or in flight.
+    Running,
+    Failed,
+}
 
 /// One row of a project's open-pull-request list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +253,11 @@ pub struct OpenPr {
     pub title: String,
     pub url: String,
     pub is_draft: bool,
+    /// Whether the reviewers have signed off. Both forges answer this in
+    /// the same list call the rows come from.
+    pub approval: Approval,
+    /// Whether CI is happy. Ditto — no extra round trip per row.
+    pub checks: Checks,
 }
 
 impl OpenPr {
@@ -228,10 +299,10 @@ impl OpenPr {
 ///   simply stops coming back, so re-asking on a beat *is* the periodic
 ///   "should this row still be here?" check. Nothing has to track closures
 ///   separately.
-pub async fn list(dir: &Path) -> Option<Vec<OpenPr>> {
+pub async fn list(dir: &Path, filter: ListFilter) -> Option<Vec<OpenPr>> {
     match forge::detect(dir).await {
-        forge::Forge::GitHub => github::list(dir).await,
-        forge::Forge::GitLab => gitlab::list(dir).await,
+        forge::Forge::GitHub => github::list(dir, filter).await,
+        forge::Forge::GitLab => gitlab::list(dir, filter).await,
     }
 }
 
@@ -515,6 +586,17 @@ rename to new.rs
         );
         assert_eq!(files[0].0, "gone.rs");
         assert_eq!(files[1].0, "new.rs");
+    }
+
+    /// Config words map onto filters; anything else — typos, a config from
+    /// the future — shows everything rather than hiding work.
+    #[test]
+    fn list_filter_names_resolve_with_all_as_the_fallback() {
+        assert_eq!(ListFilter::from_name("mine"), ListFilter::Mine);
+        assert_eq!(ListFilter::from_name(" Involved "), ListFilter::Involved);
+        assert_eq!(ListFilter::from_name("all"), ListFilter::All);
+        assert_eq!(ListFilter::from_name(""), ListFilter::All);
+        assert_eq!(ListFilter::from_name("nonsense"), ListFilter::All);
     }
 
     /// Nothing to split is an empty list, not a nameless file.

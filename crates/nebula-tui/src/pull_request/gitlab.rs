@@ -12,10 +12,11 @@
 //! `---`/`+++` file headers with no `diff --git` line, so [`diff`]
 //! synthesizes those before handing the text to the shared splitter.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use super::{arr_at, bool_at, http_url_at, run, str_at};
-use super::{OpenPr, PrComment, PrDetail, PullRequest};
+use super::{Approval, Checks, OpenPr, PrComment, PrDetail, PullRequest};
 use super::{DIFF_TIMEOUT, LIST_LIMIT, STATE_OPEN, TIMEOUT};
 
 /// Run `glab` with `args` (in `dir` when given), stdout on success.
@@ -129,20 +130,200 @@ fn activity(v: &serde_json::Value, viewer: Option<&str>) -> Vec<String> {
 /// Ask `glab` for every open merge request on `dir`'s repo, newest first.
 /// `glab mr list` filters to opened by default, drafts included — the two
 /// properties [`super::list`] documents.
-pub(super) async fn list(dir: &Path) -> Option<Vec<OpenPr>> {
+///
+/// The REST list is the rows; [`statuses`] is the approval and pipeline
+/// glyphs, which it does not carry. That second call is strictly an
+/// enrichment: it runs against a GraphQL schema older self-hosted GitLabs
+/// may not have, so failing it leaves the rows exactly as REST described
+/// them, with both glyphs blank.
+///
+/// The filter needs your username (GitLab's CLI has no `@me`): unknown —
+/// not logged in, `glab api user` failed — falls back to the unfiltered
+/// list, a superset rather than hidden work. GitLab search has no
+/// `involves:`, so *involved* is two list calls — authored plus reviewing —
+/// merged by `iid`; a merge request you only commented on is missed, which
+/// is the closest the REST list gets without a request per row.
+pub(super) async fn list(dir: &Path, filter: super::ListFilter) -> Option<Vec<OpenPr>> {
+    use super::ListFilter;
+    let viewer = match filter {
+        ListFilter::All => None,
+        ListFilter::Mine | ListFilter::Involved => viewer_login().await,
+    };
+    let (mut rows, path) = match (filter, viewer) {
+        (ListFilter::Mine, Some(me)) => page(dir, &["--author", me]).await?,
+        (ListFilter::Involved, Some(me)) => {
+            let (mut rows, mut path) = page(dir, &["--author", me]).await?;
+            if let Some((extra, extra_path)) = page(dir, &["--reviewer", me]).await {
+                path = path.or(extra_path);
+                for row in extra {
+                    if rows.iter().all(|r| r.number != row.number) {
+                        rows.push(row);
+                    }
+                }
+            }
+            // Each page came newest-first; the merge keeps that order.
+            rows.sort_by(|a, b| b.number.cmp(&a.number));
+            (rows, path)
+        }
+        _ => page(dir, &[]).await?,
+    };
+    if let Some(path) = path {
+        let known = statuses(dir, &path).await;
+        for row in &mut rows {
+            if let Some(&(approval, checks)) = known.get(&row.number) {
+                row.approval = approval;
+                row.checks = checks;
+            }
+        }
+    }
+    Some(rows)
+}
+
+/// One `glab mr list` page with `extra` filter flags: the parsed rows plus
+/// the project path the status enrichment joins on.
+async fn page(dir: &Path, extra: &[&str]) -> Option<(Vec<OpenPr>, Option<String>)> {
     let limit = LIST_LIMIT.to_string();
+    let mut args = vec!["mr", "list", "--output", "json", "--per-page", &limit];
+    args.extend_from_slice(extra);
+    let out = glab(Some(dir), &args, TIMEOUT).await?;
+    let rows = parse_list(&out)?;
+    let path = full_path(&out);
+    Some((rows, path))
+}
+
+/// The project's `group/subgroup/project` path, off the first row's
+/// `references.full` (`domination/web/web-client!1704`). Taken from the
+/// payload rather than parsed out of the git remote because the server
+/// wrote it: a GitLab hosted under a URL subpath, or reached by a remote
+/// that redirects to a renamed project, still names itself correctly here.
+/// An empty list has no path — and nothing to enrich either.
+fn full_path(json: &str) -> Option<String> {
+    let rows = serde_json::from_str::<serde_json::Value>(json).ok()?;
+    let full = rows
+        .as_array()?
+        .first()?
+        .get("references")?
+        .get("full")?
+        .as_str()?;
+    let (path, _) = full.split_once('!')?;
+    (!path.is_empty()).then(|| path.to_string())
+}
+
+/// Approval and pipeline state for every open merge request on `full_path`,
+/// keyed by `iid`, in one GraphQL call.
+///
+/// GitLab's REST merge-request list reports neither: approvals live behind
+/// a per-MR `/approvals` endpoint and the pipeline behind the single-MR
+/// view, so getting these over REST would cost a request per row. GraphQL
+/// answers for the whole page at once, which is the only shape that fits
+/// [`super::list`]'s refresh beat.
+///
+/// Everything here degrades to an empty map: no `glab`, an old server
+/// without these fields, a query that errors. The rows survive; the glyphs
+/// just stay blank.
+async fn statuses(dir: &Path, full_path: &str) -> HashMap<u64, (Approval, Checks)> {
+    let query = status_query();
     let out = glab(
         Some(dir),
-        &["mr", "list", "--output", "json", "--per-page", &limit],
+        &[
+            "api",
+            "graphql",
+            "-f",
+            &format!("fullPath={full_path}"),
+            "-f",
+            &format!("query={query}"),
+        ],
         TIMEOUT,
     )
-    .await?;
-    parse_list(&out)
+    .await;
+    out.as_deref().map(parse_statuses).unwrap_or_default()
+}
+
+/// The query [`statuses`] sends. The project comes in as a variable rather
+/// than interpolated into the document, so a group path never has to be
+/// escaped into GraphQL syntax.
+///
+/// Three fields, all of them long-standing: `approved` and `approvalsLeft`
+/// on the merge request, `status` on its head pipeline. Nothing younger
+/// gets asked for here — one unknown field fails the whole document, and
+/// the document is the only thing standing between the rows and their
+/// glyphs.
+fn status_query() -> String {
+    format!(
+        "query($fullPath: ID!) {{ project(fullPath: $fullPath) {{ \
+           mergeRequests(state: opened, first: {LIST_LIMIT}) {{ nodes {{ \
+           iid approved approvalsLeft headPipeline {{ status }} \
+           }} }} }} }}"
+    )
+}
+
+/// Parse the GraphQL payload [`statuses`] asks for. A node missing its
+/// `iid` — or a payload that is an `errors` block instead of data — simply
+/// contributes nothing, which is the same as never having asked.
+fn parse_statuses(json: &str) -> HashMap<u64, (Approval, Checks)> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
+        return HashMap::new();
+    };
+    let nodes = v
+        .get("data")
+        .and_then(|d| d.get("project"))
+        .and_then(|p| p.get("mergeRequests"))
+        .map(|m| arr_at(m, "nodes"))
+        .unwrap_or_default();
+    nodes
+        .iter()
+        .filter_map(|n| {
+            // GraphQL types `iid` as a string; REST types it as a number,
+            // and the rows this joins onto came from REST.
+            let iid: u64 = str_at(n, "iid").parse().ok()?;
+            Some((iid, (approval(n), pipeline(n))))
+        })
+        .collect()
+}
+
+/// Where a merge request stands with its approvers. GitLab has no single
+/// "review decision": `approved` is the whole verdict, and `approvalsLeft`
+/// distinguishes "still owed one" from "this project asks for none" — the
+/// latter has nothing to say, so it gets no glyph.
+///
+/// There is deliberately no [`Approval::ChangesRequested`] here. GitLab
+/// spells that as a per-reviewer `reviewState`, a much younger field than
+/// the two above, and asking for it would risk the whole query on a server
+/// that predates it — trading both glyphs for one.
+fn approval(n: &serde_json::Value) -> Approval {
+    if bool_at(n, "approved") {
+        return Approval::Approved;
+    }
+    match n.get("approvalsLeft").and_then(|a| a.as_u64()) {
+        Some(left) if left > 0 => Approval::Pending,
+        _ => Approval::Unknown,
+    }
+}
+
+/// The head pipeline's state. No pipeline at all is [`Checks::None`] — the
+/// project runs no CI, or none has started for this branch yet.
+fn pipeline(n: &serde_json::Value) -> Checks {
+    let status = n
+        .get("headPipeline")
+        .map(|p| str_at(p, "status"))
+        .unwrap_or_default();
+    match status.as_str() {
+        "SUCCESS" => Checks::Passed,
+        "FAILED" | "CANCELED" | "CANCELLED" => Checks::Failed,
+        "CREATED" | "WAITING_FOR_RESOURCE" | "PREPARING" | "PENDING" | "RUNNING" | "SCHEDULED" => {
+            Checks::Running
+        }
+        // MANUAL and SKIPPED are a pipeline that deliberately did nothing,
+        // and anything GitLab adds later is a word we can't judge. Neither
+        // is worth a glyph.
+        _ => Checks::None,
+    }
 }
 
 /// Parse `glab mr list --output json` output — a bare array of MR objects.
 /// A row whose url could never be opened is dropped rather than failing
-/// the whole list; a payload that isn't an array at all is a miss.
+/// the whole list; a payload that isn't an array at all is a miss. The
+/// status glyphs start blank and are filled in by [`statuses`].
 fn parse_list(json: &str) -> Option<Vec<OpenPr>> {
     let rows = serde_json::from_str::<serde_json::Value>(json).ok()?;
     let rows = rows.as_array()?;
@@ -155,6 +336,8 @@ fn parse_list(json: &str) -> Option<Vec<OpenPr>> {
                     title: str_at(v, "title"),
                     url,
                     is_draft: bool_at(v, "draft"),
+                    approval: Approval::Unknown,
+                    checks: Checks::None,
                 })
             })
             .collect(),
@@ -346,6 +529,88 @@ mod tests {
         assert!(parse("", None).is_none());
         assert!(parse("{}", None).is_none());
         assert!(parse(r#"{"iid":1,"web_url":"file:///etc/passwd"}"#, None).is_none());
+    }
+
+    /// The query is one line of valid GraphQL with balanced braces and the
+    /// project as a variable — the shape `glab api graphql` accepts.
+    #[test]
+    fn the_status_query_is_one_balanced_line() {
+        let q = status_query();
+        assert!(!q.contains('\n'), "one line: {q}");
+        assert!(q.starts_with("query($fullPath: ID!) {"), "{q}");
+        assert!(
+            q.contains("mergeRequests(state: opened, first: 100)"),
+            "{q}"
+        );
+        assert!(
+            q.contains("iid approved approvalsLeft headPipeline { status }"),
+            "{q}"
+        );
+        assert_eq!(
+            q.matches('{').count(),
+            q.matches('}').count(),
+            "balanced: {q}"
+        );
+    }
+
+    /// The GraphQL half of the list: approvals and the head pipeline,
+    /// keyed by the same `iid` the REST rows carry — as a string on this
+    /// side, a number on that one.
+    #[test]
+    fn statuses_join_onto_the_rest_rows_by_iid() {
+        let got = parse_statuses(
+            r#"{"data":{"project":{"mergeRequests":{"nodes":[
+              {"iid":"1704","approved":false,"approvalsLeft":1,
+               "headPipeline":{"status":"FAILED"}},
+              {"iid":"1702","approved":true,"approvalsLeft":0,
+               "headPipeline":{"status":"SUCCESS"}},
+              {"iid":"1701","approved":false,"approvalsLeft":null,
+               "headPipeline":{"status":"RUNNING"}},
+              {"iid":"1700","approved":false,"approvalsLeft":2,
+               "headPipeline":null},
+              {"approved":true}
+            ]}}}}"#,
+        );
+        assert_eq!(got.len(), 4, "the node with no iid joins onto nothing");
+        assert_eq!(got[&1704], (Approval::Pending, Checks::Failed));
+        assert_eq!(got[&1702], (Approval::Approved, Checks::Passed));
+        assert_eq!(
+            got[&1701],
+            (Approval::Unknown, Checks::Running),
+            "a project with no approval rules is not a project waiting"
+        );
+        assert_eq!(
+            got[&1700],
+            (Approval::Pending, Checks::None),
+            "no pipeline ran"
+        );
+    }
+
+    /// Everything that isn't a data payload leaves the glyphs blank rather
+    /// than failing the list the rows came from.
+    #[test]
+    fn an_unanswerable_status_query_costs_nothing() {
+        for json in [
+            "",
+            "{}",
+            r#"{"errors":[{"message":"Field 'approved' doesn't exist"}]}"#,
+            r#"{"data":{"project":null}}"#,
+        ] {
+            assert!(parse_statuses(json).is_empty(), "{json}");
+        }
+    }
+
+    /// The project path the GraphQL call needs is the server's own, off
+    /// the first row's `references.full`.
+    #[test]
+    fn the_project_path_comes_out_of_the_rest_payload() {
+        let path = full_path(
+            r#"[{"iid":1704,"references":{"short":"!1704","full":"domination/web/web-client!1704"}}]"#,
+        );
+        assert_eq!(path.as_deref(), Some("domination/web/web-client"));
+        assert_eq!(full_path("[]"), None, "nothing listed, nothing to enrich");
+        assert_eq!(full_path(r#"[{"iid":1}]"#), None);
+        assert_eq!(full_path("nonsense"), None);
     }
 
     #[test]

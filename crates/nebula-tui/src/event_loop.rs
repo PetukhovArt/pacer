@@ -636,7 +636,8 @@ fn lookup_open_prs(
     app.open_prs_inflight.insert(id.clone());
     let prs_tx = prs_tx.clone();
     tokio::spawn(async move {
-        let list = crate::pull_request::list(&path).await;
+        let filter = crate::config::Config::load().pr_list_filter();
+        let list = crate::pull_request::list(&path, filter).await;
         let _ = prs_tx.send((id, list));
     });
 }
@@ -8087,6 +8088,8 @@ mod tests {
                         title: (*title).into(),
                         url: format!("https://github.com/o/r/pull/{number}"),
                         is_draft: false,
+                        approval: Default::default(),
+                        checks: Default::default(),
                     })
                     .collect(),
                 at: now,
@@ -8345,6 +8348,8 @@ mod tests {
             title: "Attach links".into(),
             url: "https://github.com/o/r/pull/7".into(),
             is_draft: false,
+            approval: Default::default(),
+            checks: Default::default(),
         }];
         note_open_prs_answer(&mut app, pid.clone(), Some(found.clone()), &mut Vec::new());
         assert_eq!(
@@ -8505,12 +8510,16 @@ mod tests {
                     title: "Still cooking".into(),
                     url: pr_url(9),
                     is_draft: true,
+                    approval: Default::default(),
+                    checks: Default::default(),
                 },
                 crate::pull_request::OpenPr {
                     number: 7,
                     title: "Attach links".into(),
                     url: pr_url(7),
                     is_draft: false,
+                    approval: Default::default(),
+                    checks: Default::default(),
                 },
             ]),
             &mut Vec::new(),
@@ -8532,6 +8541,75 @@ mod tests {
         assert!(
             !row("#7").contains("draft"),
             "and the finished one is not:\n{text}"
+        );
+    }
+
+    /// Each row leads with two status cells — reviewers, then CI — so the
+    /// group answers "can this be merged?" without opening anything. Both
+    /// halves keep their cell even when only one has an answer, which is
+    /// what keeps the titles on one column down the group.
+    #[test]
+    fn open_pr_rows_lead_with_their_review_and_ci_status() {
+        use crate::pull_request::{Approval, Checks};
+        let mut app = App::new();
+        seed_tree(&mut app);
+        let pid = app.selected_project().expect("a project").id.clone();
+        let pr = |number: u64, approval, checks| crate::pull_request::OpenPr {
+            number,
+            title: format!("pull {number}"),
+            url: pr_url(number),
+            is_draft: false,
+            approval,
+            checks,
+        };
+        note_open_prs_answer(
+            &mut app,
+            pid,
+            Some(vec![
+                pr(9, Approval::Approved, Checks::Passed),
+                pr(8, Approval::ChangesRequested, Checks::Failed),
+                pr(7, Approval::Pending, Checks::Running),
+                pr(6, Approval::Unknown, Checks::Passed),
+            ]),
+            &mut Vec::new(),
+        );
+
+        let mut terminal = Terminal::new(TestBackend::new(140, 30)).unwrap();
+        terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        let row = |needle: &str| {
+            text.lines()
+                .find(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("no {needle} row:\n{text}"))
+                .to_string()
+        };
+        for (number, glyphs) in [(9, "✓●"), (8, "✗●"), (7, "○◐"), (6, " ●")] {
+            let row = row(&format!("#{number} "));
+            assert!(
+                row.contains(&format!("{glyphs} #{number}")),
+                "#{number} should read `{glyphs}`:\n{text}"
+            );
+        }
+    }
+
+    /// A project whose forge answers neither question gets its columns
+    /// back: three cells of blank placeholder on every row would cost the
+    /// title width and say nothing.
+    #[test]
+    fn a_forge_with_nothing_to_say_spends_no_columns_on_it() {
+        let mut app = App::new();
+        seed_tree(&mut app);
+        seed_open_prs(&mut app, &[(7, "Attach links")]);
+        let mut terminal = Terminal::new(TestBackend::new(140, 30)).unwrap();
+        terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        let row = text
+            .lines()
+            .find(|l| l.contains("#7"))
+            .unwrap_or_else(|| panic!("no PR row:\n{text}"));
+        assert!(
+            row.contains("↗ #7"),
+            "the title follows the arrow directly:\n{text}"
         );
     }
 
@@ -8609,6 +8687,8 @@ mod tests {
                     title: format!("pull {number}"),
                     url: format!("https://github.com/o/r/pull/{number}"),
                     is_draft,
+                    approval: Default::default(),
+                    checks: Default::default(),
                 })
                 .collect();
             note_open_prs_answer(app, pid.clone(), Some(list), &mut Vec::new());
@@ -8666,18 +8746,24 @@ mod tests {
                 title: "Brand new".into(),
                 url: pr_url(11),
                 is_draft: true,
+                approval: Default::default(),
+                checks: Default::default(),
             },
             crate::pull_request::OpenPr {
                 number: 9,
                 title: "Number lines".into(),
                 url: pr_url(9),
                 is_draft: false,
+                approval: Default::default(),
+                checks: Default::default(),
             },
             crate::pull_request::OpenPr {
                 number: 7,
                 title: "Attach links".into(),
                 url: pr_url(7),
                 is_draft: false,
+                approval: Default::default(),
+                checks: Default::default(),
             },
         ];
         // Halfway down #7's conversation when the refresh lands.

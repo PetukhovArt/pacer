@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use super::{arr_at, bool_at, http_url_at, run, str_at, u64_at};
-use super::{OpenPr, PrComment, PrDetail, PullRequest};
+use super::{Approval, Checks, OpenPr, PrComment, PrDetail, PullRequest};
 use super::{DIFF_TIMEOUT, LIST_LIMIT, STATE_OPEN, TIMEOUT};
 
 /// Run `gh` with `args` (in `dir` when given), stdout on success.
@@ -109,24 +109,77 @@ fn activity(v: &serde_json::Value, viewer: Option<&str>) -> Vec<String> {
 }
 
 /// Ask `gh` for every open pull request on `dir`'s repo, newest first.
-pub(super) async fn list(dir: &Path) -> Option<Vec<OpenPr>> {
+/// The filter rides the same call: `--author @me` for your own, and
+/// GitHub's `involves:@me` qualifier — author, assignee, mentioned or
+/// commented — for the ones you took part in.
+pub(super) async fn list(dir: &Path, filter: super::ListFilter) -> Option<Vec<OpenPr>> {
     let limit = LIST_LIMIT.to_string();
-    let out = gh(
-        Some(dir),
-        &[
-            "pr",
-            "list",
-            "--state",
-            "open",
-            "--limit",
-            &limit,
-            "--json",
-            "number,url,title,isDraft",
-        ],
-        TIMEOUT,
-    )
-    .await?;
+    let mut args = vec![
+        "pr",
+        "list",
+        "--state",
+        "open",
+        "--limit",
+        &limit,
+        "--json",
+        "number,url,title,isDraft,reviewDecision,statusCheckRollup",
+    ];
+    match filter {
+        super::ListFilter::All => {}
+        super::ListFilter::Mine => args.extend(["--author", "@me"]),
+        super::ListFilter::Involved => args.extend(["--search", "involves:@me"]),
+    }
+    let out = gh(Some(dir), &args, TIMEOUT).await?;
     parse_list(&out)
+}
+
+/// GitHub's own summary of where the reviewers landed. `null` — the field
+/// `gh` emits for a repo that requires no review — is [`Approval::Unknown`]
+/// rather than "pending": nobody is being waited on.
+fn review_decision(v: &serde_json::Value) -> Approval {
+    match str_at(v, "reviewDecision").as_str() {
+        "APPROVED" => Approval::Approved,
+        "CHANGES_REQUESTED" => Approval::ChangesRequested,
+        "REVIEW_REQUIRED" => Approval::Pending,
+        _ => Approval::Unknown,
+    }
+}
+
+/// The one word a whole `statusCheckRollup` array adds up to — the worst
+/// entry in it, per [`Checks`]'s ordering.
+///
+/// GitHub reports the head commit's checks individually and in two shapes:
+/// a `CheckRun` carries a `status` and, once it is `COMPLETED`, the
+/// `conclusion` that actually judges it; a legacy `StatusContext` carries a
+/// bare `state`. A word neither vocabulary defines contributes nothing, so
+/// a new GitHub state can only ever leave the glyph quieter — never wrong.
+fn checks(v: &serde_json::Value) -> Checks {
+    super::arr_at(v, "statusCheckRollup")
+        .iter()
+        .map(|c| match c.get("status").and_then(|s| s.as_str()) {
+            Some("COMPLETED") => conclusion(&str_at(c, "conclusion")),
+            Some(status) => conclusion(status),
+            None => conclusion(&str_at(c, "state")),
+        })
+        .max()
+        .unwrap_or(Checks::None)
+}
+
+/// One check's verdict word as a [`Checks`]. `NEUTRAL` and `SKIPPED` count
+/// as passes: they are how a workflow says "not my business", and a row
+/// full of them is not a row with a problem. `CANCELLED` does not — the
+/// check was supposed to run and never reached a verdict.
+fn conclusion(word: &str) -> Checks {
+    match word {
+        "SUCCESS" | "NEUTRAL" | "SKIPPED" => Checks::Passed,
+        "FAILURE" | "ERROR" | "TIMED_OUT" | "STARTUP_FAILURE" | "ACTION_REQUIRED" | "CANCELLED" => {
+            Checks::Failed
+        }
+        "QUEUED" | "IN_PROGRESS" | "WAITING" | "PENDING" | "REQUESTED" | "EXPECTED" => {
+            Checks::Running
+        }
+        _ => Checks::None,
+    }
 }
 
 /// Parse `gh pr list --json …` output — a bare array. Kept separate from
@@ -145,6 +198,8 @@ fn parse_list(json: &str) -> Option<Vec<OpenPr>> {
                     title: str_at(v, "title"),
                     url,
                     is_draft: bool_at(v, "isDraft"),
+                    approval: review_decision(v),
+                    checks: checks(v),
                 })
             })
             .collect(),
@@ -321,6 +376,88 @@ mod tests {
         assert_eq!(prs[0].label(), "#42 Attach links");
         assert_eq!(prs[0].badge(), "pr");
         assert_eq!(prs[1].badge(), "draft");
+        // A payload from before these fields were asked for says nothing
+        // about either status rather than guessing at one.
+        assert_eq!(prs[0].approval, Approval::Unknown);
+        assert_eq!(prs[0].checks, Checks::None);
+    }
+
+    /// The two status glyphs come out of the same list call as the rows:
+    /// `reviewDecision` verbatim, and the check rollup boiled down to its
+    /// worst entry.
+    #[test]
+    fn list_rows_carry_their_review_and_check_status() {
+        let prs = parse_list(
+            r#"[
+              {"number":1,"url":"https://github.com/o/r/pull/1",
+               "reviewDecision":"APPROVED",
+               "statusCheckRollup":[
+                 {"status":"COMPLETED","conclusion":"SUCCESS"},
+                 {"status":"COMPLETED","conclusion":"SKIPPED"}
+               ]},
+              {"number":2,"url":"https://github.com/o/r/pull/2",
+               "reviewDecision":"CHANGES_REQUESTED",
+               "statusCheckRollup":[
+                 {"status":"COMPLETED","conclusion":"SUCCESS"},
+                 {"status":"IN_PROGRESS"},
+                 {"status":"COMPLETED","conclusion":"FAILURE"}
+               ]},
+              {"number":3,"url":"https://github.com/o/r/pull/3",
+               "reviewDecision":"REVIEW_REQUIRED",
+               "statusCheckRollup":[
+                 {"status":"COMPLETED","conclusion":"SUCCESS"},
+                 {"status":"QUEUED"}
+               ]},
+              {"number":4,"url":"https://github.com/o/r/pull/4",
+               "reviewDecision":null,
+               "statusCheckRollup":[{"state":"SUCCESS"}]}
+            ]"#,
+        )
+        .expect("parsed");
+        let got: Vec<_> = prs.iter().map(|p| (p.approval, p.checks)).collect();
+        assert_eq!(
+            got,
+            [
+                (Approval::Approved, Checks::Passed),
+                (Approval::ChangesRequested, Checks::Failed),
+                (Approval::Pending, Checks::Running),
+                // A repo that requires no review is not a repo waiting on
+                // one — and a legacy StatusContext still counts.
+                (Approval::Unknown, Checks::Passed),
+            ]
+        );
+    }
+
+    /// One red check outranks any number of green ones, and something in
+    /// flight outranks a pass but not a failure. A word from neither
+    /// vocabulary contributes nothing at all.
+    #[test]
+    fn the_check_rollup_reports_its_worst_entry() {
+        let rollup = |json: &str| {
+            checks(&serde_json::from_str(&format!(r#"{{"statusCheckRollup":{json}}}"#)).unwrap())
+        };
+        assert_eq!(rollup("[]"), Checks::None, "nothing ran");
+        assert_eq!(
+            rollup(r#"[{"status":"COMPLETED","conclusion":"SUCCESS"}]"#),
+            Checks::Passed
+        );
+        assert_eq!(
+            rollup(
+                r#"[{"status":"COMPLETED","conclusion":"SUCCESS"},
+                    {"status":"COMPLETED","conclusion":"TIMED_OUT"},
+                    {"status":"IN_PROGRESS"}]"#
+            ),
+            Checks::Failed
+        );
+        assert_eq!(
+            rollup(r#"[{"status":"COMPLETED","conclusion":"NEUTRAL"},{"status":"WAITING"}]"#),
+            Checks::Running
+        );
+        assert_eq!(
+            rollup(r#"[{"status":"COMPLETED","conclusion":"WHAT_IS_THIS"}]"#),
+            Checks::None,
+            "a word we do not know leaves the glyph quiet, never wrong"
+        );
     }
 
     /// An empty repo answers with an empty array — a real answer, not a
