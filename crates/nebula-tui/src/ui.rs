@@ -2600,19 +2600,7 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
     let th = app.theme;
     let focused = app.focus == Focus::Projects;
     let count = Some(app.tree.visible_project_count()).filter(|n| *n > 0);
-    // With the Workspaces bar hidden nothing else on screen names the open
-    // workspace, so this header takes the job — the column only ever lists
-    // that workspace's projects anyway. Upper-cased to stay in the header
-    // voice the other columns speak in, and trimmed to what's left of the
-    // row once the gutter, the ` · n` count and the column rule are paid for.
-    let title = if app.show_workspaces {
-        "PROJECTS".to_string()
-    } else {
-        let room = (area.width as usize)
-            .saturating_sub(ROW_GUTTER.len() + 1 + count.map_or(0, |n| 3 + n.to_string().len()));
-        truncate(&app.tree.active_workspace_name().to_uppercase(), room)
-    };
-    let inner = draw_column(f, area, &title, count, focused, th);
+    let inner = draw_column(f, area, "PROJECTS", count, focused, th);
 
     if !app.tree.has_visible_projects() {
         f.render_widget(
