@@ -2244,6 +2244,17 @@ fn draw_column(
     }
 }
 
+/// A sidebar panel's header text, with its list filter (Ctrl+F) shown
+/// inline: `WORKTREES /que\u{258c}` while the query is being typed, the caret
+/// dropped once it's parked with Enter.
+fn panel_title(app: &App, focus: Focus, base: &str) -> String {
+    match app.list_filter.as_ref().filter(|f| f.focus == focus) {
+        Some(f) if f.active => format!("{base} /{}\u{258c}", f.input.as_str()),
+        Some(f) => format!("{base} /{}", f.input.as_str()),
+        None => base.to_string(),
+    }
+}
+
 /// Left gutter every list row gets from its 1-column selection marker
 /// (`▌`/space) plus a 2-column status glyph (`● `/`○ `/`❯ `): headers and
 /// empty-panel hints use the same string so their text lines up with row
@@ -2422,7 +2433,7 @@ fn draw_workspaces_bar(f: &mut Frame, app: &mut App, area: Rect) {
     // Per-tab display data, pre-collected to end the tree borrow: name,
     // rollup, and how many sessions under it finished unread — the same
     // count the project and worktree rows carry, one tier up.
-    let rows: Vec<(String, Option<AgentStatus>, usize)> = app
+    let rows: Vec<(String, Option<AgentStatus>, usize, bool)> = app
         .tree
         .workspaces
         .iter()
@@ -2431,6 +2442,7 @@ fn draw_workspaces_bar(f: &mut Frame, app: &mut App, area: Rect) {
                 w.name.clone(),
                 app.workspace_rollup(&w.id),
                 app.workspace_unseen(&w.id),
+                app.is_pinned(w.id.as_str()),
             )
         })
         .collect();
@@ -2438,7 +2450,7 @@ fn draw_workspaces_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let tabs: Vec<(Vec<Span<'static>>, u16)> = rows
         .iter()
         .enumerate()
-        .map(|(i, (name, roll, done))| {
+        .map(|(i, (name, roll, done, pinned))| {
             let selected = Some(i) == active;
             // Only nine tabs have a shortcut; past that the slot stays
             // blank so every name still starts on the same column.
@@ -2451,6 +2463,9 @@ fn draw_workspaces_bar(f: &mut Frame, app: &mut App, area: Rect) {
                 Style::default().fg(if selected { th.accent } else { th.dim }),
             )];
             spans.push(status_dot(*roll, *done > 0, th));
+            if *pinned {
+                spans.push(Span::styled("\u{2605} ", Style::default().fg(th.accent)));
+            }
             spans.extend(status_name_spans(
                 truncate(name, TAB_NAME_MAX),
                 Style::default().add_modifier(Modifier::BOLD),
@@ -2582,11 +2597,18 @@ fn draw_workspaces_bar(f: &mut Frame, app: &mut App, area: Rect) {
 /// tree borrow: name, the folder name to show under it (Some only once the
 /// row has been renamed away from it), rollup, unwatched-finish count,
 /// last-turn stamp.
-type ProjectRowData = (String, Option<String>, Option<AgentStatus>, usize, i64);
+type ProjectRowData = (
+    String,
+    Option<String>,
+    Option<AgentStatus>,
+    usize,
+    i64,
+    bool,
+);
 
 /// The same for the Worktrees panel: branch, is-root, rollup,
 /// unwatched-finish count, last-turn stamp.
-type WorktreeRowData = (String, bool, Option<AgentStatus>, usize, i64);
+type WorktreeRowData = (String, bool, Option<AgentStatus>, usize, i64, bool);
 
 /// Columns between the `WORKSPACES` label and the first tab.
 const TAB_GAP: u16 = 2;
@@ -2606,12 +2628,13 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
     // speak in, and trimmed to what's left of the row once the gutter,
     // the ` · n` count and the column rule are paid for.
     let title = if app.show_workspaces {
+        "PROJECTS".to_string()
+    } else {
         let room = (area.width as usize)
             .saturating_sub(ROW_GUTTER.len() + 1 + count.map_or(0, |n| 3 + n.to_string().len()));
         truncate(&app.tree.active_workspace_name().to_uppercase(), room)
-    } else {
-        "PROJECTS".to_string()
     };
+    let title = panel_title(app, Focus::Projects, &title);
     let inner = draw_column(f, area, &title, count, focused, th);
 
     if !app.tree.has_visible_projects() {
@@ -2640,11 +2663,12 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
                 app.project_rollup(&p.id),
                 app.project_unseen(&p.id),
                 app.project_recency(&p.id).stamped,
+                app.is_pinned(p.id.as_str()),
             )
         })
         .collect();
     let mut screen_row = 0usize;
-    for (row_idx, (text, folder, roll, unseen, stamped)) in rows.iter().enumerate() {
+    for (row_idx, (text, folder, roll, unseen, stamped, pinned)) in rows.iter().enumerate() {
         // A renamed row grows by the one line its folder name takes, so the
         // pads above and below stay a row each either way.
         let height = PROJECT_BTN_H + folder.is_some() as u16;
@@ -2657,10 +2681,14 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
         // How long since anything under the project last did something,
         // dim after the name. The column is sorted on this stamp, so the
         // label is what makes the order legible.
-        let free = (inner.width as usize).saturating_sub(3 + badge_len);
+        let star = if *pinned { 2 } else { 0 };
+        let free = (inner.width as usize).saturating_sub(3 + badge_len + star);
         let (ago, name_max) = fit_ago(ago_badge(*stamped), free);
         // Bold name: the top of the tree reads "biggest".
         let mut spans = vec![status_dot(*roll, *unseen > 0, th)];
+        if *pinned {
+            spans.push(Span::styled("\u{2605} ", Style::default().fg(th.accent)));
+        }
         spans.extend(status_name_spans(
             truncate(text, name_max),
             Style::default().add_modifier(Modifier::BOLD),
@@ -2740,7 +2768,8 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
     // over a list of two checkouts.
     let wt_count = app.visible_worktrees().len();
     let count = Some(wt_count).filter(|n| *n > 0);
-    let inner = draw_column(f, area, "WORKTREES", count, focused, th);
+    let title = panel_title(app, Focus::Worktrees, "WORKTREES");
+    let inner = draw_column(f, area, &title, count, focused, th);
 
     let worktrees: Vec<WorktreeRowData> = app
         .visible_worktrees()
@@ -2752,6 +2781,7 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 app.worktree_rollup(&w.id),
                 app.worktree_unseen(&w.id),
                 app.worktree_recency(&w.id).stamped,
+                app.is_pinned(w.id.as_str()),
             )
         })
         .collect();
@@ -2865,13 +2895,14 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 }
             }
             WorktreeEntry::Row(i) if *i < worktrees.len() => {
-                let (branch, is_main, roll, unseen, stamped) = &worktrees[*i];
+                let (branch, is_main, roll, unseen, stamped, pinned) = &worktrees[*i];
                 let (badges, badge_len) = row_badges(*unseen, th);
+                let star = if *pinned { 2 } else { 0 };
                 let ramp = sweep_ramp(*roll, th, app.animations);
                 // 3, not 2: the dot's two cells plus the pill marker
                 // `render_pill` prepends — bill them here or the trailing
                 // badge is what falls off the end of a twenty-cell column.
-                let free = (inner.width as usize).saturating_sub(3 + badge_len);
+                let free = (inner.width as usize).saturating_sub(3 + badge_len + star);
                 // How long since a session in this checkout last did
                 // something — the stamp the group is sorted on, so the
                 // label is what makes the order legible. It yields to the
@@ -2896,6 +2927,9 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 };
                 let max = free - root.map_or(0, |r| r.chars().count());
                 let mut spans = vec![status_dot(*roll, *unseen > 0, th)];
+                if *pinned {
+                    spans.push(Span::styled("\u{2605} ", Style::default().fg(th.accent)));
+                }
                 spans.extend(status_name_spans(
                     truncate(branch, max),
                     Style::default(),
@@ -2988,7 +3022,8 @@ fn draw_sessions(f: &mut Frame, app: &mut App, area: Rect) {
         .filter(|r| r.as_link().is_none())
         .count();
     let count = Some(visible).filter(|n| *n > 0);
-    let inner = draw_column(f, area, "SESSIONS", count, focused, th);
+    let title = panel_title(app, Focus::Sessions, "SESSIONS");
+    let inner = draw_column(f, area, &title, count, focused, th);
 
     let rows = app.visible_session_rows();
     if rows.is_empty() && app.selected_worktree().is_some() {
@@ -3187,9 +3222,12 @@ fn draw_session_row(
             // the name and the harness. The list is sorted on this stamp,
             // so the label is what makes the order legible.
             let ago = ago_badge(a.status_changed_at);
+            let pinned = app.is_pinned(a.id.as_str());
             // 3 = the pill's selection marker plus the status dot, both of
             // which render ahead of the name.
-            let free = (width.saturating_sub(3) as usize).saturating_sub(badge.chars().count());
+            let free = (width.saturating_sub(3) as usize)
+                .saturating_sub(badge.chars().count())
+                .saturating_sub(if pinned { 2 } else { 0 });
             let (ago, name_max) = fit_ago(ago, free);
             // Archived rows stay quiet even if their last status was live.
             let ramp = if a.archived {
@@ -3198,6 +3236,9 @@ fn draw_session_row(
                 sweep_ramp(Some(a.status), th, app.animations)
             };
             let mut spans = vec![dot];
+            if pinned {
+                spans.push(Span::styled("\u{2605} ", Style::default().fg(th.accent)));
+            }
             spans.extend(status_name_spans(
                 truncate(&a.name, name_max),
                 name_style,
@@ -3214,13 +3255,19 @@ fn draw_session_row(
             // Shell prompt glyph instead of a status dot; dim once the
             // shell has exited (re-attach respawns it).
             let glyph_color = if t.alive { th.ok } else { th.dim };
-            vec![
-                Span::styled("❯ ", Style::default().fg(glyph_color)),
-                Span::styled(
-                    truncate(&t.name, width.saturating_sub(3) as usize),
-                    Style::default().fg(th.muted),
+            let pinned = app.is_pinned(t.id.as_str());
+            let mut spans = vec![Span::styled("❯ ", Style::default().fg(glyph_color))];
+            if pinned {
+                spans.push(Span::styled("\u{2605} ", Style::default().fg(th.accent)));
+            }
+            spans.push(Span::styled(
+                truncate(
+                    &t.name,
+                    (width.saturating_sub(3) as usize).saturating_sub(if pinned { 2 } else { 0 }),
                 ),
-            ]
+                Style::default().fg(th.muted),
+            ));
+            spans
         }
         SessionRow::Link(l) => {
             // Same shape as an agent row — glyph, name, trailing badge — so

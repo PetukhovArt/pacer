@@ -660,7 +660,7 @@ fn note_open_prs_answer(
     // Which pull request the cursor is resting on, before the list under it
     // changes. A refresh that retires a merged PR must not slide the
     // selection onto whatever row inherits its index.
-    let cursor = app.selected_worktree_pr().cloned();
+    let cursor = app.selected_worktree_pr();
     app.open_prs_inflight.remove(&project);
     let previous = app.open_prs.get(&project);
     let found = list.as_ref().is_some_and(|l| !l.is_empty());
@@ -760,7 +760,7 @@ fn forget_retired_prs(app: &mut App) {
 /// The list refresh would catch it within the minute anyway; this is for
 /// the case where the user is looking straight at it.
 fn drop_retired_pr(app: &mut App, url: &str, out: &mut Vec<ClientRequest>) {
-    let cursor = app.selected_worktree_pr().cloned();
+    let cursor = app.selected_worktree_pr();
     let mut removed = false;
     for open in app.open_prs.values_mut() {
         let before = open.list.len();
@@ -1007,6 +1007,7 @@ fn ui_state_json(app: &App) -> String {
         collapsed: app.collapsed,
         panel_widths: Some(app.panel_widths),
         diff_files_width: Some(app.diff_files_width),
+        pinned: app.pinned.iter().cloned().collect(),
     };
     serde_json::to_string(&state).unwrap_or_else(|_| "{}".into())
 }
@@ -1062,6 +1063,7 @@ fn restore_ui_state(app: &mut App, json: &str) -> bool {
         return false;
     };
     app.show_archived = state.show_archived;
+    app.pinned = state.pinned.into_iter().collect();
     if let Some(w) = state.panel_widths {
         // normalize_panel_widths re-fits to the actual screen on the next
         // draw.
@@ -1313,6 +1315,154 @@ fn paste_into_overlay(app: &mut App, text: &str) -> bool {
     true
 }
 
+/// One key while the list filter is armed. Returns whether it was consumed.
+fn handle_list_filter_key(app: &mut App, key: &KeyEvent, out: &mut Vec<ClientRequest>) -> bool {
+    let Some(filter) = app.list_filter.as_mut() else {
+        return false;
+    };
+    match key.code {
+        // Esc is two-stage, palette-style: clear the query first, close on
+        // the press after (or right away when there's nothing to clear).
+        KeyCode::Esc => {
+            if filter.input.as_str().is_empty() {
+                app.list_filter = None;
+            } else {
+                filter.input.clear();
+            }
+            reset_filtered_selection(app, out);
+            app.dirty = true;
+            true
+        }
+        // Enter parks the query: the list stays narrowed, navigation gets
+        // its keys back. An empty query has nothing to park.
+        KeyCode::Enter => {
+            if filter.input.as_str().is_empty() {
+                app.list_filter = None;
+            } else {
+                filter.active = false;
+            }
+            app.dirty = true;
+            true
+        }
+        KeyCode::Up | KeyCode::Down => {
+            let delta = if key.code == KeyCode::Down { 1 } else { -1 };
+            move_selection(app, delta, out);
+            true
+        }
+        _ => {
+            let edit = filter.input.handle_key(key);
+            if edit.changed() {
+                reset_filtered_selection(app, out);
+            }
+            if edit.consumed() {
+                app.dirty = true;
+            }
+            edit.consumed()
+        }
+    }
+}
+
+/// A filter edit re-derives the filtered panel's list: put its cursor back
+/// on the first row so it can't dangle past the narrowed end.
+fn reset_filtered_selection(app: &mut App, out: &mut Vec<ClientRequest>) {
+    let Some(filter) = app.list_filter.as_ref() else {
+        return;
+    };
+    match filter.focus {
+        Focus::Projects => {
+            if !app.project_rows().is_empty() {
+                select_project_row(app, 0, out);
+            } else {
+                app.sel_project = 0;
+            }
+        }
+        Focus::Worktrees => {
+            if app.worktree_row_count() > 0 {
+                select_worktree_row(app, 0, out);
+            } else {
+                app.sel_worktree = 0;
+            }
+        }
+        Focus::Sessions => app.sel_session = 0,
+        Focus::Workspaces | Focus::Terminal => {}
+    }
+}
+
+/// `p`: pin/unpin whatever the focused panel's cursor is on, keeping the
+/// cursor on that row through the resort, and persist the pin set right
+/// away — a crash later shouldn't lose it.
+fn toggle_pin_at_cursor(app: &mut App, out: &mut Vec<ClientRequest>) {
+    let toggled: Option<(String, String)> = match app.focus {
+        Focus::Workspaces => {
+            let id = app.tree.active_workspace.clone();
+            Some((id.to_string(), "workspace".into()))
+        }
+        Focus::Projects => app
+            .selected_project()
+            .map(|p| (p.id.to_string(), "project".into())),
+        Focus::Worktrees => match app.selected_worktree() {
+            Some(w) => Some((w.id.to_string(), "worktree".into())),
+            None => {
+                app.flash = Some("open-PR rows can't be pinned".into());
+                None
+            }
+        },
+        Focus::Sessions => match app.selected_session_row() {
+            Some(SessionRow::Agent(a)) => Some((a.id.to_string(), "session".into())),
+            Some(SessionRow::Terminal(t)) => Some((t.id.to_string(), "terminal".into())),
+            Some(SessionRow::Link(_)) => {
+                app.flash = Some("link rows can't be pinned".into());
+                None
+            }
+            None => None,
+        },
+        Focus::Terminal => None,
+    };
+    let Some((id, what)) = toggled else {
+        return;
+    };
+    let now_pinned = app.toggle_pin(&id);
+    // The list resorted under the cursor: follow the row to its new place.
+    match app.focus {
+        Focus::Projects => {
+            if let Some(i) = app
+                .project_rows()
+                .iter()
+                .position(|i| app.tree.projects[*i].id.as_str() == id)
+            {
+                app.sel_project = i;
+            }
+        }
+        Focus::Worktrees => {
+            if let Some(i) = app
+                .visible_worktrees()
+                .iter()
+                .position(|w| w.id.as_str() == id)
+            {
+                app.sel_worktree = i;
+            }
+        }
+        Focus::Sessions => {
+            if let Some(i) = app.visible_session_rows().iter().position(|r| match r {
+                SessionRow::Agent(a) => a.id.as_str() == id,
+                SessionRow::Terminal(t) => t.id.as_str() == id,
+                SessionRow::Link(_) => false,
+            }) {
+                app.sel_session = i;
+            }
+        }
+        _ => {}
+    }
+    app.flash = Some(format!(
+        "{what} {}",
+        if now_pinned { "pinned" } else { "unpinned" }
+    ));
+    out.push(ClientRequest::SaveUiState {
+        json: ui_state_json(app),
+    });
+    app.dirty = true;
+}
+
 fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
     // The editor modal sits above every overlay: all keys forward to it —
     // vim needs Esc — except Ctrl+Q, the same hatch the terminal lock uses.
@@ -1366,7 +1516,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
                 if term.scroll > 0 {
                     term.set_scroll(0);
                 }
-                if let Some(data) = keys::encode_key(&key, term.kitty_flags) {
+                if let Some(data) = keys::encode_key(&key, term.kitty_flags, term.win32_input) {
                     out.push(ClientRequest::Input {
                         session: term.sref.clone(),
                         data,
@@ -1410,6 +1560,19 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             app.pr_preview_scroll = to;
             return;
         }
+    }
+
+    // An armed list filter owns the printable keys: they type the query,
+    // ↑/↓ still walk the narrowed list, Enter parks the query, Esc clears
+    // it and then closes. Bound chords with modifiers (Ctrl+F itself,
+    // ⇧Tab, …) fall through to the dispatch below.
+    if app
+        .list_filter
+        .as_ref()
+        .is_some_and(|f| f.active && app.focus != Focus::Terminal)
+        && handle_list_filter_key(app, &key, out)
+    {
+        return;
     }
 
     // Panel focus: every key here is a rebindable action (see keymap.rs),
@@ -1667,6 +1830,34 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
                 )));
             }
         }
+        // Inline list filter over the focused panel. Re-pressed on a panel
+        // that already has one, it just re-arms the query for editing.
+        Action::FilterList => match app.focus {
+            Focus::Projects | Focus::Worktrees | Focus::Sessions => {
+                match app.list_filter.as_mut() {
+                    Some(f) if f.focus == app.focus => f.active = true,
+                    _ => {
+                        app.list_filter = Some(crate::app::ListFilter {
+                            focus: app.focus,
+                            input: crate::text_input::TextInput::new(),
+                            active: true,
+                        });
+                    }
+                }
+            }
+            _ => app.flash = Some("filter works in the sidebar lists".into()),
+        },
+        // ⇧S cycles the list-sort setting live (the settings row edits the
+        // same value, so the choice persists either way).
+        Action::CycleSort => {
+            let mut cfg = crate::config::Config::load();
+            cfg.list_sort =
+                crate::config::cycle_choice(&cfg.list_sort, crate::config::LIST_SORTS, 1).into();
+            save_config(app, &cfg);
+            app.sort_mode = cfg.list_sort();
+            app.flash = Some(format!("sort: {}", cfg.list_sort));
+        }
+        Action::TogglePin => toggle_pin_at_cursor(app, out),
         Action::Delete => open_delete_confirm(app),
         // Delete EVERY row of the focused panel (behind a confirm that
         // lists the casualties).
@@ -2190,7 +2381,7 @@ fn handle_vim_key(app: &mut App, key: KeyEvent) {
         return;
     }
     if let Some(vim) = &mut app.vim {
-        if let Some(data) = keys::encode_key(&key, 0) {
+        if let Some(data) = keys::encode_key(&key, 0, false) {
             vim.input(&data);
         }
     }
@@ -2656,7 +2847,7 @@ fn pr_agent_menu_item(
 /// An OPEN PRS row creates only a local Claude AGENT, while still reusing
 /// the MODEL/EFFORT and optional naming steps of the NEW SESSION PICKER.
 fn open_pr_agent_picker(app: &mut App) {
-    let Some(pr) = app.selected_worktree_pr().cloned() else {
+    let Some(pr) = app.selected_worktree_pr() else {
         return;
     };
     if !claude_enabled() {
@@ -3010,7 +3201,7 @@ fn open_context_menu_for_selection(app: &mut App) {
             open_menu(app, items, at);
         }
         Focus::Worktrees => {
-            if let Some(pr) = app.selected_worktree_pr().cloned() {
+            if let Some(pr) = app.selected_worktree_pr() {
                 let Some(worktree) = selected_project_main_worktree(app) else {
                     app.flash = Some("the project has no ROOT WORKTREE for this PR session".into());
                     return;
@@ -3884,6 +4075,7 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     app.theme = cfg.theme();
     app.animations = cfg.animations;
     app.focus_tint = cfg.focus_tint;
+    app.sort_mode = cfg.list_sort();
     set_show_workspaces(app, cfg.show_workspaces);
     set_hide_projects(app, cfg.hide_projects);
     set_hide_worktrees(app, cfg.hide_worktrees);
@@ -5571,7 +5763,8 @@ fn play_done_sound<W: std::io::Write>(backend: &mut W) {
 }
 
 /// Copy to *this machine's* system clipboard.
-/// macOS: pbcopy. Linux: wl-copy on Wayland, xclip (or xsel) on X11.
+/// macOS: pbcopy. Windows: clip.exe. Linux: wl-copy on Wayland, xclip (or
+/// xsel) on X11.
 fn copy_to_clipboard(text: &str) -> bool {
     // Unit tests exercise the selection flow; don't clobber the developer's
     // real clipboard from `cargo test`.
@@ -5582,11 +5775,13 @@ fn copy_to_clipboard(text: &str) -> bool {
     use std::io::Write as _;
     use std::process::{Command, Stdio};
 
-    let copy_via = |cmd: &str, args: &[&str]| -> bool {
+    let copy_via = |cmd: &str, args: &[&str], data: &[u8]| -> bool {
+        use nebula_core::spawn::NoWindow as _;
         let Ok(mut child) = Command::new(cmd)
             .args(args)
             .stdin(Stdio::piped())
             .stderr(Stdio::null())
+            .no_window()
             .spawn()
         else {
             return false;
@@ -5594,25 +5789,36 @@ fn copy_to_clipboard(text: &str) -> bool {
         let wrote = child
             .stdin
             .take()
-            .is_some_and(|mut stdin| stdin.write_all(text.as_bytes()).is_ok());
+            .is_some_and(|mut stdin| stdin.write_all(data).is_ok());
         wrote && child.wait().is_ok_and(|status| status.success())
     };
 
     #[cfg(target_os = "macos")]
     {
-        copy_via("pbcopy", &[])
+        copy_via("pbcopy", &[], text.as_bytes())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        // clip.exe assumes the console codepage unless the input carries a
+        // UTF-16LE BOM, so non-ASCII text must go over as UTF-16.
+        let mut utf16 = vec![0xFF, 0xFE];
+        for unit in text.encode_utf16() {
+            utf16.extend_from_slice(&unit.to_le_bytes());
+        }
+        copy_via("clip", &[], &utf16)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-            return copy_via("wl-copy", &[]);
+            return copy_via("wl-copy", &[], text.as_bytes());
         }
         // X11: prefer xclip, fall back to xsel
-        if copy_via("xclip", &["-selection", "clipboard"]) {
+        if copy_via("xclip", &["-selection", "clipboard"], text.as_bytes()) {
             return true;
         }
-        copy_via("xsel", &["--clipboard", "--input"])
+        copy_via("xsel", &["--clipboard", "--input"], text.as_bytes())
     }
 }
 
@@ -6482,7 +6688,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                     app.sel_worktree = i;
                     app.sel_session = 0;
                     app.focus = Focus::Worktrees;
-                    if let Some(pr) = app.selected_worktree_pr().cloned() {
+                    if let Some(pr) = app.selected_worktree_pr() {
                         let mut items = Vec::new();
                         if let Some(worktree) =
                             selected_project_main_worktree(app).filter(|_| claude_enabled())
@@ -6637,6 +6843,13 @@ fn handle_server_event(app: &mut App, event: ServerEvent, out: &mut Vec<ClientRe
             if let Some(term) = &mut app.term {
                 if term.sref == session {
                     term.kitty_flags = flags;
+                }
+            }
+        }
+        ServerEvent::Win32Input { session, on } => {
+            if let Some(term) = &mut app.term {
+                if term.sref == session {
+                    term.win32_input = on;
                 }
             }
         }
@@ -7444,6 +7657,137 @@ mod tests {
                 entity: nebula_core::Entity::Agent(agent),
             },
         );
+    }
+
+    /// A second live agent beside the seeded one, with a newer stamp so it
+    /// heads the recency order.
+    fn seed_named_agent(app: &mut App, id: &str, name: &str, stamp: i64) {
+        let mut a = app.tree.agents[0].clone();
+        a.id = AgentId(id.into());
+        a.name = name.into();
+        a.status_changed_at = stamp;
+        hse(
+            app,
+            ServerEvent::EntityUpserted {
+                entity: nebula_core::Entity::Agent(a),
+            },
+        );
+    }
+
+    fn session_names(app: &App) -> Vec<String> {
+        app.visible_sessions()
+            .iter()
+            .map(|a| a.name.clone())
+            .collect()
+    }
+
+    /// `p` pins the selected session: the row floats to the top of its
+    /// list, the cursor follows it there, the pin set goes into the
+    /// ui_state blob at once, and a restore brings it back. A second press
+    /// unpins. Multiple rows can be pinned at the same time.
+    #[test]
+    fn pinning_a_session_floats_it_and_persists() {
+        let mut app = App::new();
+        app.sort_mode = crate::app::SortMode::Recent;
+        seed_tree(&mut app);
+        seed_named_agent(&mut app, "a2", "agent-2", 5_000);
+        app.focus = Focus::Sessions;
+        assert_eq!(session_names(&app), ["agent-2", "agent-1"]);
+
+        app.sel_session = 1; // agent-1
+        let mut out = Vec::new();
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE, &mut out);
+        assert_eq!(session_names(&app), ["agent-1", "agent-2"]);
+        assert_eq!(app.sel_session, 0, "the cursor follows the pinned row");
+        assert!(
+            out.iter()
+                .any(|r| matches!(r, ClientRequest::SaveUiState { .. })),
+            "a pin persists immediately, not just on quit"
+        );
+
+        // Multi-pin: the second row pins alongside the first.
+        app.sel_session = 1;
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE, &mut out);
+        assert!(app.is_pinned("a1") && app.is_pinned("a2"));
+
+        // Round-trip through the persisted blob.
+        let json = ui_state_json(&app);
+        let mut restored = App::new();
+        seed_tree(&mut restored);
+        restore_ui_state(&mut restored, &json);
+        assert!(restored.is_pinned("a1") && restored.is_pinned("a2"));
+
+        // Unpin puts recency back in charge.
+        app.sel_session = 0; // agent-2 (pinned, newest)
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE, &mut out);
+        app.sel_session = 0; // agent-1 now heads the list (still pinned)
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::NONE, &mut out);
+        assert_eq!(session_names(&app), ["agent-2", "agent-1"]);
+    }
+
+    /// Ctrl+F arms an inline fuzzy filter over the focused panel: typed
+    /// characters narrow the list, Enter parks the query (navigation keys
+    /// come back, the list stays narrowed), Esc clears and then closes.
+    #[test]
+    fn ctrl_f_filter_narrows_the_sessions_list() {
+        let mut app = App::new();
+        seed_tree(&mut app);
+        seed_named_agent(&mut app, "a2", "build-7", 5_000);
+        app.focus = Focus::Sessions;
+        let mut out = Vec::new();
+
+        press(
+            &mut app,
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL,
+            &mut out,
+        );
+        assert!(app.list_filter.as_ref().is_some_and(|f| f.active));
+        press(&mut app, KeyCode::Char('b'), KeyModifiers::NONE, &mut out);
+        press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE, &mut out);
+        assert_eq!(session_names(&app), ["build-7"]);
+
+        // Enter parks the query; j/k etc. are navigation again.
+        press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
+        assert!(app.list_filter.as_ref().is_some_and(|f| !f.active));
+        assert_eq!(session_names(&app), ["build-7"]);
+
+        // Re-arm, then Esc twice: clear, close.
+        press(
+            &mut app,
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL,
+            &mut out,
+        );
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &mut out);
+        assert_eq!(session_names(&app).len(), 2, "Esc clears the query");
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &mut out);
+        assert!(app.list_filter.is_none(), "a second Esc closes the filter");
+    }
+
+    /// ⇧S cycles the `list_sort` setting live: created → recent → name,
+    /// written through the config so it survives a restart.
+    #[test]
+    fn shift_s_cycles_the_list_sort() {
+        with_default_config(|| {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            seed_named_agent(&mut app, "a2", "zzz-newest", 5_000);
+            app.focus = Focus::Sessions;
+            let mut out = Vec::new();
+            // Default is created (tree order) — interaction doesn't reorder.
+            assert_eq!(session_names(&app), ["agent-1", "zzz-newest"]);
+
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(app.sort_mode, crate::app::SortMode::Recent);
+            assert_eq!(session_names(&app), ["zzz-newest", "agent-1"]);
+            assert_eq!(crate::config::Config::load().list_sort, "recent");
+
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(app.sort_mode, crate::app::SortMode::Name);
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(app.sort_mode, crate::app::SortMode::Created);
+        });
     }
 
     /// A Cloud row can be steered from nebula: its menu offers a message to
@@ -10019,6 +10363,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn working_sessions_head_the_list_regardless_of_age() {
         use nebula_core::{Agent, AgentStatus, Entity};
         let mut app = App::new();
+        app.sort_mode = crate::app::SortMode::Recent;
         seed_tree(&mut app);
         let now = crate::app::now_ms();
         let stale = now - 2 * 3_600_000;
@@ -10073,6 +10418,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn sessions_order_by_last_interaction() {
         use nebula_core::{Agent, AgentStatus, Entity};
         let mut app = App::new();
+        app.sort_mode = crate::app::SortMode::Recent;
         seed_tree(&mut app); // agent-1: fresh, never run (stamp 0)
         let now = crate::app::now_ms();
         let mins = |n: i64| now - n * 60_000;
@@ -10216,6 +10562,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn status_change_resorts_and_selection_follows() {
         use nebula_core::{Agent, AgentStatus, Entity};
         let mut app = App::new();
+        app.sort_mode = crate::app::SortMode::Recent;
         seed_tree(&mut app);
         hse(
             &mut app,
@@ -13470,6 +13817,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn projects_sort_by_last_interaction_and_selection_follows() {
         use nebula_core::AgentStatus;
         let mut app = App::new();
+        app.sort_mode = crate::app::SortMode::Recent;
         seed_tree(&mut app); // p1 "demo" / w1 / a1 (never run)
         hse(
             &mut app,
@@ -13545,6 +13893,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn worktrees_sort_by_last_interaction() {
         use nebula_core::AgentStatus;
         let mut app = App::new();
+        app.sort_mode = crate::app::SortMode::Recent;
         seed_tree(&mut app); // w1 "main" (root) / a1 never run
         let now = crate::app::now_ms();
         let mins = |n: i64| now - n * 60_000;
@@ -16471,9 +16820,7 @@ diff --git a/src/b.rs b/src/b.rs
         }
     }
 
-    /// Opens a real PTY, so it is Unix-only for now — see
-    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
-    #[cfg(unix)]
+    /// Opens a real PTY (stub editor, see [`crate::editor_stub`]).
     #[test]
     fn f_opens_file_finder_listing_tracked_and_untracked() {
         let dir = tempfile::tempdir().unwrap();
@@ -16628,9 +16975,7 @@ diff --git a/src/b.rs b/src/b.rs
             .collect()
     }
 
-    /// Opens a real PTY, so it is Unix-only for now — see
-    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
-    #[cfg(unix)]
+    /// Opens a real PTY (stub editor, see [`crate::editor_stub`]).
     #[test]
     fn t_opens_tree_browser_folds_dirs_and_filters_hierarchies() {
         let dir = tempfile::tempdir().unwrap();
@@ -16821,9 +17166,7 @@ diff --git a/src/b.rs b/src/b.rs
         );
     }
 
-    /// Opens a real PTY, so it is Unix-only for now — see
-    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
-    #[cfg(unix)]
+    /// Opens a real PTY (stub editor, see [`crate::editor_stub`]).
     #[test]
     fn embedded_editor_takes_over_the_preview_pane() {
         let dir = tempfile::tempdir().unwrap();
@@ -16874,7 +17217,6 @@ diff --git a/src/b.rs b/src/b.rs
         }
     }
 
-    #[cfg(unix)]
     fn fake_grep_view(hits: Vec<crate::grep_search::GrepHit>) -> GrepView {
         let mut view = GrepView::new(
             "/nonexistent-nebula-grep-test".into(),
@@ -16928,9 +17270,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert_eq!(app.flash.as_deref(), Some("no worktree selected"));
     }
 
-    /// Opens a real PTY, so it is Unix-only for now — see
-    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
-    #[cfg(unix)]
+    /// Opens a real PTY (stub editor, see [`crate::editor_stub`]).
     #[test]
     fn grep_enter_spawns_editor_and_ctrl_q_closes_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -16979,9 +17319,7 @@ diff --git a/src/b.rs b/src/b.rs
         );
     }
 
-    /// Opens a real PTY, so it is Unix-only for now — see
-    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
-    #[cfg(unix)]
+    /// Opens a real PTY (stub editor, see [`crate::editor_stub`]).
     #[test]
     fn stale_generation_editor_events_are_dropped() {
         let mut app = App::new();
@@ -17028,9 +17366,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(app.vim.is_none());
     }
 
-    /// Opens a real PTY, so it is Unix-only for now — see
-    /// [`crate::editor_stub`] for the ConPTY blocker this is waiting on.
-    #[cfg(unix)]
+    /// Opens a real PTY (stub editor, see [`crate::editor_stub`]).
     #[test]
     fn grep_overlay_renders_hits_and_editor_modal_renders_on_top() {
         let mut app = App::new();

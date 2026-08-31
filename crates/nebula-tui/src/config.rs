@@ -22,6 +22,11 @@ pub const SESSION_IDLE_TIMEOUTS: &[&str] = &["off", "1m", "5m", "15m", "30m", "1
 /// [`crate::pull_request::ListFilter`]; unknown ones read as `all`.
 pub const PR_LIST_FILTERS: &[&str] = &["all", "mine", "involved"];
 
+/// Values the settings overlay cycles through for `list_sort` — how the
+/// sidebar lists order their rows (pinned rows always float first). The
+/// words map onto [`crate::app::SortMode`]; unknown ones read as `created`.
+pub const LIST_SORTS: &[&str] = &["created", "recent", "name"];
+
 /// Editor commands the settings overlay cycles through. Every entry
 /// accepts `+<line> <file>`, which is how the overlays launch it. As with
 /// models, hand-edited configs can name any command the list doesn't.
@@ -127,6 +132,7 @@ pub enum SettingKind {
     SessionIdleTimeout,
     DoneSound,
     PrListFilter,
+    ListSort,
     Theme,
     Animations,
     FocusTint,
@@ -168,6 +174,11 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::PrListFilter,
                 label: "Open PRs filter",
                 hint: "Which open PRs the project group lists: all, only yours, or ones you took part in",
+            },
+            SettingSpec {
+                kind: SettingKind::ListSort,
+                label: "List sort",
+                hint: "How the sidebar lists order rows: by recency, by name, or in creation order (⇧S cycles; pins float first)",
             },
         ]),
     },
@@ -427,6 +438,10 @@ pub struct Config {
     /// through [`Config::pr_list_filter`]; unknown words mean "all", so a
     /// hand edit can't hide the list.
     pub pr_list_filter: String,
+    /// How the sidebar lists order their rows: "created", "recent" or
+    /// "name". Read through [`Config::list_sort`]; unknown words mean
+    /// "created", so a hand edit can't scramble the lists.
+    pub list_sort: String,
     /// Color theme name (see `theme::THEMES`). Unknown names fall back to
     /// the default theme.
     pub theme: String,
@@ -484,6 +499,7 @@ impl Default for Config {
             session_idle_timeout: "5m".into(),
             done_sound: "Glass".into(),
             pr_list_filter: "all".into(),
+            list_sort: "created".into(),
             theme: "default".into(),
             animations: true,
             focus_tint: false,
@@ -584,6 +600,7 @@ impl Config {
             "pr_list_filter".into(),
             serde_json::json!(self.pr_list_filter),
         );
+        obj.insert("list_sort".into(), serde_json::json!(self.list_sort));
         obj.insert("theme".into(), serde_json::json!(self.theme));
         obj.insert("animations".into(), serde_json::json!(self.animations));
         obj.insert("focus_tint".into(), serde_json::json!(self.focus_tint));
@@ -642,6 +659,11 @@ impl Config {
             nebula_core::env::non_empty(nebula_core::env::EDITOR).as_deref(),
             &self.editor,
         )
+    }
+
+    /// The `list_sort` SETTING resolved for the sidebar lists.
+    pub fn list_sort(&self) -> crate::app::SortMode {
+        crate::app::SortMode::from_name(&self.list_sort)
     }
 
     /// The `pr_list_filter` SETTING resolved for [`crate::pull_request::list`].
@@ -705,6 +727,7 @@ impl Config {
             SettingKind::SessionIdleTimeout => self.session_idle_timeout.clone(),
             SettingKind::DoneSound => self.done_sound.clone(),
             SettingKind::PrListFilter => self.pr_list_filter.clone(),
+            SettingKind::ListSort => self.list_sort.clone(),
             SettingKind::Theme => self.theme.clone(),
             SettingKind::Animations => on_off(self.animations).into(),
             SettingKind::FocusTint => on_off(self.focus_tint).into(),
@@ -752,6 +775,9 @@ impl Config {
             SettingKind::PrListFilter => {
                 self.pr_list_filter =
                     cycle_choice(&self.pr_list_filter, PR_LIST_FILTERS, step).into();
+            }
+            SettingKind::ListSort => {
+                self.list_sort = cycle_choice(&self.list_sort, LIST_SORTS, step).into();
             }
             SettingKind::Theme => {
                 self.theme = cycle_choice(&self.theme, crate::theme::THEMES, step).into();

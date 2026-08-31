@@ -1817,6 +1817,10 @@ pub struct AttachedTerm {
     /// The child's kitty keyboard flags (daemon-tracked); picks the key
     /// encoding dialect. 0 = legacy.
     pub kitty_flags: u8,
+    /// win32-input-mode (daemon-tracked): on for ConPTY sessions whose child
+    /// reads cooked Win32 input, where it is the only encoding that carries
+    /// Shift+Enter. Always false on Unix.
+    pub win32_input: bool,
     /// Whether any PTY bytes have reached this parser yet. False means the
     /// grid is blank because the session is still booting — attaching to a
     /// reaped session replays an empty ring, and an agent CLI takes seconds
@@ -1835,6 +1839,7 @@ impl AttachedTerm {
             rows,
             scroll: 0,
             kitty_flags: 0,
+            win32_input: false,
             painted: false,
         }
     }
@@ -1853,6 +1858,45 @@ impl AttachedTerm {
     }
 }
 
+/// How the sidebar lists order their rows. Pinned rows always come first;
+/// this picks the order within each pin group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortMode {
+    /// Most recently interacted with first (the historical behaviour).
+    #[default]
+    Recent,
+    /// Alphabetical by name / branch.
+    Name,
+    /// Tree order — the order rows were created in.
+    Created,
+}
+
+impl SortMode {
+    /// Resolve the `list_sort` SETTING; unknown words mean `Created`, so a
+    /// hand-edited config can't scramble the lists.
+    pub fn from_name(name: &str) -> SortMode {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "recent" => SortMode::Recent,
+            "name" => SortMode::Name,
+            _ => SortMode::Created,
+        }
+    }
+}
+
+/// An inline list filter (`Ctrl+F`): fuzzy query typed over one sidebar
+/// panel. While `active`, printable keys land in `input`; Enter parks the
+/// query (navigation resumes, the list stays narrowed), Esc clears then
+/// closes. The filter stays applied to its panel until closed, whichever
+/// panel has focus meanwhile.
+#[derive(Debug)]
+pub struct ListFilter {
+    /// The panel the query narrows.
+    pub focus: Focus,
+    pub input: crate::text_input::TextInput,
+    /// Keys still type into the query (true) vs. parked with Enter (false).
+    pub active: bool,
+}
+
 /// Opaque UI state persisted in the daemon's DB for session restore.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct UiState {
@@ -1867,6 +1911,10 @@ pub struct UiState {
     /// Diff modal file-list width; absent in older blobs.
     #[serde(default)]
     pub diff_files_width: Option<u16>,
+    /// Pinned rows (workspace / worktree / session ids, one flat set —
+    /// ULIDs never collide across kinds); absent in older blobs.
+    #[serde(default)]
+    pub pinned: Vec<String>,
 }
 
 /// A mouse selection over the terminal pane (drag or double-click word), in
@@ -2247,6 +2295,17 @@ pub struct App {
     /// with a faint accent tint. Off by default; mirrors the config,
     /// refreshed at startup and when the settings overlay applies a change.
     pub focus_tint: bool,
+    /// Pinned rows by entity id — workspaces, worktrees and sessions in one
+    /// flat set (ULIDs never collide across kinds). Pinned worktrees and
+    /// sessions sort to the top of their lists; a pinned workspace keeps its
+    /// tab position (the 1–9 shortcuts are positional) and just wears the
+    /// pin mark. Persisted in the daemon's `ui_state` blob.
+    pub pinned: std::collections::BTreeSet<String>,
+    /// The `list_sort` setting: how the sidebar lists order their rows.
+    /// Mirrors the config, refreshed at startup and on a settings change.
+    pub sort_mode: SortMode,
+    /// Inline fuzzy filter over one sidebar panel (`Ctrl+F`), if any.
+    pub list_filter: Option<ListFilter>,
 }
 
 impl Default for App {
@@ -2342,6 +2401,43 @@ impl App {
             splash_preview: false,
             animations: true,
             focus_tint: false,
+            pinned: std::collections::BTreeSet::new(),
+            sort_mode: SortMode::Created,
+            list_filter: None,
+        }
+    }
+
+    /// Is this entity id pinned? Takes anything id-shaped, so call sites
+    /// pass `id.as_str()` whatever the newtype.
+    pub fn is_pinned(&self, id: &str) -> bool {
+        self.pinned.contains(id)
+    }
+
+    /// Flip an id's pin. Returns whether it is pinned *now*.
+    pub fn toggle_pin(&mut self, id: &str) -> bool {
+        if self.pinned.remove(id) {
+            false
+        } else {
+            self.pinned.insert(id.to_string());
+            true
+        }
+    }
+
+    /// The query narrowing `focus`'s list, when one is set and non-empty.
+    pub fn filter_query(&self, focus: Focus) -> Option<&str> {
+        let f = self.list_filter.as_ref()?;
+        if f.focus != focus || f.input.as_str().trim().is_empty() {
+            return None;
+        }
+        Some(f.input.as_str())
+    }
+
+    /// Does `name` survive the filter on `focus`'s panel? No filter (or a
+    /// blank query) passes everything.
+    pub fn passes_filter(&self, focus: Focus, name: &str) -> bool {
+        match self.filter_query(focus) {
+            Some(q) => crate::fuzzy::fuzzy_match(q, name).is_some(),
+            None => true,
         }
     }
 
@@ -2548,13 +2644,22 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, p)| self.tree.in_active_workspace(p))
+            .filter(|(_, p)| self.passes_filter(Focus::Projects, &p.name))
             .map(|(i, _)| i)
             .collect();
-        rows.sort_by_key(|i| {
-            std::cmp::Reverse(
-                project_recency(&self.tree, &self.tree.projects[*i].id, now).interacted,
-            )
-        });
+        match self.sort_mode {
+            SortMode::Recent => rows.sort_by_key(|i| {
+                std::cmp::Reverse(
+                    project_recency(&self.tree, &self.tree.projects[*i].id, now).interacted,
+                )
+            }),
+            SortMode::Name => {
+                rows.sort_by_key(|i| self.tree.projects[*i].name.to_lowercase());
+            }
+            SortMode::Created => {} // tree order
+        }
+        // Stable, so pins float without disturbing the order within groups.
+        rows.sort_by_key(|i| !self.is_pinned(self.tree.projects[*i].id.as_str()));
         rows
     }
 
@@ -2593,8 +2698,9 @@ impl App {
     /// The full row list the panel shows — `sel_session` indexes this.
     pub fn visible_session_rows(&self) -> Vec<SessionRow> {
         let agents = self.visible_sessions();
-        let (active, _) = self.session_group_counts();
-        let active = active.min(agents.len());
+        // Counted off the (possibly filtered) list itself, not the tree —
+        // `visible_sessions` returns live rows then archived ones.
+        let active = agents.iter().filter(|a| !a.archived).count();
         let mut rows: Vec<SessionRow> = agents[..active]
             .iter()
             .cloned()
@@ -2648,6 +2754,7 @@ impl App {
                 });
             }
         }
+        rows.retain(|r| self.passes_filter(Focus::Sessions, &r.label()));
         rows
     }
 
@@ -2683,6 +2790,7 @@ impl App {
             .terminals
             .iter()
             .filter(|t| t.worktree_id == wt.id)
+            .filter(|t| self.passes_filter(Focus::Sessions, &t.name))
             .cloned()
             .collect()
     }
@@ -2719,21 +2827,32 @@ impl App {
             .worktrees
             .iter()
             .filter(|w| w.project_id == project.id)
+            .filter(|w| self.passes_filter(Focus::Worktrees, &w.branch))
             .collect();
-        rows.sort_by_key(|w| {
-            std::cmp::Reverse(worktree_recency(&self.tree, &w.id, now).interacted)
-        });
+        match self.sort_mode {
+            SortMode::Recent => rows.sort_by_key(|w| {
+                std::cmp::Reverse(worktree_recency(&self.tree, &w.id, now).interacted)
+            }),
+            SortMode::Name => rows.sort_by_key(|w| w.branch.to_lowercase()),
+            SortMode::Created => {} // tree order
+        }
+        // Stable, so pins float without disturbing the order within groups.
+        rows.sort_by_key(|w| !self.is_pinned(w.id.as_str()));
         rows
     }
 
     /// The selected project's open pull requests — the group under the
     /// checkouts. Empty until the first `gh pr list` answers (or when the
     /// repo genuinely has none).
-    pub fn visible_open_prs(&self) -> &[OpenPr] {
+    pub fn visible_open_prs(&self) -> Vec<OpenPr> {
         self.selected_project()
             .and_then(|p| self.open_prs.get(&p.id))
             .map(|o| o.list.as_slice())
             .unwrap_or_default()
+            .iter()
+            .filter(|pr| self.passes_filter(Focus::Worktrees, &pr.label()))
+            .cloned()
+            .collect()
     }
 
     /// How many rows the Worktrees panel has: the project's checkouts, then
@@ -2749,11 +2868,11 @@ impl App {
     /// The open pull request under the Worktrees cursor, when it's on one.
     /// Mutually exclusive with [`App::selected_worktree`] — the checkouts
     /// occupy the rows below the pull requests.
-    pub fn selected_worktree_pr(&self) -> Option<&OpenPr> {
+    pub fn selected_worktree_pr(&self) -> Option<OpenPr> {
         let i = self
             .sel_worktree
             .checked_sub(self.visible_worktrees().len())?;
-        self.visible_open_prs().get(i)
+        self.visible_open_prs().get(i).cloned()
     }
 
     /// The pull request the pane should be reading: the PROJECT OPEN PRS
@@ -2807,15 +2926,23 @@ impl App {
             .agents
             .iter()
             .filter(|a| a.worktree_id == wt.id && !a.archived)
+            .filter(|a| self.passes_filter(Focus::Sessions, &a.name))
             .cloned()
             .collect();
-        rows.sort_by_key(|a| recency_key(a, now));
+        match self.sort_mode {
+            SortMode::Recent => rows.sort_by_key(|a| recency_key(a, now)),
+            SortMode::Name => rows.sort_by_key(|a| a.name.to_lowercase()),
+            SortMode::Created => {} // tree order
+        }
+        // Stable, so pins float without disturbing the order within groups.
+        rows.sort_by_key(|a| !self.is_pinned(a.id.as_str()));
         if self.show_archived {
             let mut archived: Vec<Agent> = self
                 .tree
                 .agents
                 .iter()
                 .filter(|a| a.worktree_id == wt.id && a.archived)
+                .filter(|a| self.passes_filter(Focus::Sessions, &a.name))
                 .cloned()
                 .collect();
             // Most recently archived first; pre-`archived_at` rows (stamp 0)

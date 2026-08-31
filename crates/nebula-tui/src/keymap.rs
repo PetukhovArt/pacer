@@ -59,6 +59,14 @@ pub enum Action {
     MoveUp,
     Activate,
     Palette,
+    /// Inline fuzzy filter over the focused sidebar panel's list.
+    FilterList,
+    /// Cycle the `list_sort` setting: created → recent → name.
+    CycleSort,
+    /// Pin/unpin the selected workspace, project, worktree or session.
+    /// Any number of rows can be pinned; pins float to the top of their
+    /// list.
+    TogglePin,
     // projects & worktrees
     AddProject,
     New,
@@ -211,6 +219,33 @@ pub const ACTIONS: &[ActionSpec] = &[
         group: "NAVIGATE",
         scope: Scope::Global,
         defaults: &["/"],
+    },
+    ActionSpec {
+        action: Action::FilterList,
+        id: "filter_list",
+        label: "Filter list",
+        hint: "Type a fuzzy query that narrows the focused panel's list; Enter parks it, Esc clears then closes",
+        group: "NAVIGATE",
+        scope: Scope::Global,
+        defaults: &["ctrl+f"],
+    },
+    ActionSpec {
+        action: Action::CycleSort,
+        id: "cycle_sort",
+        label: "Cycle list sort",
+        hint: "Cycle how the sidebar lists order rows: recent → name → created (pins always float first)",
+        group: "NAVIGATE",
+        scope: Scope::Global,
+        defaults: &["shift+s"],
+    },
+    ActionSpec {
+        action: Action::TogglePin,
+        id: "toggle_pin",
+        label: "Pin / unpin",
+        hint: "Pin the selected workspace, worktree or session; pins float to the top of their list (pin as many as you like)",
+        group: "NAVIGATE",
+        scope: Scope::Global,
+        defaults: &["p"],
     },
     // ---- PROJECTS & WORKTREES ----
     ActionSpec {
