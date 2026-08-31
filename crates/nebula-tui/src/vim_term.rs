@@ -43,6 +43,24 @@ pub struct VimTerm {
     dsr: nebula_core::dsr::DsrScanner,
 }
 
+/// The `LANG` a Windows editor child needs, or `None` when the environment
+/// already names a locale.
+///
+/// Git for Windows ships MSYS builds of vim and nano, which take their
+/// charset from the locale. A PowerShell (or Explorer-launched) environment
+/// states none, and vim then starts at `encoding=latin1` with
+/// `fileencodings=ucs-bom`: every UTF-8 file opens as mojibake, non-ASCII
+/// bytes painted as `~B` control notation. Only a vacuum is filled — an
+/// `LC_ALL`/`LC_CTYPE`/`LANG` the user set is their answer, non-UTF-8
+/// included.
+#[cfg(windows)]
+fn utf8_locale_fallback(lookup: impl Fn(&str) -> Option<String>) -> Option<&'static str> {
+    ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .all(|var| lookup(var).is_none())
+        .then_some("C.UTF-8")
+}
+
 impl VimTerm {
     /// Spawn `editor +<line> <file>` in the checkout. `Err` is a user-facing
     /// flash message.
@@ -109,6 +127,12 @@ impl VimTerm {
         cmd.args(args);
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
+        // Git for Windows ships MSYS builds of vim and nano, which take
+        // their charset from the locale — see `utf8_locale_fallback`.
+        #[cfg(windows)]
+        if let Some(lang) = utf8_locale_fallback(nebula_core::env::non_empty) {
+            cmd.env("LANG", lang);
+        }
 
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
             let mut msg = format!("failed to launch {program}: {e}");
@@ -328,5 +352,51 @@ mod tests {
         .map(|_| ())
         .unwrap_err();
         assert!(err.contains("failed to launch"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn only_an_unstated_locale_gets_the_utf8_fallback() {
+        assert_eq!(utf8_locale_fallback(|_| None), Some("C.UTF-8"));
+        for stated in ["LC_ALL", "LC_CTYPE", "LANG"] {
+            let lookup = |var: &str| (var == stated).then(|| "ru_RU.CP1251".to_string());
+            assert_eq!(
+                utf8_locale_fallback(lookup),
+                None,
+                "{stated} is the user's answer"
+            );
+        }
+    }
+
+    /// The bug: with no locale in the environment, Git for Windows' vim
+    /// opens a UTF-8 file as latin1 and paints mojibake.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_utf8_file_opens_as_utf8() {
+        if utf8_locale_fallback(nebula_core::env::non_empty).is_none() {
+            return; // A stated locale owns the answer; nothing of ours runs.
+        }
+        let Some(_vim) = nebula_core::spawn::resolve_editor_program("vim") else {
+            return; // No vim on this box.
+        };
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("utf8.md"),
+            "# Что сделано
+",
+        )
+        .unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        // -u NONE: a developer vimrc setting `encoding` would mask the bug.
+        let args = ["-u", "NONE", "-N", "utf8.md"].map(String::from);
+        let mut term =
+            VimTerm::spawn_cmd("vim", &args, dir.path(), "test".into(), 80, 24, 1, tx).unwrap();
+
+        recv_until(&mut rx, &mut term, |t, _| {
+            t.parser.screen().contents().contains("Что сделано")
+        })
+        .await;
+
+        term.kill();
     }
 }
