@@ -1,6 +1,6 @@
 use crate::entities::{
-    Agent, AgentKind, AgentStatus, Entity, EntityId, Link, Project, TerminalTab, Workspace,
-    Worktree,
+    Agent, AgentKind, AgentStatus, Entity, EntityId, Link, OrphanedSession, Project, TerminalTab,
+    Workspace, Worktree,
 };
 use crate::ids::{AgentId, LinkId, ProjectId, TerminalId, WorkspaceId, WorktreeId};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 /// Bump on any breaking change to these enums. The daemon refuses mismatched
 /// clients; the client then offers a kill-and-restart of the old daemon.
-pub const PROTOCOL_VERSION: u32 = 35;
+pub const PROTOCOL_VERSION: u32 = 36;
 
 /// Max IPC frame size (length prefix sanity bound).
 pub const MAX_FRAME_LEN: u32 = 4 * 1024 * 1024;
@@ -113,6 +113,22 @@ pub enum ClientRequest {
         req_id: u64,
         id: WorktreeId,
         force: bool,
+    },
+    /// Every ORPHANED SESSION of `project`: the conversations whose Worktree
+    /// was deleted. Answered by one `OrphanedSessions`, not by deltas —
+    /// the list is read when the user opens it and is half derived from the
+    /// agent CLI's own transcript store, which nebula does not watch.
+    ListOrphanedSessions {
+        req_id: u64,
+        project: ProjectId,
+    },
+    /// Bring an ORPHANED SESSION back as a live AGENT in `worktree`. Creates
+    /// an ordinary row there carrying the old CLI session id, so the next
+    /// spawn resumes the conversation. Answered by an Ack naming the row.
+    ResumeOrphanedSession {
+        req_id: u64,
+        session_id: String,
+        worktree: WorktreeId,
     },
     CreateAgent {
         req_id: u64,
@@ -424,6 +440,11 @@ pub enum ServerEvent {
     Ack {
         req_id: u64,
         created: Option<EntityId>,
+    },
+    /// Reply to `ListOrphanedSessions`, newest first.
+    OrphanedSessions {
+        req_id: u64,
+        sessions: Vec<OrphanedSession>,
     },
     /// Reply to `EnterWorktree`: the worktree the agent now belongs to, and
     /// what that meant for its process.

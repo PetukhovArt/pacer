@@ -1019,13 +1019,17 @@ fn request_metrics(app: &mut App, out: &mut Vec<ClientRequest>) {
 }
 
 /// Queue a request that wants no follow-up when its Ack lands.
-fn send(app: &mut App, out: &mut Vec<ClientRequest>, make: impl FnOnce(u64) -> ClientRequest) {
+pub(crate) fn send(
+    app: &mut App,
+    out: &mut Vec<ClientRequest>,
+    make: impl FnOnce(u64) -> ClientRequest,
+) {
     send_with(app, out, PendingIntent::None, make);
 }
 
 /// Queue a request built around a fresh `req_id`, remembering `intent` to
 /// run when the Ack (or Error) for it arrives.
-fn send_with(
+pub(crate) fn send_with(
     app: &mut App,
     out: &mut Vec<ClientRequest>,
     intent: PendingIntent,
@@ -1701,6 +1705,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
         }
         Action::Hosts => open_hosts_picker(app),
         Action::AgentPresets => crate::preset_overlays::open_agent_presets(app),
+        Action::OrphanedSessions => crate::orphan_overlay::open(app, out),
         // Ctrl+→ still reaches the terminal pane (the counterpart of the
         // Ctrl+← escape hatch).
         Action::FocusTerminal => {
@@ -3373,6 +3378,7 @@ fn handle_overlay_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>
             }
         }
         Overlay::AgentPresets(_) => crate::preset_overlays::handle_list_key(app, key),
+        Overlay::Orphans(_) => crate::orphan_overlay::handle_key(app, key, out),
         Overlay::AgentPresetEditor(_) => crate::preset_overlays::handle_editor_key(app, key),
         Overlay::Menu(menu) => match key.code {
             // Esc in a submenu backs out one level; at the top it closes.
@@ -6257,6 +6263,10 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
         crate::preset_overlays::handle_list_mouse(app, mouse, mouse_pos);
         return;
     }
+    if matches!(&app.overlay, Some(Overlay::Orphans(_))) {
+        crate::orphan_overlay::handle_mouse(app, mouse, mouse_pos, out);
+        return;
+    }
     // Hosts picker: the wheel moves the selection, a click on a row connects
     // (the context-menu convention — rows are actions, not editable items),
     // a click outside the modal closes; everything else is swallowed.
@@ -7036,6 +7046,12 @@ fn handle_server_event(app: &mut App, event: ServerEvent, out: &mut Vec<ClientRe
             refresh_palette(app);
             refresh_workspace_picker(app);
             app.dirty = true;
+        }
+        ServerEvent::OrphanedSessions { req_id, sessions } => {
+            // Answered with OrphanedSessions, not Ack — clear the pending
+            // slot by hand, the way Metrics does.
+            app.pending.remove(&req_id);
+            crate::orphan_overlay::receive(app, sessions);
         }
         ServerEvent::Metrics { req_id, snapshot } => {
             // Answered with Metrics, not Ack — clear the pending slot by hand.

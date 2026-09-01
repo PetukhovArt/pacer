@@ -4,6 +4,7 @@ pub mod hooks;
 pub mod launch;
 pub mod lifecycle;
 pub mod metrics;
+pub mod orphans;
 pub mod pty;
 pub mod registry;
 pub mod server;

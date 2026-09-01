@@ -43,7 +43,7 @@ const HOSTS_W: u16 = 64;
 /// rather than the list.
 const SPLIT_PANE_LAYOUT_MIN: u16 = 20;
 /// What every filtered list says when nothing survives the filter.
-const NO_MATCHES: &str = "no matches";
+pub(crate) const NO_MATCHES: &str = "no matches";
 
 /// Columns the tree-browser preview must keep for the file text itself
 /// before a line-number gutter is worth drawing.
@@ -595,6 +595,10 @@ fn draw_overlay(f: &mut Frame, app: &mut App) {
                     &[
                         (Act(&[New]), "new agent (pick CLI kind)"),
                         (Act(&[AgentPresets]), "agent presets: launch with a task"),
+                        (
+                            Act(&[OrphanedSessions]),
+                            "orphaned sessions: resume one whose worktree is gone",
+                        ),
                         (Act(&[NewTerminal]), "new shell terminal"),
                         (Act(&[Activate]), "attach session / open link"),
                         (Act(&[Rename]), "rename agent / edit link URL"),
@@ -1602,6 +1606,7 @@ fn draw_overlay(f: &mut Frame, app: &mut App) {
             }
         }
         Overlay::AgentPresets(view) => crate::preset_overlays::draw_list(f, app, &view, th),
+        Overlay::Orphans(view) => crate::orphan_overlay::draw(f, app, &view, th),
         Overlay::AgentPresetEditor(editor) => {
             crate::preset_overlays::draw_editor(f, app, &editor, th)
         }
@@ -1796,7 +1801,7 @@ fn centered_rect_pct(frame: Rect, pct_w: u16, pct_h: u16) -> Rect {
 
 /// A modal's inner rect minus its first row — the list under an always-on
 /// filter input, which every fuzzy overlay lays out the same way.
-fn below_first_row(inner: Rect) -> Rect {
+pub(crate) fn below_first_row(inner: Rect) -> Rect {
     Rect {
         y: inner.y + 1,
         height: inner.height.saturating_sub(1),
@@ -1891,7 +1896,7 @@ pub(crate) fn modal_block<'a>(title: impl Into<std::borrow::Cow<'a, str>>, th: T
 
 /// Clear `area` and draw a [`modal_block`] over it, returning the inner
 /// rect the modal's content goes in.
-fn render_modal_frame<'a>(
+pub(crate) fn render_modal_frame<'a>(
     f: &mut Frame,
     area: Rect,
     title: impl Into<std::borrow::Cow<'a, str>>,
@@ -4328,7 +4333,12 @@ pub(crate) fn input_spans(
 
 /// The always-live search row every fuzzy overlay shares: a dim placeholder
 /// until something is typed, then the field itself.
-fn search_line(input: &TextInput, placeholder: &str, area: Rect, th: Theme) -> Line<'static> {
+pub(crate) fn search_line(
+    input: &TextInput,
+    placeholder: &str,
+    area: Rect,
+    th: Theme,
+) -> Line<'static> {
     if input.is_empty() {
         return Line::from(Span::styled(
             placeholder.to_string(),
@@ -4387,8 +4397,9 @@ fn rows_rect(inner: Rect, i: usize, height: u16) -> Option<Rect> {
     })
 }
 
-/// Human-readable byte count for the metrics modal.
-fn fmt_mem(bytes: u64) -> String {
+/// Human-readable byte count: the METRICS modal's memory figures and the
+/// transcript sizes in the ORPHANED SESSIONS list.
+pub(crate) fn fmt_mem(bytes: u64) -> String {
     const KB: f64 = 1024.0;
     const MB: f64 = KB * 1024.0;
     const GB: f64 = MB * 1024.0;

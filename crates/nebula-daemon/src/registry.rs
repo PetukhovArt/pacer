@@ -13,8 +13,8 @@ use nebula_core::paths;
 use nebula_core::spawn::NoWindow;
 use nebula_core::{
     Agent, AgentId, AgentKind, AgentStatus, EnterOutcome, Entity, EntityId, Link, LinkId,
-    PrewarmInfo, Project, ProjectId, ServerEvent, SessionRef, TerminalId, TerminalTab, Workspace,
-    WorkspaceId, Worktree, WorktreeId, MAX_CLOUD_PROMPT_BYTES,
+    OrphanedSession, PrewarmInfo, Project, ProjectId, ServerEvent, SessionRef, TerminalId,
+    TerminalTab, Workspace, WorkspaceId, Worktree, WorktreeId, MAX_CLOUD_PROMPT_BYTES,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -825,11 +825,106 @@ impl Daemon {
         self.kill_sessions_in(std::slice::from_ref(id), &agents, &terminals);
 
         git::remove_worktree(&project.repo_path, &worktree.path, force).await?;
+        // Keep the resumable conversations before the FK cascade takes the
+        // agent rows: their CLI session ids are the only way back into
+        // transcripts the agent CLI itself never deletes. A failure here
+        // costs reachability, not the delete the user asked for.
+        if let Err(e) = self.store.orphan_sessions_in_worktree(id) {
+            tracing::warn!(worktree = %id, error = %e, "keeping orphaned sessions failed");
+        }
         self.store.delete_worktree(id)?;
         self.broadcast(ServerEvent::EntityRemoved {
             id: EntityId::Worktree(id.clone()),
         });
         Ok(())
+    }
+
+    // ---- orphaned sessions ----
+
+    /// Every ORPHANED SESSION of `project`, newest first.
+    pub fn list_orphaned_sessions(&self, project: &ProjectId) -> Result<Vec<OrphanedSession>> {
+        let (project, live) = self.project_with_worktrees(project)?;
+        crate::orphans::list(&self.store, &project, &live)
+    }
+
+    /// Bring an ORPHANED SESSION back as an AGENT in `worktree_id`.
+    ///
+    /// The row created is an ordinary one carrying the old CLI session id,
+    /// so it resumes on this spawn and behaves like any other session after
+    /// it — including archiving, restarting, and being orphaned again if
+    /// this worktree is deleted in its turn.
+    pub async fn resume_orphaned_session(
+        self: &Arc<Self>,
+        session_id: &str,
+        worktree_id: &WorktreeId,
+    ) -> Result<EntityId> {
+        let worktree = self
+            .store
+            .get_worktree(worktree_id)?
+            .context("worktree not found")?;
+        let (project, live) = self.project_with_worktrees(&worktree.project_id)?;
+        let orphan = crate::orphans::list(&self.store, &project, &live)?
+            .into_iter()
+            .find(|o| o.session_id == session_id)
+            .context("that session is not on record any more")?;
+        if !self.cli_available_for_create(orphan.kind).await {
+            bail!("{}", cli_missing_message(orphan.kind));
+        }
+        let agent = Agent {
+            id: AgentId::generate(),
+            worktree_id: worktree.id.clone(),
+            name: orphan.name.clone(),
+            status: AgentStatus::Fresh,
+            archived: false,
+            archived_at: 0,
+            unseen: false,
+            kind: orphan.kind,
+            model: None,
+            effort: None,
+            session_id: Some(orphan.session_id.clone()),
+            cloud_session_id: None,
+            sort_order: 0,
+            status_changed_at: epoch_ms(),
+            alive: false,
+            cloud_mirroring: false,
+        };
+        self.store.insert_agent(&agent)?;
+        let notice = orphan_resume_prompt(&orphan, &worktree);
+        let notice = (orphan.kind == AgentKind::Claude).then_some(notice.as_str());
+        let spawned = self.spawn_agent_session_with(
+            &agent,
+            &worktree,
+            DEFAULT_COLS,
+            DEFAULT_ROWS,
+            None,
+            notice,
+        );
+        self.rollback_agent_on_spawn_error(&agent.id, spawned)?;
+        // Stamped, not deleted: `arm_resume_fallback` may still find the CLI
+        // has dropped the conversation, and a row deleted here would make
+        // that loss final.
+        if let Err(e) = self.store.set_orphan_resumed(&orphan.session_id) {
+            tracing::warn!(error = %e, "stamping the resumed orphan failed");
+        }
+        let mut broadcast_agent = agent.clone();
+        broadcast_agent.alive = true;
+        self.broadcast(ServerEvent::EntityUpserted {
+            entity: Entity::Agent(broadcast_agent),
+        });
+        Ok(EntityId::Agent(agent.id))
+    }
+
+    /// A project and the checkouts it currently has, the pair every orphan
+    /// lookup needs: the scan can only call a conversation orphaned by
+    /// knowing which checkouts still exist.
+    fn project_with_worktrees(&self, id: &ProjectId) -> Result<(Project, Vec<Worktree>)> {
+        let project = self.store.get_project(id)?.context("project not found")?;
+        let (_, worktrees, _, _) = self.store.load_tree()?;
+        let live = worktrees
+            .into_iter()
+            .filter(|w| w.project_id == project.id)
+            .collect();
+        Ok((project, live))
     }
 
     /// Reconcile a project's worktree rows with `git worktree list` so
@@ -2671,6 +2766,32 @@ fn relocation_prompt(worktree: &Worktree) -> String {
     format!(
         "[nebula] This session now runs inside the worktree `{}` at {} — your working \
          directory is that checkout. Continue the user's most recent request there.",
+        worktree.branch,
+        worktree.path.display()
+    )
+}
+
+/// The prompt an ORPHANED SESSION is resumed with. A relocation moves a
+/// session to a checkout that exists; this moves one whose checkout is
+/// *gone*, so every path in the conversation's own history now points at
+/// nothing, and the branch under it is usually a different one. Both are
+/// named, so the agent re-reads instead of trusting what it recalls.
+///
+/// Claude only, for the same reason `relocation_prompt` is: whether `codex
+/// resume` and `cursor-agent --resume` take a trailing prompt is unverified.
+fn orphan_resume_prompt(orphan: &OrphanedSession, worktree: &Worktree) -> String {
+    let was = if orphan.branch.is_empty() {
+        "an unknown branch".to_string()
+    } else {
+        format!("branch `{}`", orphan.branch)
+    };
+    format!(
+        "[nebula] This conversation ran in {} at {}, a worktree that has since been deleted — \
+         the paths in your own history are not on disk any more. It now runs in `{}` at {}. \
+         Re-read any file before acting on what you remember of it, and tell the user which \
+         branch you are on before you change anything.",
+        was,
+        orphan.worktree_path.display(),
         worktree.branch,
         worktree.path.display()
     )

@@ -4,8 +4,9 @@
 
 use anyhow::{Context, Result};
 use nebula_core::{
-    Agent, AgentId, AgentKind, AgentStatus, Link, LinkId, PrSeen, Project, ProjectId, TerminalId,
-    TerminalTab, Workspace, WorkspaceId, Worktree, WorktreeId, DEFAULT_WORKSPACE_ID,
+    Agent, AgentId, AgentKind, AgentStatus, Link, LinkId, OrphanedSession, PrSeen, Project,
+    ProjectId, TerminalId, TerminalTab, Workspace, WorkspaceId, Worktree, WorktreeId,
+    DEFAULT_WORKSPACE_ID,
 };
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
@@ -230,6 +231,26 @@ const MIGRATIONS: &[&str] = &[
     // system prompt after a daemon restart or RESUME.
     "
     ALTER TABLE agents ADD COLUMN pr_url TEXT;
+    ",
+    // 23: ORPHANED SESSIONS. Deleting a worktree cascades its agents away,
+    // and the CLI session id went with them — the one key to a conversation
+    // whose transcript the agent CLI still holds. Rows are copied here just
+    // before that cascade. Keyed by the session id (that is what a resume
+    // needs, and what the CLI's own transcript agrees on) and hung off the
+    // project, not the worktree: the worktree is exactly the thing that
+    // just stopped existing.
+    "
+    CREATE TABLE orphaned_sessions (
+      session_id    TEXT PRIMARY KEY,
+      project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      kind          TEXT NOT NULL,
+      name          TEXT NOT NULL,
+      branch        TEXT NOT NULL,
+      worktree_path TEXT NOT NULL,
+      created_at    INTEGER NOT NULL,
+      orphaned_at   INTEGER NOT NULL,
+      resumed_at    INTEGER NOT NULL DEFAULT 0
+    );
     ",
 ];
 
@@ -685,6 +706,65 @@ impl Store {
         Ok(())
     }
 
+    // ---- orphaned sessions ----
+
+    /// Copy every resumable AGENT of `worktree_id` into `orphaned_sessions`.
+    /// Call it *before* deleting the worktree: the FK cascade takes the
+    /// agent rows, and with them the only record of their CLI session ids.
+    ///
+    /// Agents with no session id are skipped — a conversation the CLI never
+    /// reported cannot be resumed, so a row for it would only be a tombstone
+    /// the user could click and get nothing from. Returns how many were kept.
+    pub fn orphan_sessions_in_worktree(&self, worktree_id: &WorktreeId) -> Result<usize> {
+        let kept = self.conn.lock().unwrap().execute(
+            "INSERT OR REPLACE INTO orphaned_sessions
+               (session_id, project_id, kind, name, branch, worktree_path,
+                created_at, orphaned_at, resumed_at)
+             SELECT a.claude_session_id, w.project_id, a.kind, a.name, w.branch,
+                    w.path, a.created_at, ?2, 0
+             FROM agents a JOIN worktrees w ON w.id = a.worktree_id
+             WHERE a.worktree_id = ?1 AND a.claude_session_id IS NOT NULL",
+            params![worktree_id.as_str(), now_ms()],
+        )?;
+        Ok(kept)
+    }
+
+    /// The project's ORPHANED SESSIONS, newest first. `transcript_bytes` is
+    /// left None: the store knows the conversation existed, not whether the
+    /// CLI still holds its transcript — that is the disk scan's answer.
+    pub fn load_orphaned_sessions(&self, project_id: &ProjectId) -> Result<Vec<OrphanedSession>> {
+        let conn = self.conn.lock().unwrap();
+        let rows = conn
+            .prepare(&format!(
+                "SELECT {ORPHAN_COLUMNS} FROM orphaned_sessions
+                 WHERE project_id = ?1 ORDER BY orphaned_at DESC, session_id"
+            ))?
+            .query_map(params![project_id.as_str()], row_to_orphan)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    pub fn get_orphaned_session(&self, session_id: &str) -> Result<Option<OrphanedSession>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {ORPHAN_COLUMNS} FROM orphaned_sessions WHERE session_id = ?1"
+        ))?;
+        let mut rows = stmt.query(params![session_id])?;
+        Ok(rows.next()?.map(row_to_orphan).transpose()?)
+    }
+
+    /// Stamp an ORPHANED SESSION as brought back. The row is kept, not
+    /// deleted: `arm_resume_fallback` can still decide the CLI has dropped
+    /// the conversation and fall back to a cold start, and a row already
+    /// deleted by then would make that loss permanent and unrepeatable.
+    pub fn set_orphan_resumed(&self, session_id: &str) -> Result<()> {
+        self.conn.lock().unwrap().execute(
+            "UPDATE orphaned_sessions SET resumed_at = ?2 WHERE session_id = ?1",
+            params![session_id, now_ms()],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_agent(&self, id: &AgentId) -> Result<()> {
         self.delete_by_id("agents", id.as_str())
     }
@@ -931,6 +1011,8 @@ const AGENT_COLUMNS: &str = "id, worktree_id, name, status, archived, kind, \
                              archived_at, unseen, cloud_session_id";
 const TERMINAL_COLUMNS: &str = "id, worktree_id, name, sort_order";
 const LINK_COLUMNS: &str = "id, worktree_id, url, sort_order";
+const ORPHAN_COLUMNS: &str =
+    "session_id, project_id, kind, name, branch, worktree_path,      created_at, orphaned_at";
 
 fn row_to_workspace(r: &rusqlite::Row) -> rusqlite::Result<Workspace> {
     Ok(Workspace {
@@ -994,6 +1076,23 @@ fn row_to_terminal(r: &rusqlite::Row) -> rusqlite::Result<TerminalTab> {
         name: r.get(2)?,
         sort_order: r.get(3)?,
         alive: false,
+    })
+}
+
+/// `transcript_bytes` is not a column: whether the agent CLI still holds
+/// the conversation is disk state, filled in by the orphan scan after the
+/// read, the way the registry fills in an Agent's `alive`.
+fn row_to_orphan(r: &rusqlite::Row) -> rusqlite::Result<OrphanedSession> {
+    Ok(OrphanedSession {
+        session_id: r.get(0)?,
+        project_id: ProjectId(r.get(1)?),
+        kind: AgentKind::parse(&r.get::<_, String>(2)?).unwrap_or_default(),
+        name: r.get(3)?,
+        branch: r.get(4)?,
+        worktree_path: PathBuf::from(r.get::<_, String>(5)?),
+        created_at: r.get(6)?,
+        orphaned_at: r.get(7)?,
+        transcript_bytes: None,
     })
 }
 
@@ -1267,7 +1366,10 @@ mod tests {
             .unwrap()
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 22);
+        // "as far as the migrations go", not a literal — the assertion is
+        // that opening an old database runs every one of them, and pinning
+        // the number here would fail on the next migration instead.
+        assert_eq!(version, MIGRATIONS.len() as i64);
         drop(store);
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{}", path.display(), suffix));
@@ -1790,5 +1892,125 @@ mod tests {
         assert!(flip(&c, AgentStatus::Finished));
         store.sweep_disconnected().unwrap();
         assert!(unseen(&c), "still waiting to be read after the restart");
+    }
+
+    /// A worktree row and one agent in it, the setup every orphan test wants.
+    fn project_with_agent(
+        store: &Store,
+        session_id: Option<&str>,
+    ) -> (ProjectId, WorktreeId, AgentId) {
+        let project = Project {
+            workspace_id: Default::default(),
+            id: ProjectId::generate(),
+            name: "demo".into(),
+            repo_path: "/tmp/demo".into(),
+            sort_order: 0,
+        };
+        store.insert_project(&project).unwrap();
+        let worktree = Worktree {
+            id: WorktreeId::generate(),
+            project_id: project.id.clone(),
+            path: "/tmp/demo-worktrees/feat".into(),
+            branch: "feat".into(),
+            is_main: false,
+            sort_order: 0,
+        };
+        store.insert_worktree(&worktree).unwrap();
+        let agent = Agent {
+            id: AgentId::generate(),
+            worktree_id: worktree.id.clone(),
+            name: "hook-status".into(),
+            status: AgentStatus::Finished,
+            archived: false,
+            archived_at: 0,
+            unseen: false,
+            kind: AgentKind::Codex,
+            model: None,
+            effort: None,
+            session_id: session_id.map(str::to_string),
+            cloud_session_id: None,
+            sort_order: 0,
+            status_changed_at: 0,
+            alive: false,
+            cloud_mirroring: false,
+        };
+        store.insert_agent(&agent).unwrap();
+        (project.id, worktree.id, agent.id)
+    }
+
+    /// The whole point of the table: the agent row is cascade-deleted with
+    /// its worktree, and the CLI session id survives that anyway, together
+    /// with enough context to show a row the user can recognise.
+    #[test]
+    fn deleting_a_worktree_keeps_its_resumable_sessions() {
+        let store = Store::open_in_memory().unwrap();
+        let (project_id, worktree_id, _) = project_with_agent(&store, Some("sid-1"));
+
+        store.orphan_sessions_in_worktree(&worktree_id).unwrap();
+        store.delete_worktree(&worktree_id).unwrap();
+
+        let (_, worktrees, agents, _) = store.load_tree().unwrap();
+        assert!(worktrees.is_empty(), "the worktree is gone");
+        assert!(agents.is_empty(), "the cascade took the agent row");
+
+        let orphans = store.load_orphaned_sessions(&project_id).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].session_id, "sid-1");
+        assert_eq!(orphans[0].branch, "feat");
+        assert_eq!(orphans[0].name, "hook-status");
+        assert_eq!(orphans[0].kind, AgentKind::Codex, "not a Claude-only table");
+        assert_eq!(
+            orphans[0].worktree_path,
+            PathBuf::from("/tmp/demo-worktrees/feat")
+        );
+        assert!(orphans[0].orphaned_at > 0, "stamped when it was kept");
+        assert!(
+            orphans[0].transcript_bytes.is_none(),
+            "whether a transcript survives is the disk scan's answer, not a column"
+        );
+    }
+
+    /// An agent the CLI never reported a session for cannot be resumed, so
+    /// keeping a row for it would only offer the user a dead end.
+    #[test]
+    fn a_session_with_no_cli_id_is_not_kept() {
+        let store = Store::open_in_memory().unwrap();
+        let (project_id, worktree_id, _) = project_with_agent(&store, None);
+
+        assert_eq!(store.orphan_sessions_in_worktree(&worktree_id).unwrap(), 0);
+        store.delete_worktree(&worktree_id).unwrap();
+        assert!(store
+            .load_orphaned_sessions(&project_id)
+            .unwrap()
+            .is_empty());
+    }
+
+    /// Resuming stamps the row instead of removing it: the spawn can still
+    /// discover the CLI has dropped the conversation and fall back to a cold
+    /// start, and a row deleted here would make that loss unrepeatable.
+    #[test]
+    fn resuming_an_orphan_keeps_the_row() {
+        let store = Store::open_in_memory().unwrap();
+        let (project_id, worktree_id, _) = project_with_agent(&store, Some("sid-1"));
+        store.orphan_sessions_in_worktree(&worktree_id).unwrap();
+        store.delete_worktree(&worktree_id).unwrap();
+
+        store.set_orphan_resumed("sid-1").unwrap();
+
+        assert_eq!(store.load_orphaned_sessions(&project_id).unwrap().len(), 1);
+        assert!(store.get_orphaned_session("sid-1").unwrap().is_some());
+    }
+
+    /// The rows hang off the project, so removing the project takes them —
+    /// nothing is left pointing at a repo nebula no longer knows.
+    #[test]
+    fn orphaned_sessions_go_with_their_project() {
+        let store = Store::open_in_memory().unwrap();
+        let (project_id, worktree_id, _) = project_with_agent(&store, Some("sid-1"));
+        store.orphan_sessions_in_worktree(&worktree_id).unwrap();
+
+        store.delete_project(&project_id).unwrap();
+
+        assert!(store.get_orphaned_session("sid-1").unwrap().is_none());
     }
 }

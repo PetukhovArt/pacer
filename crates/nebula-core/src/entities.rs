@@ -235,3 +235,36 @@ pub enum EntityId {
     Terminal(TerminalId),
     Link(LinkId),
 }
+
+/// A Session whose Worktree was deleted: the tree row is gone, but the CLI
+/// session id it was resumable by survives, so the conversation can be
+/// resumed in a Worktree that still exists.
+///
+/// Keyed by that session id rather than the old `AgentId`: the id is what a
+/// resume actually needs, and it is the one thing the store row and the
+/// CLI's own on-disk transcript agree on, so the same conversation found in
+/// both places is one Orphaned Session, not two.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrphanedSession {
+    /// The CLI session id (`claude --resume <id>` and friends).
+    pub session_id: String,
+    pub project_id: ProjectId,
+    pub kind: AgentKind,
+    /// The session's name when it was orphaned; for a row recovered from a
+    /// transcript, the title the CLI kept, falling back to the branch.
+    pub name: String,
+    /// The branch of the Worktree the conversation ran in.
+    pub branch: String,
+    /// Where that Worktree used to be. Kept for the resume notice: the
+    /// agent's own history is full of paths under it.
+    pub worktree_path: PathBuf,
+    /// Epoch ms the conversation started; 0 when only the transcript is
+    /// left and it carries no usable timestamp.
+    pub created_at: i64,
+    /// Epoch ms the Worktree went away. For a row recovered from disk this
+    /// is the transcript's last write — the closest thing to it on record.
+    pub orphaned_at: i64,
+    /// Size of the CLI's transcript, or None when the session is known only
+    /// from the store and no transcript was found for it.
+    pub transcript_bytes: Option<u64>,
+}

@@ -1375,6 +1375,8 @@ pub enum Overlay {
     Hosts(HostsView),
     /// `e` in the SESSIONS PANEL: the AGENT PRESETS list.
     AgentPresets(crate::preset_overlays::AgentPresetsView),
+    /// The ORPHANED SESSIONS list: conversations whose worktree was deleted.
+    Orphans(crate::orphan_overlay::OrphansView),
     /// The PRESET EDITOR form behind the list's `a` / `e`.
     AgentPresetEditor(crate::preset_overlays::AgentPresetEditor),
 }

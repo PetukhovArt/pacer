@@ -83,6 +83,7 @@ pub enum Action {
     DeleteAll,
     /// The AGENT PRESETS list: saved launch definitions for the SESSIONS PANEL.
     AgentPresets,
+    OrphanedSessions,
     // files
     FindFile,
     Grep,
@@ -365,6 +366,15 @@ pub const ACTIONS: &[ActionSpec] = &[
         group: "SESSIONS",
         scope: Scope::Global,
         defaults: &["e"],
+    },
+    ActionSpec {
+        action: Action::OrphanedSessions,
+        id: "orphaned_sessions",
+        label: "Orphaned sessions",
+        hint: "Conversations whose worktree was deleted; Enter resumes one in the selected worktree",
+        group: "SESSIONS",
+        scope: Scope::Global,
+        defaults: &["shift+o"],
     },
     // ---- FILES ----
     ActionSpec {

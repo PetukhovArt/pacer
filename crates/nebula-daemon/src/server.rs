@@ -525,6 +525,33 @@ async fn handle_client(
                     };
                     let _ = out_tx.send(ev).await;
                 }
+                ClientRequest::ListOrphanedSessions { req_id, project } => {
+                    let ev = match daemon.list_orphaned_sessions(&project) {
+                        Ok(sessions) => ServerEvent::OrphanedSessions { req_id, sessions },
+                        Err(e) => ServerEvent::Error {
+                            req_id: Some(req_id),
+                            message: format!("{e:#}"),
+                        },
+                    };
+                    let _ = out_tx.send(ev).await;
+                }
+                ClientRequest::ResumeOrphanedSession {
+                    req_id,
+                    session_id,
+                    worktree,
+                } => {
+                    // Probing the agent CLI and booting it takes as long as
+                    // any create does; keep the request loop free.
+                    let daemon = daemon.clone();
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        let created = daemon
+                            .resume_orphaned_session(&session_id, &worktree)
+                            .await
+                            .map(Some);
+                        reply(&out_tx, req_id, created).await;
+                    });
+                }
                 ClientRequest::ArchiveAgent { req_id, id } => {
                     reply_done(&out_tx, req_id, daemon.archive_agent(&id)).await;
                 }
