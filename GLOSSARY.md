@@ -64,6 +64,10 @@ A row (Workspace, Project, Worktree, Agent, terminal tab) the user marked with `
 The state of an Agent whose PTY is released and whose row is moved to the ARCHIVED group. Coming back resumes the conversation.
 _Avoid_: deletion (Archive is reversible)
 
+**Orphaned Session**
+A Session whose Worktree was deleted. The row is gone from the tree, but its CLI session id is kept, so the conversation can be Resumed in a Worktree that still exists. Different from Archive (the Worktree is still there, and the row comes back where it was) and from Disconnected (the PTY died, the row did not).
+_Avoid_: archived session, lost session, dead session
+
 ## Processes
 
 **Daemon**
