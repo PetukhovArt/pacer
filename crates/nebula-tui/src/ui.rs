@@ -2085,14 +2085,17 @@ fn status_dot(status: Option<AgentStatus>, unseen: bool, th: Theme) -> Span<'sta
     }
 }
 
-/// Columns an OPEN PRS row spends on its status pair: two glyphs and the
-/// space that separates them from the title.
-const STATUS_W: usize = 3;
+/// Columns an OPEN PRS row spends on its status pair: two glyphs, the gap
+/// between them, and the space that separates them from the title.
+const STATUS_W: usize = 4;
 
 /// The reviewers-then-CI glyph pair an OPEN PRS row leads with, or nothing
 /// at all when the forge had nothing to say about either — a repo that
-/// requires no review and runs no pipeline gets its three columns back
-/// rather than a row of placeholders.
+/// requires no review and runs no pipeline gets its columns back rather
+/// than a row of placeholders.
+///
+/// Each glyph is its own mark and gets its own column: side by side (`○●`)
+/// they read as one smudge, and the row's job is to say two things.
 ///
 /// Within a row, a half the forge is quiet about still holds its cell, so
 /// the two glyphs never swap places and the titles down the group stay on
@@ -2118,6 +2121,7 @@ fn pr_status_spans(pr: &crate::pull_request::OpenPr, th: Theme) -> Vec<Span<'sta
     };
     vec![
         Span::styled(review.0, Style::default().fg(review.1)),
+        Span::raw(" "),
         Span::styled(ci.0, Style::default().fg(ci.1)),
         Span::raw(" "),
     ]
@@ -2960,8 +2964,8 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 let badge_len = badge.as_ref().map_or(0, |b| b.chars().count());
                 // Two status cells sit between the arrow and the number:
                 // reviewers first, then CI, in the order you'd ask about
-                // them. They cost the title three columns, so they're only
-                // there when this project has something to put in them.
+                // them. They cost the title `STATUS_W` columns, so they're
+                // only there when this project has something to put in them.
                 let status = pr_status_spans(pr, th);
                 let status_w = if status.is_empty() { 0 } else { STATUS_W };
                 let label_max = (inner.width as usize)

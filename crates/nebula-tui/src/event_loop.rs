@@ -8934,7 +8934,8 @@ mod tests {
     /// Each row leads with two status cells — reviewers, then CI — so the
     /// group answers "can this be merged?" without opening anything. Both
     /// halves keep their cell even when only one has an answer, which is
-    /// what keeps the titles on one column down the group.
+    /// what keeps the titles on one column down the group, and a blank
+    /// column keeps them apart so the pair never reads as one mark.
     #[test]
     fn open_pr_rows_lead_with_their_review_and_ci_status() {
         use crate::pull_request::{Approval, Checks};
@@ -8970,7 +8971,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("no {needle} row:\n{text}"))
                 .to_string()
         };
-        for (number, glyphs) in [(9, "✓●"), (8, "✗●"), (7, "○◐"), (6, " ●")] {
+        for (number, glyphs) in [(9, "✓ ●"), (8, "✗ ●"), (7, "○ ◐"), (6, "  ●")] {
             let row = row(&format!("#{number} "));
             assert!(
                 row.contains(&format!("{glyphs} #{number}")),
