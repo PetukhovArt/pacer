@@ -1863,16 +1863,18 @@ impl AttachedTerm {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortMode {
     /// Most recently interacted with first (the historical behaviour).
-    #[default]
     Recent,
     /// Alphabetical by name / branch.
     Name,
-    /// Tree order — the order rows were created in.
+    /// Tree order — the order rows were created in. The default: a list
+    /// that reorders itself while you work is a list you have to re-read,
+    /// so `recent` and `name` are opted into.
+    #[default]
     Created,
 }
 
 impl SortMode {
-    /// Resolve the `list_sort` SETTING; unknown words mean `Created`, so a
+    /// Resolve one `sort_*` SETTING; unknown words mean `Created`, so a
     /// hand-edited config can't scramble the lists.
     pub fn from_name(name: &str) -> SortMode {
         match name.trim().to_ascii_lowercase().as_str() {
@@ -1881,6 +1883,55 @@ impl SortMode {
             _ => SortMode::Created,
         }
     }
+}
+
+/// How each sidebar column orders its rows — one [`SortMode`] per panel.
+///
+/// The sort is a property of the column, not of the app: ⇧S sorts the
+/// column the cursor is in, so Projects can stand in creation order while
+/// Sessions runs newest-first. Mirrors the `sort_*` settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SortModes {
+    pub projects: SortMode,
+    pub worktrees: SortMode,
+    pub sessions: SortMode,
+}
+
+impl SortModes {
+    /// The same mode in every column — what a caller with one order in
+    /// mind (a test, a config predating the split) means.
+    pub fn all(mode: SortMode) -> Self {
+        Self {
+            projects: mode,
+            worktrees: mode,
+            sessions: mode,
+        }
+    }
+}
+
+/// What the Worktrees cursor is resting on: the panel lists the project's
+/// checkouts and then its open pull requests, so the row is one or the
+/// other.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorktreeRowKey {
+    Checkout(WorktreeId),
+    /// A pull request's url — the one field a list refresh preserves.
+    Pr(String),
+}
+
+/// What the three sidebar cursors are resting on, named by identity rather
+/// than by index.
+///
+/// A cursor is an index into a list that gets rebuilt every frame, so
+/// anything that reorders a list — a sort change, a pin, a refreshed
+/// pull-request list — slides every cursor onto whatever row inherited its
+/// index. Take these before the reorder, hand them back after, and the
+/// cursors stay on the rows the user put them on.
+#[derive(Debug, Default)]
+pub struct CursorAnchors {
+    project: Option<ProjectId>,
+    worktree: Option<WorktreeRowKey>,
+    session: Option<RowKey>,
 }
 
 /// An inline list filter (`Ctrl+F`): fuzzy query typed over one sidebar
@@ -2301,9 +2352,14 @@ pub struct App {
     /// tab position (the 1–9 shortcuts are positional) and just wears the
     /// pin mark. Persisted in the daemon's `ui_state` blob.
     pub pinned: std::collections::BTreeSet<String>,
-    /// The `list_sort` setting: how the sidebar lists order their rows.
+    /// The `sort_*` settings: how each sidebar column orders its rows.
     /// Mirrors the config, refreshed at startup and on a settings change.
-    pub sort_mode: SortMode,
+    pub sort: SortModes,
+    /// The `pr_list_filter` setting the open-PR lists on screen were
+    /// fetched under. Mirrors the config so a change to it can retire
+    /// those lists at once instead of leaving the old rows up until the
+    /// next poll happens to come due.
+    pub pr_filter: crate::pull_request::ListFilter,
     /// Inline fuzzy filter over one sidebar panel (`Ctrl+F`), if any.
     pub list_filter: Option<ListFilter>,
 }
@@ -2402,7 +2458,8 @@ impl App {
             animations: true,
             focus_tint: false,
             pinned: std::collections::BTreeSet::new(),
-            sort_mode: SortMode::Created,
+            sort: SortModes::default(),
+            pr_filter: crate::pull_request::ListFilter::default(),
             list_filter: None,
         }
     }
@@ -2647,7 +2704,7 @@ impl App {
             .filter(|(_, p)| self.passes_filter(Focus::Projects, &p.name))
             .map(|(i, _)| i)
             .collect();
-        match self.sort_mode {
+        match self.sort.projects {
             SortMode::Recent => rows.sort_by_key(|i| {
                 std::cmp::Reverse(
                     project_recency(&self.tree, &self.tree.projects[*i].id, now).interacted,
@@ -2829,7 +2886,7 @@ impl App {
             .filter(|w| w.project_id == project.id)
             .filter(|w| self.passes_filter(Focus::Worktrees, &w.branch))
             .collect();
-        match self.sort_mode {
+        match self.sort.worktrees {
             SortMode::Recent => rows.sort_by_key(|w| {
                 std::cmp::Reverse(worktree_recency(&self.tree, &w.id, now).interacted)
             }),
@@ -2844,6 +2901,12 @@ impl App {
     /// The selected project's open pull requests — the group under the
     /// checkouts. Empty until the first `gh pr list` answers (or when the
     /// repo genuinely has none).
+    ///
+    /// In the forge's order, newest first, whatever the Worktrees column's
+    /// `sort_worktrees` says: these rows are a group of their own, like the
+    /// archived sessions, and the two orders the setting offers don't reach
+    /// them — a pull request has no interaction stamp to be recent by, and
+    /// its "name" is the number the forge already sorted on.
     pub fn visible_open_prs(&self) -> Vec<OpenPr> {
         self.selected_project()
             .and_then(|p| self.open_prs.get(&p.id))
@@ -2853,6 +2916,73 @@ impl App {
             .filter(|pr| self.passes_filter(Focus::Worktrees, &pr.label()))
             .cloned()
             .collect()
+    }
+
+    /// What each sidebar cursor is resting on right now — see
+    /// [`CursorAnchors`]. Costs the same three list rebuilds a draw does.
+    pub fn cursor_anchors(&self) -> CursorAnchors {
+        let worktrees = self.visible_worktrees();
+        let worktree = match worktrees.get(self.sel_worktree) {
+            Some(wt) => Some(WorktreeRowKey::Checkout(wt.id.clone())),
+            // Below the checkouts the same cursor indexes the pull
+            // requests, which are identified by url — the one field a
+            // refreshed list carries over.
+            None => self
+                .sel_worktree
+                .checked_sub(worktrees.len())
+                .and_then(|i| self.visible_open_prs().get(i).cloned())
+                .map(|pr| WorktreeRowKey::Pr(pr.url)),
+        };
+        CursorAnchors {
+            project: self.selected_project().map(|p| p.id.clone()),
+            worktree,
+            session: self.selected_session_row().map(|r| r.click_key()),
+        }
+    }
+
+    /// Put the cursors back on the rows [`CursorAnchors`] named, wherever
+    /// the lists have moved them. A row that is gone leaves its cursor
+    /// where it is: the caller reordered a list, it didn't delete anything,
+    /// and the panels' own clamps own that case.
+    ///
+    /// Left to right, because each column's list is scoped by the one
+    /// before it — the Projects cursor has to land before the worktrees
+    /// under it can be read.
+    pub fn restore_cursors(&mut self, anchors: CursorAnchors) {
+        if let Some(id) = anchors.project {
+            let found = self
+                .project_rows()
+                .iter()
+                .position(|i| self.tree.projects[*i].id == id);
+            if let Some(i) = found {
+                self.sel_project = i;
+            }
+        }
+        if let Some(key) = anchors.worktree {
+            let found = {
+                let worktrees = self.visible_worktrees();
+                match &key {
+                    WorktreeRowKey::Checkout(id) => worktrees.iter().position(|w| w.id == *id),
+                    WorktreeRowKey::Pr(url) => self
+                        .visible_open_prs()
+                        .iter()
+                        .position(|pr| pr.url == *url)
+                        .map(|i| i + worktrees.len()),
+                }
+            };
+            if let Some(i) = found {
+                self.sel_worktree = i;
+            }
+        }
+        if let Some(key) = anchors.session {
+            let found = self
+                .visible_session_rows()
+                .iter()
+                .position(|row| row.click_key() == key);
+            if let Some(i) = found {
+                self.sel_session = i;
+            }
+        }
     }
 
     /// How many rows the Worktrees panel has: the project's checkouts, then
@@ -2929,7 +3059,7 @@ impl App {
             .filter(|a| self.passes_filter(Focus::Sessions, &a.name))
             .cloned()
             .collect();
-        match self.sort_mode {
+        match self.sort.sessions {
             SortMode::Recent => rows.sort_by_key(|a| recency_key(a, now)),
             SortMode::Name => rows.sort_by_key(|a| a.name.to_lowercase()),
             SortMode::Created => {} // tree order

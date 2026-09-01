@@ -27,10 +27,12 @@ use std::io::{BufWriter, Stdout};
 use std::time::Duration;
 
 mod focus_walk;
+mod list_order;
 use focus_walk::{
     at_top_row, bar_return_target, double_tapped, enter_terminal_pane, enter_workspaces_bar,
     leave_workspaces_bar, panel_name, walk_focus_back, walk_focus_forward,
 };
+use list_order::{apply_sort, cycle_focused_sort};
 
 /// Rows the Sessions column scrolls per wheel notch — one pill's stride,
 /// so the list steps by whole rows instead of drifting half a pill.
@@ -290,10 +292,7 @@ async fn main_loop(
         tokio::sync::mpsc::unbounded_channel::<(WorktreeId, Option<PullRequest>)>();
     // The selected project's open-pull-request list, on the same off-loop
     // footing. `None` is "couldn't ask", which keeps the last good list.
-    let (prs_tx, mut prs_rx) = tokio::sync::mpsc::unbounded_channel::<(
-        nebula_core::ProjectId,
-        Option<Vec<crate::pull_request::OpenPr>>,
-    )>();
+    let (prs_tx, mut prs_rx) = tokio::sync::mpsc::unbounded_channel::<OpenPrsAnswer>();
     // One pull request's body and conversation, for the preview pane.
     let (detail_tx, mut detail_rx) =
         tokio::sync::mpsc::unbounded_channel::<(String, Option<crate::pull_request::PrDetail>)>();
@@ -435,9 +434,8 @@ async fn main_loop(
             }
             answer = prs_rx.recv() => {
                 // Never None: `prs_tx` lives as long as the loop.
-                if let Some((project, list)) = answer {
-                    note_open_prs_answer(&mut app, project, list, &mut out);
-                    refresh_palette(&mut app);
+                if let Some(answer) = answer {
+                    take_open_prs_answer(&mut app, answer, &mut out);
                 }
             }
             // The hover debounce: the cursor has rested on a pull request
@@ -613,10 +611,7 @@ fn note_pr_answer(app: &mut App, worktree: &WorktreeId, found: bool) {
 /// timer the last answer armed. The reply arrives on `prs_tx`.
 fn lookup_open_prs(
     app: &mut App,
-    prs_tx: &tokio::sync::mpsc::UnboundedSender<(
-        nebula_core::ProjectId,
-        Option<Vec<crate::pull_request::OpenPr>>,
-    )>,
+    prs_tx: &tokio::sync::mpsc::UnboundedSender<OpenPrsAnswer>,
     out: &mut Vec<ClientRequest>,
 ) {
     let Some((id, path)) = app
@@ -637,11 +632,61 @@ fn lookup_open_prs(
     }
     app.open_prs_inflight.insert(id.clone());
     let prs_tx = prs_tx.clone();
+    // The filter comes off the mirror `apply_config` keeps, not off a
+    // fresh config read — so the request and the answer agree on it — and
+    // rides along stamped: the setting can change while this call is in
+    // flight, and rows fetched under the old one must not land on screen
+    // as if they answered the new question.
+    let filter = app.pr_filter;
     tokio::spawn(async move {
-        let filter = crate::config::Config::load().pr_list_filter();
         let list = crate::pull_request::list(&path, filter).await;
-        let _ = prs_tx.send((id, list));
+        let _ = prs_tx.send(OpenPrsAnswer {
+            project: id,
+            filter,
+            list,
+        });
     });
+}
+
+/// One `pull_request::list` reply on its way back to the loop: whose repo
+/// it is about, the filter it was asked under, and what came back (`None`
+/// for every ordinary "couldn't ask").
+struct OpenPrsAnswer {
+    project: nebula_core::ProjectId,
+    filter: crate::pull_request::ListFilter,
+    list: Option<Vec<crate::pull_request::OpenPr>>,
+}
+
+/// Take a list reply off the channel — unless the filter moved on while
+/// it was in flight, in which case its rows answer a question nobody is
+/// asking any more: drop them and free the project's slot, so the next
+/// tick asks again under the filter that is now set. Without this the
+/// stale answer lands as if it were current and arms the next lookup a
+/// full refresh beat out — the "the setting does nothing" symptom, back
+/// for one poll window.
+fn take_open_prs_answer(app: &mut App, answer: OpenPrsAnswer, out: &mut Vec<ClientRequest>) {
+    if answer.filter != app.pr_filter {
+        app.open_prs_inflight.remove(&answer.project);
+        app.dirty = true;
+        return;
+    }
+    note_open_prs_answer(app, answer.project, answer.list, out);
+    refresh_palette(app);
+}
+
+/// Adopt the Open PRs filter, retiring the lists on screen when it
+/// actually changed. They answered a different question — leaving them up
+/// until the next poll comes due (a quiet repo backs off to ten minutes)
+/// is what makes the setting look like it does nothing. Requests already
+/// in flight are stamped, so their answers are dropped as they land rather
+/// than putting the old rows back.
+fn set_pr_filter(app: &mut App, filter: crate::pull_request::ListFilter) {
+    if filter == app.pr_filter {
+        return;
+    }
+    app.pr_filter = filter;
+    app.open_prs.clear();
+    app.dirty = true;
 }
 
 /// Record what a list lookup came back with, and arm the next one. A repo
@@ -1847,16 +1892,12 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             }
             _ => app.flash = Some("filter works in the sidebar lists".into()),
         },
-        // ⇧S cycles the list-sort setting live (the settings row edits the
-        // same value, so the choice persists either way).
-        Action::CycleSort => {
-            let mut cfg = crate::config::Config::load();
-            cfg.list_sort =
-                crate::config::cycle_choice(&cfg.list_sort, crate::config::LIST_SORTS, 1).into();
-            save_config(app, &cfg);
-            app.sort_mode = cfg.list_sort();
-            app.flash = Some(format!("sort: {}", cfg.list_sort));
-        }
+        // ⇧S cycles the sort of the column the cursor is in — each
+        // sidebar list owns its order, so sorting the sessions you are
+        // looking at doesn't reshuffle the projects beside them. The
+        // settings rows edit the same three values, so the choice persists
+        // either way.
+        Action::CycleSort => cycle_focused_sort(app),
         Action::TogglePin => toggle_pin_at_cursor(app, out),
         Action::Delete => open_delete_confirm(app),
         // Delete EVERY row of the focused panel (behind a confirm that
@@ -4041,7 +4082,7 @@ fn edit_keymap(app: &mut App, edit: impl FnOnce(&mut crate::keymap::Keymap)) -> 
 }
 
 /// Write the config file, flashing the failure. False when it didn't land.
-fn save_config(app: &mut App, cfg: &crate::config::Config) -> bool {
+pub(super) fn save_config(app: &mut App, cfg: &crate::config::Config) -> bool {
     match cfg.save() {
         Ok(()) => true,
         Err(err) => {
@@ -4075,7 +4116,8 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     app.theme = cfg.theme();
     app.animations = cfg.animations;
     app.focus_tint = cfg.focus_tint;
-    app.sort_mode = cfg.list_sort();
+    apply_sort(app, cfg.sort_modes());
+    set_pr_filter(app, cfg.pr_list_filter());
     set_show_workspaces(app, cfg.show_workspaces);
     set_hide_projects(app, cfg.hide_projects);
     set_hide_worktrees(app, cfg.hide_worktrees);
@@ -7688,7 +7730,7 @@ mod tests {
     #[test]
     fn pinning_a_session_floats_it_and_persists() {
         let mut app = App::new();
-        app.sort_mode = crate::app::SortMode::Recent;
+        app.sort = crate::app::SortModes::all(crate::app::SortMode::Recent);
         seed_tree(&mut app);
         seed_named_agent(&mut app, "a2", "agent-2", 5_000);
         app.focus = Focus::Sessions;
@@ -7765,28 +7807,259 @@ mod tests {
         assert!(app.list_filter.is_none(), "a second Esc closes the filter");
     }
 
-    /// ⇧S cycles the `list_sort` setting live: created → recent → name,
-    /// written through the config so it survives a restart.
+    /// ⇧S sorts the column the cursor is in and nothing else: created →
+    /// recent → name, written through that column's own setting so it
+    /// survives a restart. A sort chosen for the sessions must not
+    /// reshuffle the projects beside them.
     #[test]
-    fn shift_s_cycles_the_list_sort() {
+    fn shift_s_cycles_the_sort_of_the_focused_column_only() {
         with_default_config(|| {
             let mut app = App::new();
             seed_tree(&mut app);
             seed_named_agent(&mut app, "a2", "zzz-newest", 5_000);
+            seed_named_project(&mut app, "p2", "alpha");
             app.focus = Focus::Sessions;
             let mut out = Vec::new();
             // Default is created (tree order) — interaction doesn't reorder.
             assert_eq!(session_names(&app), ["agent-1", "zzz-newest"]);
 
             press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
-            assert_eq!(app.sort_mode, crate::app::SortMode::Recent);
+            assert_eq!(app.sort.sessions, crate::app::SortMode::Recent);
             assert_eq!(session_names(&app), ["zzz-newest", "agent-1"]);
-            assert_eq!(crate::config::Config::load().list_sort, "recent");
+            assert_eq!(crate::config::Config::load().sort_sessions, "recent");
+            assert_eq!(
+                (app.sort.projects, app.sort.worktrees),
+                (crate::app::SortMode::Created, crate::app::SortMode::Created),
+                "the other columns keep their own order"
+            );
+            assert_eq!(project_names(&app), ["demo", "alpha"]);
 
             press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
-            assert_eq!(app.sort_mode, crate::app::SortMode::Name);
+            assert_eq!(app.sort.sessions, crate::app::SortMode::Name);
             press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
-            assert_eq!(app.sort_mode, crate::app::SortMode::Created);
+            assert_eq!(app.sort.sessions, crate::app::SortMode::Created);
+
+            // The Projects column has its own knob, on the same key.
+            app.focus = Focus::Projects;
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(app.sort.projects, crate::app::SortMode::Name);
+            assert_eq!(project_names(&app), ["alpha", "demo"]);
+            assert_eq!(
+                app.sort.sessions,
+                crate::app::SortMode::Created,
+                "sorting the projects left the sessions alone"
+            );
+            assert_eq!(crate::config::Config::load().sort_projects, "name");
+        });
+    }
+
+    /// The terminal pane has no list to sort: ⇧S says so instead of
+    /// reordering a column the cursor isn't in.
+    #[test]
+    fn shift_s_in_the_terminal_sorts_nothing() {
+        with_default_config(|| {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            app.focus = Focus::Terminal;
+            let mut out = Vec::new();
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(app.sort, crate::app::SortModes::default());
+            assert_eq!(crate::config::Config::load().sort_sessions, "created");
+        });
+    }
+
+    /// A second checkout beside the seeded root, later in tree order.
+    fn seed_named_worktree(app: &mut App, id: &str, branch: &str) {
+        let mut w = app.tree.worktrees[0].clone();
+        w.id = nebula_core::WorktreeId(id.into());
+        w.branch = branch.into();
+        w.is_main = false;
+        w.sort_order = app.tree.worktrees.len() as i64;
+        hse(
+            app,
+            ServerEvent::EntityUpserted {
+                entity: nebula_core::Entity::Worktree(w),
+            },
+        );
+    }
+
+    /// The same rule in the other two columns, including the rows that
+    /// aren't checkouts at all: a re-sort leaves the Worktrees cursor on
+    /// its open pull request and the Sessions cursor on its agent.
+    #[test]
+    fn resorting_keeps_the_worktree_and_session_cursors_on_their_rows() {
+        with_default_config(|| {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            seed_named_worktree(&mut app, "w2", "alpha");
+            seed_named_agent(&mut app, "a2", "zzz-newest", 5_000);
+            let mut out = Vec::new();
+
+            // Sessions: the cursor is on the older agent, which the recency
+            // order moves to the bottom.
+            app.focus = Focus::Sessions;
+            app.sel_session = 0;
+            assert_eq!(session_names(&app), ["agent-1", "zzz-newest"]);
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(session_names(&app), ["zzz-newest", "agent-1"]);
+            assert_eq!(
+                app.selected_session().map(|a| a.name),
+                Some("agent-1".into()),
+                "the cursor follows its session"
+            );
+
+            // Worktrees: the cursor is on an open PR, which lives below the
+            // checkouts — so re-sorting the checkouts moves it too.
+            seed_open_prs(&mut app, &[(7, "Attach links"), (6, "Older")]);
+            app.focus = Focus::Worktrees;
+            app.sel_worktree = app.visible_worktrees().len() + 1; // PR #6
+            assert_eq!(app.selected_worktree_pr().map(|pr| pr.number), Some(6));
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(app.sort.worktrees, crate::app::SortMode::Name);
+            assert_eq!(
+                app.selected_worktree_pr().map(|pr| pr.number),
+                Some(6),
+                "the cursor follows its pull request"
+            );
+
+            // And a cursor on a checkout follows the checkout: by name
+            // `alpha` leads, so `main` is no longer row 0.
+            app.sel_worktree = 1;
+            assert_eq!(
+                app.selected_worktree().map(|w| w.branch.clone()),
+                Some("main".into())
+            );
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(
+                app.selected_worktree().map(|w| w.branch.clone()),
+                Some("main".into()),
+                "the cursor follows its checkout"
+            );
+        });
+    }
+
+    /// Changing the Open PRs filter retires the rows on screen: they
+    /// answered the old question, and a repo whose list has settled onto
+    /// the slow re-check beat would otherwise keep showing them for
+    /// minutes — which reads as a setting that does nothing.
+    #[test]
+    fn changing_the_pr_filter_retires_the_rows_it_fetched() {
+        with_default_config(|| {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            let pid = app.selected_project().expect("a project").id.clone();
+            seed_open_prs(&mut app, &[(7, "Attach links")]);
+            assert!(app.open_prs.contains_key(&pid));
+            assert!(!app.open_prs_lookup_due(&pid), "the answer is fresh");
+
+            let (tab, row) = crate::config::all_settings()
+                .find(|(_, _, spec)| spec.kind == crate::config::SettingKind::PrListFilter)
+                .map(|(tab, row, _)| (tab, row))
+                .expect("the filter has a settings row");
+            apply_setting_at(&mut app, tab, row, 1);
+
+            assert_eq!(app.pr_filter, crate::pull_request::ListFilter::Mine);
+            assert!(
+                app.open_prs_lookup_due(&pid),
+                "the next poll re-asks under the new filter"
+            );
+
+            // A request that was already in flight when the setting changed
+            // answers the old question: its rows are dropped, and the slot
+            // is freed so the next tick asks again — rather than landing as
+            // if they were current and arming the next lookup a beat out.
+            app.open_prs_inflight.insert(pid.clone());
+            take_open_prs_answer(
+                &mut app,
+                OpenPrsAnswer {
+                    project: pid.clone(),
+                    filter: crate::pull_request::ListFilter::All,
+                    list: Some(vec![crate::pull_request::OpenPr {
+                        number: 7,
+                        title: "somebody else's".into(),
+                        url: "https://example.test/7".into(),
+                        is_draft: false,
+                        approval: Default::default(),
+                        checks: Default::default(),
+                    }]),
+                },
+                &mut Vec::new(),
+            );
+            assert!(
+                !app.open_prs.contains_key(&pid),
+                "the old filter's rows never reach the screen"
+            );
+            assert!(app.open_prs_lookup_due(&pid), "and the slot is free again");
+
+            // An answer stamped with the filter that is set does land.
+            take_open_prs_answer(
+                &mut app,
+                OpenPrsAnswer {
+                    project: pid.clone(),
+                    filter: crate::pull_request::ListFilter::Mine,
+                    list: Some(vec![]),
+                },
+                &mut Vec::new(),
+            );
+            assert!(app.open_prs.contains_key(&pid));
+            // Editing some other setting leaves a fresh list alone — only
+            // the filter that fetched it can retire it.
+            seed_open_prs(&mut app, &[(7, "Attach links")]);
+            let (tab, row) = crate::config::all_settings()
+                .find(|(_, _, spec)| spec.kind == crate::config::SettingKind::Animations)
+                .map(|(tab, row, _)| (tab, row))
+                .expect("animations has a settings row");
+            apply_setting_at(&mut app, tab, row, 0);
+            assert!(!app.open_prs_lookup_due(&pid));
+        });
+    }
+
+    /// A second project beside the seeded one, later in tree order.
+    fn seed_named_project(app: &mut App, id: &str, name: &str) {
+        let mut p = app.tree.projects[0].clone();
+        p.id = nebula_core::ProjectId(id.into());
+        p.name = name.into();
+        p.sort_order = app.tree.projects.len() as i64;
+        hse(
+            app,
+            ServerEvent::EntityUpserted {
+                entity: nebula_core::Entity::Project(p),
+            },
+        );
+    }
+
+    fn project_names(app: &App) -> Vec<String> {
+        app.project_rows()
+            .iter()
+            .map(|i| app.tree.projects[*i].name.clone())
+            .collect()
+    }
+
+    /// Re-sorting moves rows, and the cursor is an index — so a sort
+    /// change has to put the cursor back on the row it was resting on,
+    /// not leave it pointing at whatever inherited that index.
+    #[test]
+    fn resorting_keeps_the_cursor_on_the_selected_project() {
+        with_default_config(|| {
+            let mut app = App::new();
+            seed_tree(&mut app);
+            seed_named_project(&mut app, "p2", "alpha");
+            app.focus = Focus::Projects;
+            let mut out = Vec::new();
+            assert_eq!(project_names(&app), ["demo", "alpha"]);
+            app.sel_project = 1; // alpha
+
+            // created -> recent -> name: by name alpha leads the column.
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
+            assert_eq!(project_names(&app), ["alpha", "demo"]);
+            assert_eq!(
+                app.selected_project().map(|p| p.name.clone()),
+                Some("alpha".into()),
+                "the cursor follows its project across the re-sort"
+            );
         });
     }
 
@@ -10364,7 +10637,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn working_sessions_head_the_list_regardless_of_age() {
         use nebula_core::{Agent, AgentStatus, Entity};
         let mut app = App::new();
-        app.sort_mode = crate::app::SortMode::Recent;
+        app.sort = crate::app::SortModes::all(crate::app::SortMode::Recent);
         seed_tree(&mut app);
         let now = crate::app::now_ms();
         let stale = now - 2 * 3_600_000;
@@ -10419,7 +10692,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn sessions_order_by_last_interaction() {
         use nebula_core::{Agent, AgentStatus, Entity};
         let mut app = App::new();
-        app.sort_mode = crate::app::SortMode::Recent;
+        app.sort = crate::app::SortModes::all(crate::app::SortMode::Recent);
         seed_tree(&mut app); // agent-1: fresh, never run (stamp 0)
         let now = crate::app::now_ms();
         let mins = |n: i64| now - n * 60_000;
@@ -10563,7 +10836,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn status_change_resorts_and_selection_follows() {
         use nebula_core::{Agent, AgentStatus, Entity};
         let mut app = App::new();
-        app.sort_mode = crate::app::SortMode::Recent;
+        app.sort = crate::app::SortModes::all(crate::app::SortMode::Recent);
         seed_tree(&mut app);
         hse(
             &mut app,
@@ -13818,7 +14091,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn projects_sort_by_last_interaction_and_selection_follows() {
         use nebula_core::AgentStatus;
         let mut app = App::new();
-        app.sort_mode = crate::app::SortMode::Recent;
+        app.sort = crate::app::SortModes::all(crate::app::SortMode::Recent);
         seed_tree(&mut app); // p1 "demo" / w1 / a1 (never run)
         hse(
             &mut app,
@@ -13894,7 +14167,7 @@ diff --git a/src/b.rs b/src/b.rs
     fn worktrees_sort_by_last_interaction() {
         use nebula_core::AgentStatus;
         let mut app = App::new();
-        app.sort_mode = crate::app::SortMode::Recent;
+        app.sort = crate::app::SortModes::all(crate::app::SortMode::Recent);
         seed_tree(&mut app); // w1 "main" (root) / a1 never run
         let now = crate::app::now_ms();
         let mins = |n: i64| now - n * 60_000;

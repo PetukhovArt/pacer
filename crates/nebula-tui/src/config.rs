@@ -22,8 +22,8 @@ pub const SESSION_IDLE_TIMEOUTS: &[&str] = &["off", "1m", "5m", "15m", "30m", "1
 /// [`crate::pull_request::ListFilter`]; unknown ones read as `all`.
 pub const PR_LIST_FILTERS: &[&str] = &["all", "mine", "involved"];
 
-/// Values the settings overlay cycles through for `list_sort` — how the
-/// sidebar lists order their rows (pinned rows always float first). The
+/// Values the settings overlay cycles through for every `sort_*` — how one
+/// sidebar column orders its rows (pinned rows always float first). The
 /// words map onto [`crate::app::SortMode`]; unknown ones read as `created`.
 pub const LIST_SORTS: &[&str] = &["created", "recent", "name"];
 
@@ -132,7 +132,9 @@ pub enum SettingKind {
     SessionIdleTimeout,
     DoneSound,
     PrListFilter,
-    ListSort,
+    SortProjects,
+    SortWorktrees,
+    SortSessions,
     Theme,
     Animations,
     FocusTint,
@@ -176,9 +178,19 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 hint: "Which open PRs the project group lists: all, only yours, or ones you took part in",
             },
             SettingSpec {
-                kind: SettingKind::ListSort,
-                label: "List sort",
-                hint: "How the sidebar lists order rows: by recency, by name, or in creation order (⇧S cycles; pins float first)",
+                kind: SettingKind::SortProjects,
+                label: "Projects sort",
+                hint: "How the Projects column orders rows: by recency, by name, or in creation order (⇧S cycles the focused column; pins float first)",
+            },
+            SettingSpec {
+                kind: SettingKind::SortWorktrees,
+                label: "Worktrees sort",
+                hint: "How the Worktrees column orders checkouts: by recency, by name, or in creation order (⇧S cycles the focused column)",
+            },
+            SettingSpec {
+                kind: SettingKind::SortSessions,
+                label: "Sessions sort",
+                hint: "How the Sessions column orders rows: by recency, by name, or in creation order (⇧S cycles the focused column)",
             },
         ]),
     },
@@ -438,10 +450,19 @@ pub struct Config {
     /// through [`Config::pr_list_filter`]; unknown words mean "all", so a
     /// hand edit can't hide the list.
     pub pr_list_filter: String,
-    /// How the sidebar lists order their rows: "created", "recent" or
-    /// "name". Read through [`Config::list_sort`]; unknown words mean
-    /// "created", so a hand edit can't scramble the lists.
-    pub list_sort: String,
+    /// How each sidebar column orders its rows: "created", "recent" or
+    /// "name", one word per panel — ⇧S sorts the column the cursor is in,
+    /// so the three are set (and stored) independently. Read through
+    /// [`Config::sort_modes`]; unknown words mean "created", so a hand edit
+    /// can't scramble the lists. A config predating the split carries one
+    /// `list_sort` for all three; [`load_from`] adopts it.
+    pub sort_projects: String,
+    /// How the Worktrees column orders its checkouts. The OPEN PRS group
+    /// under them is not sorted here — it keeps the forge's own order.
+    pub sort_worktrees: String,
+    /// How the Sessions column orders its live rows (archived ones keep
+    /// their own most-recently-archived-first order).
+    pub sort_sessions: String,
     /// Color theme name (see `theme::THEMES`). Unknown names fall back to
     /// the default theme.
     pub theme: String,
@@ -499,7 +520,9 @@ impl Default for Config {
             session_idle_timeout: "5m".into(),
             done_sound: "Glass".into(),
             pr_list_filter: "all".into(),
-            list_sort: "created".into(),
+            sort_projects: "created".into(),
+            sort_worktrees: "created".into(),
+            sort_sessions: "created".into(),
             theme: "default".into(),
             animations: true,
             focus_tint: false,
@@ -600,7 +623,18 @@ impl Config {
             "pr_list_filter".into(),
             serde_json::json!(self.pr_list_filter),
         );
-        obj.insert("list_sort".into(), serde_json::json!(self.list_sort));
+        obj.insert(
+            "sort_projects".into(),
+            serde_json::json!(self.sort_projects),
+        );
+        obj.insert(
+            "sort_worktrees".into(),
+            serde_json::json!(self.sort_worktrees),
+        );
+        obj.insert(
+            "sort_sessions".into(),
+            serde_json::json!(self.sort_sessions),
+        );
         obj.insert("theme".into(), serde_json::json!(self.theme));
         obj.insert("animations".into(), serde_json::json!(self.animations));
         obj.insert("focus_tint".into(), serde_json::json!(self.focus_tint));
@@ -661,9 +695,25 @@ impl Config {
         )
     }
 
-    /// The `list_sort` SETTING resolved for the sidebar lists.
-    pub fn list_sort(&self) -> crate::app::SortMode {
-        crate::app::SortMode::from_name(&self.list_sort)
+    /// The `sort_*` SETTINGS resolved for the sidebar lists.
+    pub fn sort_modes(&self) -> crate::app::SortModes {
+        crate::app::SortModes {
+            projects: crate::app::SortMode::from_name(&self.sort_projects),
+            worktrees: crate::app::SortMode::from_name(&self.sort_worktrees),
+            sessions: crate::app::SortMode::from_name(&self.sort_sessions),
+        }
+    }
+
+    /// The sort word one sidebar column owns, for ⇧S to advance. `None`
+    /// for the panels with no list of their own — the workspaces bar and
+    /// the terminal pane, where there is nothing to sort.
+    pub fn sort_word_mut(&mut self, panel: crate::app::Focus) -> Option<&mut String> {
+        match panel {
+            crate::app::Focus::Projects => Some(&mut self.sort_projects),
+            crate::app::Focus::Worktrees => Some(&mut self.sort_worktrees),
+            crate::app::Focus::Sessions => Some(&mut self.sort_sessions),
+            crate::app::Focus::Workspaces | crate::app::Focus::Terminal => None,
+        }
     }
 
     /// The `pr_list_filter` SETTING resolved for [`crate::pull_request::list`].
@@ -727,7 +777,9 @@ impl Config {
             SettingKind::SessionIdleTimeout => self.session_idle_timeout.clone(),
             SettingKind::DoneSound => self.done_sound.clone(),
             SettingKind::PrListFilter => self.pr_list_filter.clone(),
-            SettingKind::ListSort => self.list_sort.clone(),
+            SettingKind::SortProjects => self.sort_projects.clone(),
+            SettingKind::SortWorktrees => self.sort_worktrees.clone(),
+            SettingKind::SortSessions => self.sort_sessions.clone(),
             SettingKind::Theme => self.theme.clone(),
             SettingKind::Animations => on_off(self.animations).into(),
             SettingKind::FocusTint => on_off(self.focus_tint).into(),
@@ -776,8 +828,14 @@ impl Config {
                 self.pr_list_filter =
                     cycle_choice(&self.pr_list_filter, PR_LIST_FILTERS, step).into();
             }
-            SettingKind::ListSort => {
-                self.list_sort = cycle_choice(&self.list_sort, LIST_SORTS, step).into();
+            SettingKind::SortProjects => {
+                self.sort_projects = cycle_choice(&self.sort_projects, LIST_SORTS, step).into();
+            }
+            SettingKind::SortWorktrees => {
+                self.sort_worktrees = cycle_choice(&self.sort_worktrees, LIST_SORTS, step).into();
+            }
+            SettingKind::SortSessions => {
+                self.sort_sessions = cycle_choice(&self.sort_sessions, LIST_SORTS, step).into();
             }
             SettingKind::Theme => {
                 self.theme = cycle_choice(&self.theme, crate::theme::THEMES, step).into();
@@ -915,10 +973,36 @@ fn load_from(path: &Path) -> Config {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return Config::default();
     };
-    serde_json::from_str(&raw).unwrap_or_else(|err| {
+    let mut cfg: Config = serde_json::from_str(&raw).unwrap_or_else(|err| {
         tracing::warn!("ignoring malformed {}: {err}", path.display());
         Config::default()
-    })
+    });
+    adopt_legacy_list_sort(&raw, &mut cfg);
+    cfg
+}
+
+/// A config written before the sort became per-column carries one
+/// `list_sort` for all three lists. Adopt it wherever the column's own key
+/// is missing, so the upgrade keeps the order the user chose instead of
+/// quietly resetting it. The next save writes the three keys; the legacy
+/// one is left in the file (harmless — it is only read while the new keys
+/// are absent).
+fn adopt_legacy_list_sort(raw: &str, cfg: &mut Config) {
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return;
+    };
+    let Some(legacy) = root.get("list_sort").and_then(|v| v.as_str()) else {
+        return;
+    };
+    for (key, word) in [
+        ("sort_projects", &mut cfg.sort_projects),
+        ("sort_worktrees", &mut cfg.sort_worktrees),
+        ("sort_sessions", &mut cfg.sort_sessions),
+    ] {
+        if root.get(key).is_none() {
+            *word = legacy.to_string();
+        }
+    }
 }
 
 fn settings_path() -> PathBuf {
@@ -1120,6 +1204,73 @@ mod tests {
         // Unknown words (hand-edited config) resolve to All, never hiding.
         cfg.pr_list_filter = "sparkle".into();
         assert_eq!(cfg.pr_list_filter(), crate::pull_request::ListFilter::All);
+    }
+
+    /// Each sidebar column owns its own sort word: cycling one settings
+    /// row must not move the other two, and all three persist.
+    #[test]
+    fn each_column_sorts_on_its_own_setting() {
+        let mut cfg = Config::default();
+        assert_eq!(
+            cfg.sort_modes(),
+            crate::app::SortModes::all(crate::app::SortMode::Created),
+            "a fresh install leaves every list in creation order"
+        );
+
+        let (tab, row) = locate(SettingKind::SortSessions).unwrap();
+        cfg.cycle(tab, row, 1);
+        assert_eq!(cfg.sort_sessions, "recent");
+        assert_eq!(
+            (cfg.sort_projects.as_str(), cfg.sort_worktrees.as_str()),
+            ("created", "created"),
+            "the other columns are untouched"
+        );
+        let (tab, row) = locate(SettingKind::SortProjects).unwrap();
+        cfg.cycle(tab, row, -1);
+        assert_eq!(cfg.sort_projects, "name", "the list wraps backwards");
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        cfg.save_to(&path).unwrap();
+        let back = load_from(&path);
+        assert_eq!(back.sort_projects, "name");
+        assert_eq!(back.sort_sessions, "recent");
+        assert_eq!(back.sort_worktrees, "created");
+        assert_eq!(
+            back.sort_modes(),
+            crate::app::SortModes {
+                projects: crate::app::SortMode::Name,
+                worktrees: crate::app::SortMode::Created,
+                sessions: crate::app::SortMode::Recent,
+            }
+        );
+    }
+
+    /// A config written before the split carries one `list_sort`. Every
+    /// column adopts it, so the upgrade keeps the order the user chose —
+    /// and a column that has since been set on its own keeps its own word.
+    #[test]
+    fn a_legacy_list_sort_seeds_every_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+
+        std::fs::write(&path, r#"{"list_sort": "name"}"#).unwrap();
+        let cfg = load_from(&path);
+        assert_eq!(
+            cfg.sort_modes(),
+            crate::app::SortModes::all(crate::app::SortMode::Name)
+        );
+
+        std::fs::write(&path, r#"{"list_sort": "name", "sort_sessions": "recent"}"#).unwrap();
+        let cfg = load_from(&path);
+        assert_eq!(cfg.sort_projects, "name");
+        assert_eq!(cfg.sort_sessions, "recent", "the column's own key wins");
+
+        // Once saved, the three keys are what the file is read on.
+        cfg.save_to(&path).unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"sort_projects\""));
+        assert_eq!(load_from(&path).sort_sessions, "recent");
     }
 
     #[test]
