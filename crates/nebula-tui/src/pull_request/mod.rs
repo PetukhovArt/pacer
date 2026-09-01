@@ -44,6 +44,51 @@ fn state_is_open(state: &str) -> bool {
     state == STATE_OPEN
 }
 
+/// Who you are on each forge host — the login the list filters compare
+/// against, and the author check that keeps your own comments out of the
+/// unread count.
+///
+/// Both CLIs answer "who am I" *per host*, and both read the host off the
+/// checkout they run in: asked from anywhere else they answer for whatever
+/// host the global config defaults to, which for a self-hosted forge is a
+/// 401 and a filter that silently lists everybody's work. So the question
+/// is always asked inside the checkout, and the answer is cached under the
+/// host it came from rather than once per process.
+///
+/// Only successes are cached. A login that failed — the CLI not logged in
+/// yet, the server unreachable — must be allowed to succeed later, which
+/// costs one extra process per poll while it keeps failing.
+struct Viewers(std::sync::OnceLock<tokio::sync::Mutex<std::collections::HashMap<String, String>>>);
+
+impl Viewers {
+    const fn new() -> Self {
+        Self(std::sync::OnceLock::new())
+    }
+
+    /// Your login on the host `dir`'s remote points at, asking `ask` (in
+    /// `dir`) at most once per host.
+    async fn resolve<F, Fut>(&self, dir: &Path, ask: F) -> Option<String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Option<String>>,
+    {
+        let cache = self.0.get_or_init(Default::default);
+        // A checkout with no readable remote is still worth asking about —
+        // it just can't share its answer with the rest of its host.
+        let host = forge::remote_host(dir).await;
+        if let Some(host) = &host {
+            if let Some(login) = cache.lock().await.get(host) {
+                return Some(login.clone());
+            }
+        }
+        let login = ask().await.filter(|l| !l.is_empty())?;
+        if let Some(host) = host {
+            cache.lock().await.insert(host, login.clone());
+        }
+        Some(login)
+    }
+}
+
 /// Run `bin` with `args` (in `dir` when given) under `timeout`, yielding
 /// stdout on success. Every failure — no such binary, bad exit, timeout —
 /// is `None`, since each is an ordinary "couldn't ask" to every caller.

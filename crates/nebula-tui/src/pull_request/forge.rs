@@ -30,7 +30,8 @@ pub(super) async fn detect(dir: &Path) -> Forge {
 
 /// The host of `dir`'s web-facing remote: `origin`'s when it exists, else
 /// the first remote git lists — the same guess `remote::repo_url` makes.
-async fn remote_host(dir: &Path) -> Option<String> {
+/// Also what a per-host cache keys on ([`super::Viewers`]).
+pub(super) async fn remote_host(dir: &Path) -> Option<String> {
     let url = match git(dir, &["remote", "get-url", "origin"]).await {
         Some(url) => url,
         None => {

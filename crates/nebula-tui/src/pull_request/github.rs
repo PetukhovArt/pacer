@@ -39,24 +39,26 @@ pub(super) async fn lookup(dir: &Path) -> Option<PullRequest> {
     .await?;
     // Only asked once `gh` has proved it works, so a machine without it
     // never pays for the extra process.
-    parse(&out, viewer_login().await)
+    parse(&out, viewer_login(dir).await.as_deref())
 }
 
-/// Your own GitHub login, resolved once per process. Needed only to keep
+/// Your own GitHub login on the host `dir` talks to. Needed only to keep
 /// your own review submissions out of the unread count: `gh` flags comments
 /// with `viewerDidAuthor`, but reviews carry nothing but an author — and
 /// replying to an inline thread on your own PR files a review.
-static VIEWER: tokio::sync::OnceCell<Option<String>> = tokio::sync::OnceCell::const_new();
+///
+/// Asked *in the checkout* and cached per host — see [`super::Viewers`];
+/// a GitHub Enterprise checkout answers with your name there, not with
+/// whoever you are on github.com.
+static VIEWERS: super::Viewers = super::Viewers::new();
 
-async fn viewer_login() -> Option<&'static str> {
-    VIEWER
-        .get_or_init(|| async {
-            let out = gh(None, &["api", "user", "--jq", ".login"], TIMEOUT).await?;
-            let login = out.trim().to_string();
-            (!login.is_empty()).then_some(login)
+async fn viewer_login(dir: &Path) -> Option<String> {
+    VIEWERS
+        .resolve(dir, || async {
+            let out = gh(Some(dir), &["api", "user", "--jq", ".login"], TIMEOUT).await?;
+            Some(out.trim().to_string())
         })
         .await
-        .as_deref()
 }
 
 /// Parse `gh pr view --json …` output. Kept separate from the process call

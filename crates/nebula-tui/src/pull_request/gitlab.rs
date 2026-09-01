@@ -52,25 +52,26 @@ pub(super) async fn lookup(dir: &Path) -> Option<PullRequest> {
     .await?;
     // Only asked once `glab` has proved it works, so a machine without it
     // never pays for the extra process.
-    parse(&out, viewer_login().await)
+    parse(&out, viewer_login(dir).await.as_deref())
 }
 
-/// Your own GitLab username, resolved once per process — the same job as
-/// the GitHub viewer: keeping your own notes out of the unread count.
-/// GitLab notes carry no `viewerDidAuthor`, so the author comparison is
-/// all there is.
-static VIEWER: tokio::sync::OnceCell<Option<String>> = tokio::sync::OnceCell::const_new();
+/// Your own GitLab username on the host `dir` talks to — the same job as
+/// the GitHub viewer: keeping your own notes out of the unread count, and
+/// naming you to the list filters. GitLab notes carry no `viewerDidAuthor`,
+/// so the author comparison is all there is.
+///
+/// Asked *in the checkout* and cached per host — see [`super::Viewers`],
+/// which is where the reasoning lives.
+static VIEWERS: super::Viewers = super::Viewers::new();
 
-async fn viewer_login() -> Option<&'static str> {
-    VIEWER
-        .get_or_init(|| async {
-            let out = glab(None, &["api", "user"], TIMEOUT).await?;
+async fn viewer_login(dir: &Path) -> Option<String> {
+    VIEWERS
+        .resolve(dir, || async {
+            let out = glab(Some(dir), &["api", "user"], TIMEOUT).await?;
             let v: serde_json::Value = serde_json::from_str(&out).ok()?;
-            let login = str_at(&v, "username");
-            (!login.is_empty()).then_some(login)
+            Some(str_at(&v, "username"))
         })
         .await
-        .as_deref()
 }
 
 /// Parse a `glab mr view -c --output json` payload. Kept separate from the
@@ -137,9 +138,11 @@ fn activity(v: &serde_json::Value, viewer: Option<&str>) -> Vec<String> {
 /// may not have, so failing it leaves the rows exactly as REST described
 /// them, with both glyphs blank.
 ///
-/// The filter needs your username (GitLab's CLI has no `@me`): unknown —
-/// not logged in, `glab api user` failed — falls back to the unfiltered
-/// list, a superset rather than hidden work. GitLab search has no
+/// The filter needs your username (GitLab's CLI has no `@me`): when it
+/// can't be had — not logged in, `glab api user` failed — this is a miss,
+/// like every other question `glab` couldn't answer. It used to fall back
+/// to the unfiltered list, which is how a filter that never worked looked
+/// exactly like a filter that had nothing to hide. GitLab search has no
 /// `involves:`, so *involved* is two list calls — authored plus reviewing —
 /// merged by `iid`; a merge request you only commented on is missed, which
 /// is the closest the REST list gets without a request per row.
@@ -147,9 +150,9 @@ pub(super) async fn list(dir: &Path, filter: super::ListFilter) -> Option<Vec<Op
     use super::ListFilter;
     let viewer = match filter {
         ListFilter::All => None,
-        ListFilter::Mine | ListFilter::Involved => viewer_login().await,
+        ListFilter::Mine | ListFilter::Involved => Some(viewer_login(dir).await?),
     };
-    let (mut rows, path) = match (filter, viewer) {
+    let (mut rows, path) = match (filter, viewer.as_deref()) {
         (ListFilter::Mine, Some(me)) => page(dir, &["--author", me]).await?,
         (ListFilter::Involved, Some(me)) => {
             let (mut rows, mut path) = page(dir, &["--author", me]).await?;
@@ -470,6 +473,50 @@ fn strip_ab(path: &str) -> &str {
 mod tests {
     use super::super::split_unified_diff;
     use super::*;
+
+    /// Live check against a real checkout — ignored by default, because it
+    /// needs `glab` logged into whatever host that repo talks to. It is the
+    /// only place the *wiring* is testable: which host `glab` resolves and
+    /// whether the answer reaches the filter are both facts about the
+    /// process, not about a payload.
+    ///
+    /// ```text
+    /// NEBULA_GITLAB_TEST_REPO=<a GitLab checkout> \
+    ///   cargo test -p nebula-tui --lib gitlab::tests::mine -- --ignored --nocapture
+    /// ```
+    ///
+    /// Without the variable it skips rather than fails: `--ignored` is also
+    /// how someone runs *every* slow test, and a machine with no GitLab
+    /// checkout has nothing to say about this one.
+    #[tokio::test]
+    #[ignore = "needs a glab login for the repo named by NEBULA_GITLAB_TEST_REPO"]
+    async fn mine_narrows_the_list_to_your_own_merge_requests() {
+        let Ok(dir) = std::env::var("NEBULA_GITLAB_TEST_REPO") else {
+            println!("skipped: set NEBULA_GITLAB_TEST_REPO to a GitLab checkout");
+            return;
+        };
+        let dir = Path::new(&dir);
+        use crate::pull_request::ListFilter;
+        let all = super::list(dir, ListFilter::All).await.expect("list all");
+        let mine = super::list(dir, ListFilter::Mine).await.expect("list mine");
+        println!("all={} mine={}", all.len(), mine.len());
+        assert!(
+            !all.is_empty(),
+            "the repo has no open merge requests to filter"
+        );
+        assert!(
+            mine.len() < all.len(),
+            "the filter changed nothing: all={} mine={}",
+            all.len(),
+            mine.len()
+        );
+        for pr in &mine {
+            assert!(
+                all.iter().any(|a| a.number == pr.number),
+                "mine is a subset"
+            );
+        }
+    }
 
     /// The real shape: a `glab mr view -c --output json` payload, trimmed.
     /// GitLab's field names throughout — `iid`, `web_url`, `draft`,
