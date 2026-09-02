@@ -9599,6 +9599,7 @@ mod tests {
                     at: "2026-08-20T19:55:42Z".into(),
                     review_state: "APPROVED".into(),
                     body: "ship it".into(),
+                    ..Default::default()
                 }],
             ),
         );

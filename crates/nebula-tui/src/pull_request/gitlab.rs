@@ -28,6 +28,9 @@ async fn glab(dir: Option<&Path>, args: &[&str], timeout: std::time::Duration) -
 /// worth surfacing, because it is a review verdict wearing a note's
 /// clothes.
 const APPROVAL_NOTE: &str = "approved this merge request";
+/// Its counterpart: a reviewer asking for changes, GitLab's spelling of a
+/// CHANGES_REQUESTED review.
+const CHANGES_NOTE: &str = "requested changes";
 
 /// `v["state"]` mapped onto the normal form. GitLab says `opened`,
 /// `merged`, `closed` (and `locked`, which still accepts nothing new but
@@ -103,7 +106,8 @@ fn username(v: &serde_json::Value) -> String {
 /// Whether a note is somebody's words rather than GitLab's bookkeeping.
 /// Approvals pass too: "someone approved this" is a reason to go look.
 fn is_conversation(note: &serde_json::Value) -> bool {
-    !bool_at(note, "system") || str_at(note, "body") == APPROVAL_NOTE
+    let body = str_at(note, "body");
+    !bool_at(note, "system") || body == APPROVAL_NOTE || body == CHANGES_NOTE
 }
 
 /// Timestamps of every note other people posted — comments and approvals
@@ -348,6 +352,12 @@ fn parse_list(json: &str) -> Option<Vec<OpenPr>> {
 }
 
 /// Ask `glab` for one merge request's description and conversation.
+///
+/// The notes `-c` folds in are a flat list: GitLab keeps the thread
+/// structure on a separate *discussions* resource, so that is fetched
+/// too and, when it answers, its threaded notes replace the flat ones.
+/// A failure there (old server, permission) leaves the flat conversation
+/// — worse to read, but nothing lost.
 pub(super) async fn detail(dir: &Path, number: u64) -> Option<PrDetail> {
     let number = number.to_string();
     let out = glab(
@@ -356,7 +366,94 @@ pub(super) async fn detail(dir: &Path, number: u64) -> Option<PrDetail> {
         TIMEOUT,
     )
     .await?;
-    parse_detail(&out)
+    let mut detail = parse_detail(&out)?;
+    let path = format!("projects/:id/merge_requests/{number}/discussions?per_page=100");
+    if let Some(threads) = glab(Some(dir), &["api", &path], TIMEOUT)
+        .await
+        .and_then(|json| parse_discussions(&json))
+    {
+        detail.comments = threads;
+    }
+    Some(detail)
+}
+
+/// The `/discussions` payload as threaded comments, oldest thread first
+/// and each thread's replies in the order they were said. Every note in
+/// a discussion carries the discussion's id as its thread, so the preview
+/// can rebuild the tree without knowing GitLab's shape. `None` when the
+/// payload isn't a discussion list at all.
+fn parse_discussions(json: &str) -> Option<Vec<PrComment>> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let discussions = v.as_array()?;
+    let mut threads: Vec<Vec<PrComment>> = Vec::new();
+    for d in discussions {
+        let id = str_at(d, "id");
+        let mut notes: Vec<PrComment> = arr_at(d, "notes")
+            .iter()
+            .filter(|n| is_conversation(n))
+            .map(|n| PrComment {
+                thread: id.clone(),
+                path: position_at(n),
+                resolved: n.get("resolved").and_then(|r| r.as_bool()),
+                ..note_comment(n)
+            })
+            .collect();
+        if notes.is_empty() {
+            continue;
+        }
+        notes.sort_by(|a, b| a.at.cmp(&b.at));
+        // A lone note is not a thread, just a comment: no tree glyphs.
+        if notes.len() == 1 {
+            notes[0].thread = String::new();
+        }
+        threads.push(notes);
+    }
+    threads.sort_by(|a, b| a[0].at.cmp(&b[0].at));
+    Some(threads.into_iter().flatten().collect())
+}
+
+/// One note as a comment: an approval or a changes-request system note
+/// becomes a bare verdict, anything else keeps its body.
+fn note_comment(note: &serde_json::Value) -> PrComment {
+    let system = bool_at(note, "system");
+    let body = str_at(note, "body");
+    let review_state = match (system, body.as_str()) {
+        (true, APPROVAL_NOTE) => "APPROVED",
+        (true, CHANGES_NOTE) => "CHANGES_REQUESTED",
+        _ => "",
+    };
+    PrComment {
+        author: username(note),
+        at: str_at(note, "created_at"),
+        review_state: review_state.to_string(),
+        body: if system { String::new() } else { body },
+        ..Default::default()
+    }
+}
+
+/// `path:line` of a diff note, `path` alone for a whole-file one, empty
+/// for a note on the merge request itself.
+fn position_at(note: &serde_json::Value) -> String {
+    let Some(pos) = note.get("position") else {
+        return String::new();
+    };
+    let path = str_at(pos, "new_path");
+    let path = if path.is_empty() {
+        str_at(pos, "old_path")
+    } else {
+        path
+    };
+    if path.is_empty() {
+        return String::new();
+    }
+    match pos
+        .get("new_line")
+        .or_else(|| pos.get("old_line"))
+        .and_then(|l| l.as_u64())
+    {
+        Some(line) => format!("{path}:{line}"),
+        None => path,
+    }
 }
 
 fn parse_detail(json: &str) -> Option<PrDetail> {
@@ -395,24 +492,9 @@ fn changes_count(v: &serde_json::Value) -> u64 {
 fn conversation(v: &serde_json::Value) -> Vec<PrComment> {
     let mut out: Vec<PrComment> = Vec::new();
     for note in arr_at(v, "Notes") {
-        if !is_conversation(note) {
-            continue;
+        if is_conversation(note) {
+            out.push(note_comment(note));
         }
-        let approval = bool_at(note, "system");
-        out.push(PrComment {
-            author: username(note),
-            at: str_at(note, "created_at"),
-            review_state: if approval {
-                "APPROVED".to_string()
-            } else {
-                String::new()
-            },
-            body: if approval {
-                String::new()
-            } else {
-                str_at(note, "body")
-            },
-        });
     }
     out.sort_by(|a, b| a.at.cmp(&b.at));
     out
@@ -712,6 +794,51 @@ mod tests {
         assert_eq!(d.comments[0].verdict(), None);
         assert_eq!(d.comments[1].verdict(), Some("approved"));
         assert_eq!(d.comments[1].body, "");
+    }
+
+    /// The discussions payload threads replies under their root, keeps
+    /// bookkeeping out, and reports where on the diff a thread hangs.
+    #[test]
+    fn discussions_become_threads_with_their_place_on_the_diff() {
+        let got = parse_discussions(
+            r#"[
+              {"id": "aaa", "individual_note": true, "notes": [
+                {"id": 1, "body": "changed the description", "system": true,
+                 "author": {"username": "bob"}, "created_at": "2026-09-01T05:00:00.000Z"}]},
+              {"id": "bbb", "individual_note": false, "notes": [
+                {"id": 2, "body": "leaks", "system": false, "resolved": true,
+                 "author": {"username": "kate"}, "created_at": "2026-09-01T06:00:00.000Z",
+                 "position": {"new_path": "src/a.ts", "position_type": "file"}},
+                {"id": 3, "body": "added 1 commit", "system": true,
+                 "author": {"username": "bob"}, "created_at": "2026-09-01T06:30:00.000Z"},
+                {"id": 4, "body": "moved it", "system": false, "resolved": true,
+                 "author": {"username": "bob"}, "created_at": "2026-09-01T07:00:00.000Z",
+                 "position": {"new_path": "src/a.ts", "position_type": "file"}}]},
+              {"id": "ccc", "individual_note": false, "notes": [
+                {"id": 5, "body": "nit", "system": false, "resolved": false,
+                 "author": {"username": "kate"}, "created_at": "2026-09-01T05:30:00.000Z",
+                 "position": {"new_path": "src/b.ts", "new_line": 58}}]},
+              {"id": "ddd", "individual_note": true, "notes": [
+                {"id": 6, "body": "requested changes", "system": true,
+                 "author": {"username": "kate"}, "created_at": "2026-09-01T08:00:00.000Z"}]}
+            ]"#,
+        )
+        .expect("a list");
+        let rows: Vec<(&str, &str, &str, Option<bool>)> = got
+            .iter()
+            .map(|c| (c.author.as_str(), c.thread.as_str(), c.path.as_str(), c.resolved))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("kate", "", "src/b.ts:58", Some(false)),
+                ("kate", "bbb", "src/a.ts", Some(true)),
+                ("bob", "bbb", "src/a.ts", Some(true)),
+                ("kate", "", "", None),
+            ]
+        );
+        assert_eq!(got[3].verdict(), Some("changes requested"));
+        assert!(parse_discussions("{}").is_none(), "not a list");
     }
 
     /// A capped count keeps its digits; garbage is zero, not a failure.

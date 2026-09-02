@@ -267,6 +267,7 @@ fn conversation(v: &serde_json::Value) -> Vec<PrComment> {
             at: str_at(c, "createdAt"),
             review_state: String::new(),
             body: str_at(c, "body"),
+            ..Default::default()
         });
     }
     for r in arr_at(v, "reviews") {
@@ -278,6 +279,7 @@ fn conversation(v: &serde_json::Value) -> Vec<PrComment> {
             at: at.to_string(),
             review_state: str_at(r, "state"),
             body: str_at(r, "body"),
+            ..Default::default()
         });
     }
     // RFC 3339 UTC stamps sort lexicographically into chronological order —

@@ -201,21 +201,71 @@ pub fn lines(detail: &PrDetail, width: usize, th: Theme) -> Vec<Line<'static>> {
             )],
             width,
         ));
-        for c in &detail.comments {
+        for thread in threads(&detail.comments) {
             out.push(Line::from(""));
-            out.extend(comment_lines(c, width, body_w, th));
+            let last = thread.len() - 1;
+            for (i, c) in thread.iter().enumerate() {
+                let place = match i {
+                    0 => Place::Root,
+                    n if n == last => Place::LastReply,
+                    _ => Place::Reply,
+                };
+                out.extend(comment_lines(c, place, width, body_w, th));
+            }
         }
     }
     out
 }
 
-/// One comment: an attribution row, then its wrapped body.
-fn comment_lines(c: &PrComment, width: usize, body_w: usize, th: Theme) -> Vec<Line<'static>> {
+/// Where a comment sits in its thread, which decides the tree glyphs
+/// drawn in front of it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Place {
+    /// Opens the thread (or is a comment on its own): no glyph.
+    Root,
+    /// A reply with more below it: `├` on its head, `│` down its body.
+    Reply,
+    /// The last reply: `└` on its head, nothing down its body.
+    LastReply,
+}
+
+/// Group `comments` into threads, each in reading order: replies sit
+/// under their root even when a later thread's root was posted between
+/// them. A comment with no thread is a thread of one.
+fn threads(comments: &[PrComment]) -> Vec<Vec<&PrComment>> {
+    let mut out: Vec<Vec<&PrComment>> = Vec::new();
+    for c in comments {
+        let existing = (!c.thread.is_empty())
+            .then(|| out.iter_mut().find(|t| t[0].thread == c.thread))
+            .flatten();
+        match existing {
+            Some(t) => t.push(c),
+            None => out.push(vec![c]),
+        }
+    }
+    out
+}
+
+/// One comment: an attribution row, then its wrapped body, both behind
+/// the tree glyph its `place` asks for. A root that hangs on a diff line
+/// says where, and a resolved thread says so on its root.
+fn comment_lines(
+    c: &PrComment,
+    place: Place,
+    width: usize,
+    body_w: usize,
+    th: Theme,
+) -> Vec<Line<'static>> {
     let dim = Style::default().fg(th.dim);
-    let mut head = vec![Span::styled(
-        format!("{INDENT}{}", c.author),
-        Style::default().fg(th.accent),
-    )];
+    let (head_glyph, body_glyph) = match place {
+        Place::Root => ("", ""),
+        Place::Reply => ("├ ", "│ "),
+        Place::LastReply => ("└ ", "  "),
+    };
+    let mut head = vec![
+        Span::styled(format!("{INDENT}{head_glyph}"), dim),
+        Span::styled(c.author.clone(), Style::default().fg(th.accent)),
+    ];
     // A verdict is the whole point of a review row — it goes loud, and in
     // the color the panels already use for "this wants you".
     if let Some(verdict) = c.verdict() {
@@ -232,15 +282,25 @@ fn comment_lines(c: &PrComment, width: usize, body_w: usize, th: Theme) -> Vec<L
     if let Some(day) = c.at.split('T').next().filter(|d| !d.is_empty()) {
         head.push(Span::styled(format!(" · {day}"), dim));
     }
+    if place == Place::Root && c.resolved == Some(true) {
+        head.push(Span::styled(" ✓ resolved", Style::default().fg(th.ok)));
+    }
     let mut out = vec![fit(head, width)];
+    // The diff location belongs to the thread, so only its root shows it.
+    if place == Place::Root && !c.path.is_empty() {
+        for row in wrap(&c.path, body_w.saturating_sub(2)) {
+            out.push(Line::from(Span::styled(format!("{INDENT}  {row}"), dim)));
+        }
+    }
     if c.body.trim().is_empty() {
         return out;
     }
-    for row in wrap(c.body.trim_end(), body_w.saturating_sub(2)) {
-        out.push(Line::from(Span::styled(
-            format!("{INDENT}  {row}"),
-            Style::default().fg(th.muted),
-        )));
+    let body_w = body_w.saturating_sub(2 + body_glyph.chars().count());
+    for row in wrap(c.body.trim_end(), body_w) {
+        out.push(Line::from(vec![
+            Span::styled(format!("{INDENT}{body_glyph}"), dim),
+            Span::styled(format!("  {row}"), Style::default().fg(th.muted)),
+        ]));
     }
     out
 }
@@ -317,12 +377,14 @@ mod tests {
                     at: "2024-04-25T19:55:42Z".into(),
                     review_state: "APPROVED".into(),
                     body: String::new(),
+                    ..Default::default()
                 },
                 PrComment {
                     author: "steiza".into(),
                     at: "2024-04-26T21:44:55Z".into(),
                     review_state: String::new(),
                     body: "nice".into(),
+                    ..Default::default()
                 },
             ],
         );
@@ -339,6 +401,44 @@ mod tests {
         assert!(out.contains("kate approved · 2024-04-25"), "{out}");
         assert!(out.contains("steiza · 2024-04-26"), "{out}");
         assert!(out.contains("nice"), "{out}");
+    }
+
+    /// Replies sit under their root as a tree, the root carries the diff
+    /// location and the resolved mark, and a thread opened later doesn't
+    /// split an earlier one even when its root was posted in between.
+    #[test]
+    fn a_thread_renders_as_a_tree_under_its_root() {
+        let c = |author: &str, at: &str, body: &str, thread: &str| PrComment {
+            author: author.into(),
+            at: format!("2026-09-01T{at}:00Z"),
+            body: body.into(),
+            thread: thread.into(),
+            path: if thread.is_empty() { String::new() } else { "src/a.ts:58".into() },
+            resolved: if thread.is_empty() { None } else { Some(true) },
+            ..Default::default()
+        };
+        let d = detail(
+            "x",
+            vec![
+                c("kate", "06:00", "leaks", "t1"),
+                c("bob", "06:30", "alone", ""),
+                c("bob", "07:00", "moved", "t1"),
+                c("kate", "08:00", "thanks", "t1"),
+            ],
+        );
+        let out = text(&lines(&d, 60, Theme::default()));
+        let want = "\n\
+                    \n kate · 2026-09-01 ✓ resolved\
+                    \n   src/a.ts:58\
+                    \n   leaks\
+                    \n ├ bob · 2026-09-01\
+                    \n │   moved\
+                    \n └ kate · 2026-09-01\
+                    \n     thanks\
+                    \n\
+                    \n bob · 2026-09-01\
+                    \n   alone";
+        assert!(out.contains(want), "{out}");
     }
 
     /// An empty description says so rather than rendering a silent gap that
@@ -361,6 +461,7 @@ mod tests {
                 at: "2024-04-26T21:44:55Z".into(),
                 review_state: String::new(),
                 body: "a".repeat(200),
+                ..Default::default()
             }],
         );
         for w in [24usize, 40, 80] {

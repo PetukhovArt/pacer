@@ -395,7 +395,7 @@ impl PrDetail {
 }
 
 /// One thing somebody said on a pull request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PrComment {
     pub author: String,
     /// RFC 3339, as the forge gives it.
@@ -404,6 +404,16 @@ pub struct PrComment {
     /// `CHANGES_REQUESTED`, `COMMENTED`) when it came in as a review.
     pub review_state: String,
     pub body: String,
+    /// The thread this belongs to — the forge's discussion id — or empty
+    /// for a comment that stands alone. Comments sharing a thread render
+    /// as one tree: the first one is the root, the rest are replies.
+    pub thread: String,
+    /// `path` or `path:line` the thread hangs on when it was left on the
+    /// diff; empty for a comment on the pull request as a whole.
+    pub path: String,
+    /// Whether the thread was marked resolved; `None` when the forge does
+    /// not track that for this comment.
+    pub resolved: Option<bool>,
 }
 
 impl PrComment {
