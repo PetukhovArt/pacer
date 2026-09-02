@@ -337,13 +337,13 @@ pacer upgrade            # install the latest release (--force on a dev build)
 
 ## Configuration
 
-Settings: `~/.local/share/pacer/config.json` (or the platform equivalent), beside the database —
+Settings: `~/.local/share/nebula/config.json` (or the platform equivalent), beside the database —
 hand-editable, and what the `s` overlay writes.
 
 `hide_projects` and `hide_worktrees` default to `false`. Set either to `true` to start with that panel
 hidden; the SESSIONS PANEL always remains visible.
 
-Logs: `~/.local/state/pacer/daemon.log` and `tui.log` (`NEBULA_LOG=debug` for more). `NEBULA_EDITOR`
+Logs: `~/.local/state/nebula/daemon.log` and `tui.log` (`NEBULA_LOG=debug` for more). `NEBULA_EDITOR`
 overrides the configured editor. Overrides for tests/parallel instances: `NEBULA_RUNTIME_DIR`,
 `NEBULA_DATA_DIR`, `NEBULA_AGENT_CMD`, `NEBULA_INSTALL_URL`.
 
