@@ -343,7 +343,7 @@ mod tests {
             title: "Attach links".into(),
             state: "OPEN".into(),
             is_draft: false,
-            author: "webdevcody".into(),
+            author: "petukhov".into(),
             base: "main".into(),
             head: "feat/links".into(),
             additions: 106,
@@ -391,7 +391,7 @@ mod tests {
         let out = text(&lines(&d, 60, Theme::default()));
         assert!(out.starts_with(" #42 Attach links"), "{out}");
         assert!(
-            out.contains("open · webdevcody · main ← feat/links"),
+            out.contains("open · petukhov · main ← feat/links"),
             "{out}"
         );
         assert!(out.contains("+106 -4 · 2 files"), "{out}");
@@ -455,7 +455,7 @@ mod tests {
     fn no_rendered_line_overflows_the_pane() {
         let d = detail(
             "A description with a very long unbroken token: \
-             https://github.com/AgentSystemLabs/nebula/pull/12345/files#diff-abcdef",
+             https://github.com/PetukhovArt/nebula/pull/12345/files#diff-abcdef",
             vec![PrComment {
                 author: "steiza".into(),
                 at: "2024-04-26T21:44:55Z".into(),

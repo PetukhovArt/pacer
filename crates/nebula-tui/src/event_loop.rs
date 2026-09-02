@@ -9510,7 +9510,7 @@ mod tests {
             title: "Attach links".into(),
             state: "OPEN".into(),
             is_draft: false,
-            author: "webdevcody".into(),
+            author: "petukhov".into(),
             base: "main".into(),
             head: "feat/links".into(),
             additions: 106,

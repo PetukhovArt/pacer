@@ -502,7 +502,7 @@ mod tests {
             r#"{
               "number": 42, "url": "https://github.com/o/r/pull/42",
               "title": "Attach links", "state": "OPEN", "isDraft": false,
-              "author": {"login": "webdevcody"},
+              "author": {"login": "petukhov"},
               "baseRefName": "main", "headRefName": "feat/links",
               "additions": 106, "deletions": 4, "changedFiles": 2,
               "body": "Closes #1\n\nMakes the row.",
@@ -517,7 +517,7 @@ mod tests {
             }"#,
         )
         .expect("parsed");
-        assert_eq!(d.author, "webdevcody");
+        assert_eq!(d.author, "petukhov");
         assert_eq!((d.base.as_str(), d.head.as_str()), ("main", "feat/links"));
         assert_eq!((d.additions, d.deletions, d.changed_files), (106, 4, 2));
         assert!(d.body.starts_with("Closes #1"));

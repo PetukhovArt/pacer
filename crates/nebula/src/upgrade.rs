@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const INSTALL_URL: &str =
-    "https://raw.githubusercontent.com/AgentSystemLabs/nebula/main/install.sh";
+    "https://raw.githubusercontent.com/PetukhovArt/nebula/main/install.sh";
 
 /// The published install script, with `NEBULA_INSTALL_URL` as the override
 /// hook (tests point it at a file:// URL). Shared with `nebula ssh`.

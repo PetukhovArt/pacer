@@ -7,14 +7,14 @@
 Run **Claude Code**, **Codex** and **Cursor** across every project and git worktree you own — from one
 terminal, one keyboard, one tree. They keep working when you close it.
 
-[![Release](https://img.shields.io/github/v/release/AgentSystemLabs/nebula?style=flat-square&color=e8c547&label=release)](https://github.com/AgentSystemLabs/nebula/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/AgentSystemLabs/nebula/release.yml?style=flat-square&label=build)](https://github.com/AgentSystemLabs/nebula/actions)
+[![Release](https://img.shields.io/github/v/release/PetukhovArt/nebula?style=flat-square&color=e8c547&label=release)](https://github.com/PetukhovArt/nebula/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/PetukhovArt/nebula/release.yml?style=flat-square&label=build)](https://github.com/PetukhovArt/nebula/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square)](#install)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584?style=flat-square)](https://www.rust-lang.org)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/nebula/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/PetukhovArt/nebula/main/install.sh | sh
 ```
 
 <img src="assets/screenshot.png" alt="nebula: projects, worktrees and sessions on the left, a live Claude Code session on the right" width="100%">
@@ -53,7 +53,7 @@ No Electron, no server, no MCP. One ~4 MB Rust binary and a unix socket.
 macOS or Linux — the same command installs and updates:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/nebula/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/PetukhovArt/nebula/main/install.sh | sh
 ```
 
 It downloads the prebuilt binary for your platform from the latest GitHub release into `~/.local/bin`

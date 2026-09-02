@@ -1147,7 +1147,7 @@ mod tests {
             alive: false,
             cloud_mirroring: false,
         };
-        let pr_url = "https://github.com/AgentSystemLabs/nebula/pull/42";
+        let pr_url = "https://github.com/PetukhovArt/nebula/pull/42";
         store
             .insert_agent_with_launch_context(&agent, false, Some(pr_url))
             .unwrap();
