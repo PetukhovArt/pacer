@@ -11,8 +11,10 @@ Two processes, same binary:
 1. **Daemon** (`pacer daemon`) — owns every PTY, SQLite, git worktrees, agent status. Spawned by the
    TUI in its own session (`setsid`) when nothing is listening, so it outlives clients and holds no
    controlling terminal.
-2. **TUI** (`pacer`) — a ratatui client on a unix socket (loopback TCP + bearer token on Windows).
-   Quit it and nothing dies; relaunch and scrollback is replayed.
+2. **TUI** (`pacer`) — a ratatui client on the daemon socket: an `AF_UNIX` socket in the `0700` runtime
+   dir on unix, or — Windows has none — a loopback TCP listener plus a bearer token there instead.
+   One or the other, never both; `pacer-core/src/transport.rs` hides the difference behind one API.
+   Quit the TUI and nothing dies; relaunch and scrollback is replayed.
 
 IPC is length-prefixed MessagePack: `ClientRequest` in (CRUD, attach, keystrokes, resize),
 `ServerEvent` out (entity deltas, status, PTY output). Attach replays the per-PTY ring buffer, then

@@ -89,6 +89,30 @@ _Avoid_: drill in
 Restoring an Agent from its stored CLI session id; a fresh session when the id is gone.
 _Avoid_: restore, restart (a restart is a new process; Resume continues the conversation)
 
+## Transport and runtime files
+
+**Daemon Socket**
+The channel a TUI attaches to the Daemon over. On unix an `AF_UNIX` socket in the Runtime Dir; on Windows, which has none, a loopback TCP listener plus a bearer token. One or the other, never both — callers above the transport see a single API.
+_Avoid_: the IPC port, the server, the API (the Hook Receiver is the HTTP one, not this)
+
+**Runtime Dir**
+The per-user directory holding the Daemon Socket, the Pidfile and the Endpoint File. On unix its `0700` mode is the whole authorization boundary — a connect that succeeds is already a connect from this user. Overridable, which is how a dev instance per checkout stays off the real Daemon.
+_Avoid_: temp dir, socket dir
+
+**Endpoint File**
+`<port>\n<token>\n` beside the Pidfile. Windows only, and load-bearing there: a TCP port is not a fixed name the way a socket path is, so this file is how a client finds the Daemon Socket at all. Rewritten whole, never appended — a shorter token must not leave the tail of the old one behind.
+
+**Pidfile Lock**
+The exclusive lock a Daemon holds on its pidfile (`flock` on unix, `LockFileEx` on Windows). It, not the pid inside, is what refuses a second Daemon on one Runtime Dir — a pid outlives the process it names. The Windows lock sits on a byte far past the end of the content, because file locks there are mandatory and a locked byte 0 would make the pidfile unreadable to the two readers that need it.
+_Avoid_: pid check
+
+**Daemon Setsid**
+The unix step that puts a spawned Daemon in its own session with no controlling terminal, so it outlives the TUI that started it and no keystroke reaches it. Windows has no sessions to detach from; the equivalent is spawning the Daemon detached and windowless.
+
+**Version Skew**
+A TUI and a Daemon built from different code, so their protocol versions disagree — the ordinary state of a checkout where a live Daemon predates the build you just made. The TUI names which side is older instead of failing opaquely, and the Daemon keeps it distinguishable from a rejected token.
+_Avoid_: version mismatch, stale daemon (a stale Daemon is merely older, and may still speak the same protocol)
+
 ## Statuses
 
 **Agent Status**
