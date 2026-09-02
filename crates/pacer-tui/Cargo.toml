@@ -1,0 +1,30 @@
+[package]
+name = "pacer-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pacer-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+tokio = { workspace = true, features = ["io-std"] }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ratatui = { version = "0.30", default-features = false, features = ["crossterm_0_29", "all-widgets", "layout-cache", "macros", "underline-color"] }
+crossterm = { version = "0.29", features = ["event-stream"] }
+tui-term = "0.3"
+vt100 = "0.16"
+portable-pty = "0.9"
+futures = "0.3"
+
+# `TerminateProcess` for the NEBULA KILL fallback, when a version-skewed
+# daemon cannot be reached over the DAEMON SOCKET. Already in the tree
+# under tokio; Unix uses a two-line extern shim instead.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile = "3"

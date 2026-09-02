@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/nebula-core", "crates/nebula-daemon", "crates/nebula-tui", "crates/nebula"]
+members = ["crates/pacer-core", "crates/pacer-daemon", "crates/pacer-tui", "crates/pacer"]
 exclude = ["vendor/vt100"]
 
 # Vendored vt100 with one patch: rows scrolled out of a top-anchored DECSTBM
@@ -16,9 +16,9 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-nebula-core = { path = "crates/nebula-core" }
-nebula-daemon = { path = "crates/nebula-daemon" }
-nebula-tui = { path = "crates/nebula-tui" }
+pacer-core = { path = "crates/pacer-core" }
+pacer-daemon = { path = "crates/pacer-daemon" }
+pacer-tui = { path = "crates/pacer-tui" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

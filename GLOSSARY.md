@@ -1,4 +1,4 @@
-# Nebula
+# Pacer
 
 Terminal multiplexer for AI coding agents: a daemon owns the PTY sessions; a TUI client attaches and detaches without losing work.
 
@@ -16,7 +16,7 @@ _Avoid_: selected workspace, current workspace
 The built-in Workspace `default` — present in every install, cannot be deleted.
 
 **Project**
-A git repository registered with nebula. Lives inside a Workspace.
+A git repository registered with pacer. Lives inside a Workspace.
 _Avoid_: repo
 
 **Worktree**
@@ -75,7 +75,7 @@ The background process that owns every PTY Session, the store, git operations, a
 _Avoid_: server
 
 **TUI**
-The client (`nebula` with no arguments) that attaches to the Daemon. Closing it kills nothing.
+The client (`pacer` with no arguments) that attaches to the Daemon. Closing it kills nothing.
 _Avoid_: the app, window
 
 **PTY Session**
@@ -134,8 +134,8 @@ _Avoid_: "the session went green too early"
 ## Agents and hooks
 
 **Managed Hooks**
-The hook groups nebula writes into the agent CLI's config at every spawn; user hooks are preserved.
-_Avoid_: the hooks nebula installs
+The hook groups pacer writes into the agent CLI's config at every spawn; user hooks are preserved.
+_Avoid_: the hooks pacer installs
 
 **Hook Receiver**
 The Daemon's loopback HTTP endpoint that the agent CLIs' hooks report events to. Not MCP.
@@ -146,7 +146,7 @@ A session left on its default name gets a 3–4 word title from the agent after 
 _Avoid_: auto name, self-rename
 
 **Worktree Relocation**
-Moving a Session to another Worktree via `nebula worktree`: the row moves at once; the CLI restarts inside the Worktree with the conversation resumed.
+Moving a Session to another Worktree via `pacer worktree`: the row moves at once; the CLI restarts inside the Worktree with the conversation resumed.
 _Avoid_: move into a worktree
 
 **Starting Prompt**

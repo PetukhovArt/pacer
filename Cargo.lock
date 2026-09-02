@@ -1126,90 +1126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nebula"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "clap",
- "nebula-core",
- "nebula-daemon",
- "nebula-tui",
- "portable-pty",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "vt100",
-]
-
-[[package]]
-name = "nebula-core"
-version = "0.17.0"
-dependencies = [
- "directories",
- "rand 0.10.2",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "subtle",
- "tempfile",
- "tokio",
- "ulid",
- "windows-sys",
-]
-
-[[package]]
-name = "nebula-daemon"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "axum",
- "nebula-core",
- "nix 0.31.3",
- "portable-pty",
- "rand 0.10.2",
- "rmp-serde",
- "rusqlite",
- "serde",
- "serde_bytes",
- "serde_json",
- "subtle",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "ulid",
- "vt100",
- "windows-sys",
-]
-
-[[package]]
-name = "nebula-tui"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "crossterm",
- "futures",
- "nebula-core",
- "portable-pty",
- "ratatui",
- "rmp-serde",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tui-term",
- "vt100",
- "windows-sys",
-]
-
-[[package]]
 name = "nix"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1353,6 +1269,90 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bb71e1b3fa6ca1c61f383464aaf2bb0e2f8e772a1f01d486832464de363b951"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "pacer"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "pacer-core",
+ "pacer-daemon",
+ "pacer-tui",
+ "portable-pty",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vt100",
+]
+
+[[package]]
+name = "pacer-core"
+version = "0.17.0"
+dependencies = [
+ "directories",
+ "rand 0.10.2",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "subtle",
+ "tempfile",
+ "tokio",
+ "ulid",
+ "windows-sys",
+]
+
+[[package]]
+name = "pacer-daemon"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "nix 0.31.3",
+ "pacer-core",
+ "portable-pty",
+ "rand 0.10.2",
+ "rmp-serde",
+ "rusqlite",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "subtle",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+ "vt100",
+ "windows-sys",
+]
+
+[[package]]
+name = "pacer-tui"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "futures",
+ "pacer-core",
+ "portable-pty",
+ "ratatui",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tui-term",
+ "vt100",
+ "windows-sys",
 ]
 
 [[package]]

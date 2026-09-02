@@ -1,4 +1,4 @@
-# Nebula
+# Pacer
 
 Terminal multiplexer for AI coding agents: a daemon owns the PTYs; a ratatui TUI attaches over a
 socket. Code is the source of truth — read `ARCHITECTURE.md` for the map and `GLOSSARY.md` for the

@@ -1,6 +1,6 @@
 # Remote access from a phone via Tailscale
 
-How to open the nebula TUI on a phone from any network, using `nebula browser`
+How to open the pacer TUI on a phone from any network, using `pacer browser`
 over a Tailscale tailnet. The daemon and its sessions stay on the PC; the phone
 gets the TUI in a browser tab through ttyd (HTTP/WebSocket + xterm.js).
 
@@ -12,9 +12,9 @@ exposed.
 
 ## One-time setup
 
-### On the PC (the machine running the nebula daemon)
+### On the PC (the machine running the pacer daemon)
 
-1. Install ttyd — `nebula browser` needs it on PATH:
+1. Install ttyd — `pacer browser` needs it on PATH:
    - Windows: `winget install tsl0922.ttyd`
    - macOS: `brew install ttyd`
    - Debian/Ubuntu: `sudo apt install ttyd`
@@ -41,7 +41,7 @@ On the PC, in its own terminal (the command blocks while serving; Ctrl+C stops
 it):
 
 ```
-nebula browser --bind <tailscale-ip> --credential USER:PASSWORD --no-open
+pacer browser --bind <tailscale-ip> --credential USER:PASSWORD --no-open
 ```
 
 - `--bind <tailscale-ip>` listens only on the tailnet interface — nothing is
@@ -63,9 +63,9 @@ same session list as the desktop TUI.
 - **Page doesn't load on the phone** — check the Tailscale toggle is on on the
   phone, and that `tailscale status` on the PC shows both devices. On Windows,
   allow ttyd through the firewall if a prompt appears on first run.
-- **`nebula browser` says ttyd is missing** — it's not on PATH; open a fresh
+- **`pacer browser` says ttyd is missing** — it's not on PATH; open a fresh
   terminal after installing, or reinstall (see setup above).
-- **Port 7681 is busy** — `nebula browser` steps to a free port on its own and
+- **Port 7681 is busy** — `pacer browser` steps to a free port on its own and
   prints which one; use that in the phone URL, or pin one with `--port N`.
 
 ## Limits
@@ -73,6 +73,6 @@ same session list as the desktop TUI.
 - The PC must be awake: sessions live in the daemon's PTYs, so sleep or
   shutdown kills them — and there is nothing to attach to until it's back up.
   Disable sleep in the power settings if you rely on this.
-- `nebula browser` must be running on the PC for the phone to connect. For
-  reaching a machine you can SSH into instead, `nebula tunnel HOST` does this
+- `pacer browser` must be running on the PC for the phone to connect. For
+  reaching a machine you can SSH into instead, `pacer tunnel HOST` does this
   whole dance over a single SSH port-forward — see README.

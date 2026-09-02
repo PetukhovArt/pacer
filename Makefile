@@ -13,10 +13,10 @@
 #   make cycle    install + kill + dev in one go — the re-runnable full cutover
 
 PREFIX      ?= $(HOME)/.cargo/bin
-RELEASE_BIN := target/release/nebula
-DEBUG_BIN   := target/debug/nebula
+RELEASE_BIN := target/release/pacer
+DEBUG_BIN   := target/debug/pacer
 
-# The dev instance is a second, complete nebula: its own socket, DB, and
+# The dev instance is a second, complete pacer: its own socket, DB, and
 # settings — and one *per checkout*, so the main clone and every worktree can
 # run at the same time. Sharing them is worse than a port clash: two checkouts
 # on one runtime dir means the second TUI silently attaches to the first's
@@ -28,15 +28,15 @@ DEBUG_BIN   := target/debug/nebula
 # runtime dir takes the hash alone — it holds a unix socket, and SUN_LEN (104
 # bytes on macOS) is not a budget a long worktree name should be spending.
 DEV_SLOT    := $(shell printf '%s' '$(CURDIR)' | shasum | cut -c1-8)
-DEV_RUNTIME := /tmp/nebula-dev-$(DEV_SLOT)
-DEV_DATA    := $(HOME)/.nebula-dev/$(notdir $(CURDIR))-$(DEV_SLOT)
+DEV_RUNTIME := /tmp/pacer-dev-$(DEV_SLOT)
+DEV_DATA    := $(HOME)/.pacer-dev/$(notdir $(CURDIR))-$(DEV_SLOT)
 # `make dev SEED=0` skips the first-run copy and starts the dev instance empty.
 SEED ?= 1
 # `make dev AGENT=/bin/cat` stubs agents out, so nothing spawns a real claude —
 # including the warm-slot prewarm, which launches one before you create any
 # agent at all. Unset (the default) means real agents, exactly like production.
 AGENT ?=
-# Left empty on purpose: `nebula browser` then takes 7681 when it is free and
+# Left empty on purpose: `pacer browser` then takes 7681 when it is free and
 # a free port otherwise, printing which — so a `make browser` per checkout all
 # serve at once. `make browser PORT=8080` pins it (and fails if 8080 is taken,
 # which is what you want when you have an ssh tunnel pointed at it).
@@ -61,8 +61,8 @@ dev: dev-prep ## Run the latest code in an isolated instance (own daemon + data)
 	-@$(DEV_ENV) $(DEBUG_BIN)
 	@$(MAKE) --no-print-directory dev-stop
 
-# `nebula browser` shells out to ttyd and serves *this* binary
-# (`current_exe`, not whatever `nebula` is on PATH), so the tab gets the build
+# `pacer browser` shells out to ttyd and serves *this* binary
+# (`current_exe`, not whatever `pacer` is on PATH), so the tab gets the build
 # below rather than the installed release. ttyd hands its environment to the
 # command it runs, so $(DEV_ENV) reaches the TUI in the tab and the browser
 # instance stays as isolated as `make dev`. Needs ttyd on PATH — the binary
@@ -84,7 +84,7 @@ dev-prep:
 	@# Also load-bearing: on macOS the first exec of a freshly relinked binary
 	@# pays for signature validation and can stall for seconds. Paying it here
 	@# keeps the daemon spawn inside the TUI's 3s connect deadline
-	@# (nebula-tui/src/ipc.rs) instead of failing with "daemon did not come up".
+	@# (pacer-tui/src/ipc.rs) instead of failing with "daemon did not come up".
 	@$(DEBUG_BIN) --version >/dev/null
 	@$(if $(filter 0,$(SEED)),true,$(MAKE) --no-print-directory dev-seed)
 
@@ -94,7 +94,8 @@ dev-prep:
 # the real daemon owns, and the dev daemon must not resume them. `.backup`
 # reads the WAL, so the copy is consistent even with the real daemon running.
 # The real dir is where `directories::ProjectDirs::from("dev","nebula","nebula")`
-# puts it (nebula-core/src/paths.rs); keep the two in step.
+# puts it (pacer-core/src/paths.rs — the on-disk name predates the rename and
+# stays, so existing installs keep their data); keep the two in step.
 dev-seed: ## Copy real projects/workspaces/settings into the dev instance (only if it has no DB yet)
 	@[ ! -e $(DEV_DATA)/nebula.db ] || exit 0; \
 	case "$$(uname -s)" in \
@@ -102,7 +103,7 @@ dev-seed: ## Copy real projects/workspaces/settings into the dev instance (only 
 		*)      real="$${XDG_DATA_HOME:-$$HOME/.local/share}/nebula";; \
 	esac; \
 	if [ ! -f "$$real/nebula.db" ]; then \
-		echo "no real nebula data at $$real — dev instance starts empty"; exit 0; fi; \
+		echo "no real pacer data at $$real — dev instance starts empty"; exit 0; fi; \
 	if ! command -v sqlite3 >/dev/null 2>&1; then \
 		echo "sqlite3 not on PATH — dev instance starts empty"; exit 0; fi; \
 	mkdir -p $(DEV_DATA); \
@@ -117,21 +118,21 @@ dev-reset: dev-stop ## Wipe this checkout's dev data; the next `make dev` re-see
 	rm -rf $(DEV_DATA)
 
 # Slots accumulate: a worktree you deleted leaves its DB behind under
-# ~/.nebula-dev. This lists every one with its daemon's state, so you can see
+# ~/.pacer-dev. This lists every one with its daemon's state, so you can see
 # what is still running and `rm -rf` what is not.
 dev-ls: ## List every checkout's dev instance and whether its daemon is up
-	@for d in $(HOME)/.nebula-dev/*-*/; do \
+	@for d in $(HOME)/.pacer-dev/*-*/; do \
 		[ -d "$$d" ] || continue; \
 		slot=$${d%/}; slot=$${slot##*-}; \
-		pidfile=/tmp/nebula-dev-$$slot/daemon.pid; \
+		pidfile=/tmp/pacer-dev-$$slot/daemon.pid; \
 		state=stopped; \
 		if [ -f "$$pidfile" ] && ps -p "$$(cat $$pidfile 2>/dev/null)" -o command= 2>/dev/null \
-			| grep -q 'nebula daemon'; then state=running; fi; \
+			| grep -q 'pacer daemon'; then state=running; fi; \
 		printf '  %-8s %-40s %s\n' "$$state" "$$(basename $$d)" "$$d"; \
 	done
 
 # The pidfile outlives the process it names, so confirm the pid is still a
-# nebula daemon before signalling it — otherwise a recycled pid means killing
+# pacer daemon before signalling it — otherwise a recycled pid means killing
 # some unrelated process of the user's. SIGTERM (not KILL) so the daemon runs
 # its normal shutdown and takes its PTY children with it.
 dev-stop: ## Stop the dev daemon (it detaches, so quitting the TUI leaves it running)
@@ -139,7 +140,7 @@ dev-stop: ## Stop the dev daemon (it detaches, so quitting the TUI leaves it run
 	[ -f $$pidfile ] || exit 0; \
 	pid=$$(cat $$pidfile 2>/dev/null); \
 	case "$$pid" in ''|*[!0-9]*) exit 0;; esac; \
-	if ps -p $$pid -o command= 2>/dev/null | grep -q 'nebula daemon'; then \
+	if ps -p $$pid -o command= 2>/dev/null | grep -q 'pacer daemon'; then \
 		kill $$pid 2>/dev/null || true; \
 	fi
 
@@ -153,22 +154,22 @@ build: ## Release build
 # for that inode no longer matches the new contents — every exec then dies
 # with SIGKILL (exit 137). A fresh inode forces signature re-validation.
 install: build ## Install to $(PREFIX) — warns if the live daemon is now stale
-	cp $(RELEASE_BIN) $(PREFIX)/nebula.new
-	mv $(PREFIX)/nebula.new $(PREFIX)/nebula
-	@$(PREFIX)/nebula --version
-	@$(PREFIX)/nebula _stale-daemon-note
+	cp $(RELEASE_BIN) $(PREFIX)/pacer.new
+	mv $(PREFIX)/pacer.new $(PREFIX)/pacer
+	@$(PREFIX)/pacer --version
+	@$(PREFIX)/pacer _stale-daemon-note
 
 kill: ## Stop every session and the daemon — the cutover step after `make install`
-	$(PREFIX)/nebula kill
+	$(PREFIX)/pacer kill
 
 # The whole cutover as one command, safe to re-run as often as you like:
 # install first, so a build that fails stops here with every session still
 # alive; then kill the real daemon (it is now running the old binary — the
 # STALE DAEMON NOTE `install` just printed says as much); then `dev`, which
 # builds the debug binary and hands the terminal to the isolated dev instance.
-# `nebula kill` exits 0 and says "no nebula daemon running" when there is
+# `pacer kill` exits 0 and says "no pacer daemon running" when there is
 # nothing to stop, so the first run on a cold machine goes through too. The
-# kill stops every real session — run this from a terminal outside nebula,
+# kill stops every real session — run this from a terminal outside pacer,
 # not from a session it would take down with it. Recipe lines rather than
 # prerequisites so `make -j` cannot reorder the three.
 cycle: ## Install, kill the real daemon, run the dev instance — re-run whenever

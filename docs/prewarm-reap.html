@@ -116,7 +116,7 @@ pre{margin:20px 0 0;padding:18px;background:var(--code-bg);border-radius:12px;ov
         <div style="display:flex;flex-direction:column;gap:18px;max-width:760px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span style="display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Разбор архитектуры</span>
-            <span style="font-size:13px;color:var(--ink-3);font-weight:500">nebula · daemon · registry.rs</span>
+            <span style="font-size:13px;color:var(--ink-3);font-weight:500">pacer · daemon · registry.rs</span>
           </div>
           <h1 style="margin:0;font-size:clamp(34px,5.2vw,56px);line-height:1.04;letter-spacing:-.03em;font-weight:800;text-wrap:balance">Прогрев и сборщик:<br>газ и тормоз одной механики</h1>
           <p class="prose body-text" style="margin:0;font-size:clamp(17px,2vw,20px);line-height:1.55;max-width:62ch">Два проекта, в каждом два worktree, в каждом две сессии — восемь живых процессов <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">claude</code> и оболочек. Смотреть можно ровно на один worktree. Разбор того, что происходит с остальными шестью, пока вы переключаетесь.</p>
@@ -353,7 +353,7 @@ pre{margin:20px 0 0;padding:18px;background:var(--code-bg);border-radius:12px;ov
         <section id="warm" data-sec="warm" style="scroll-margin-top:80px">
           <div class="sechead"><span class="secnum">02</span><h2>Прогрев — газ</h2></div>
           <div class="prose body-text" style="display:flex;flex-direction:column;gap:18px">
-            <p style="margin:0">Nebula плодит процессы спекулятивно, и оба механизма включены по умолчанию. Это не побочный эффект — это заявленная фича: attach должен попадать на уже загруженный экран, а не на «booting…».</p>
+            <p style="margin:0">Pacer плодит процессы спекулятивно, и оба механизма включены по умолчанию. Это не побочный эффект — это заявленная фича: attach должен попадать на уже загруженный экран, а не на «booting…».</p>
             <p style="margin:0">Ключевой момент: <b style="color:var(--ink)">триггер — не открытие сессии, а остановка курсора на строке worktree.</b> Задержались на 250 мс — демон пошёл бутить всё, что под этим worktree мертво. Вы просто листаете дерево, а процессы рождаются.</p>
           </div>
 
@@ -883,7 +883,7 @@ self.kill_session(&amp;sref);</pre>
           </div>
 
           <div style="margin-top:56px;padding-top:26px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ink-3)">
-            <span>nebula · прогрев и сборщик · стенд 2 × 2 × 2</span>
+            <span>pacer · прогрев и сборщик · стенд 2 × 2 × 2</span>
             <span>Источник — код на ветке windows</span>
           </div>
         </section>

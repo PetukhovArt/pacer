@@ -3,23 +3,23 @@
 # The Makefile's `install`/`cycle` targets are unix-only (shasum, /tmp,
 # no .exe suffix) — this script is their Windows counterpart.
 #
-# Run from a terminal OUTSIDE nebula: the cutover kills every session.
+# Run from a terminal OUTSIDE pacer: the cutover kills every session.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\update.ps1
 #
-# Windows locks a running executable, so the installed nebula.exe can't be
+# Windows locks a running executable, so the installed pacer.exe can't be
 # overwritten while the daemon is up. Renaming it IS allowed — so we move
-# the live binary aside to nebula.old.exe, copy the fresh build in, then
-# kill the (still old-binary) daemon; the next `nebula` launch runs the
+# the live binary aside to pacer.old.exe, copy the fresh build in, then
+# kill the (still old-binary) daemon; the next `pacer` launch runs the
 # new build. Build failures stop before anything is touched.
 
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
 $prefix = Join-Path $HOME '.cargo\bin'
-$installed = Join-Path $prefix 'nebula.exe'
-$old = Join-Path $prefix 'nebula.old.exe'
-$built = 'target\release\nebula.exe'
+$installed = Join-Path $prefix 'pacer.exe'
+$old = Join-Path $prefix 'pacer.old.exe'
+$built = 'target\release\pacer.exe'
 
 cargo build --release
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -32,8 +32,8 @@ Copy-Item $built $installed
 & $installed --version
 
 # Stop every session and the daemon (it's still the old binary). Exits 0
-# with "no nebula daemon running" on a cold machine, so this always passes.
+# with "no pacer daemon running" on a cold machine, so this always passes.
 & $installed kill
 
 Write-Host ''
-Write-Host 'Updated. Start `nebula` to run the new build.'
+Write-Host 'Updated. Start `pacer` to run the new build.'
