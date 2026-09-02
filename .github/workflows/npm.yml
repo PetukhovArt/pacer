@@ -1,0 +1,77 @@
+name: Publish to npm
+
+# Manual on purpose. The tag build publishes a GitHub release on its own; this
+# is the separate, irreversible step (npm unpublish is a 72-hour window and the
+# name is held forever after), so it waits to be asked. Flip it to
+# `release: { types: [published] }` once the process is boring.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (e.g. v0.17.0)
+        required: true
+      scope:
+        description: 'npm scope (empty = unscoped)'
+        required: false
+        default: "@petukhovart"
+      dry_run:
+        description: Build and pack the packages without publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # The release assets are the same binaries the tag build produced —
+      # rebuilding here would publish bits nobody tested.
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p assets bins
+          gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" --dir assets
+          for f in assets/pacer-*.tar.gz; do
+            target=$(basename "$f" .tar.gz); target=${target#pacer-}
+            mkdir -p "bins/$target" && tar -xzf "$f" -C "bins/$target"
+          done
+          for f in assets/pacer-*.zip; do
+            [ -e "$f" ] || continue
+            target=$(basename "$f" .zip); target=${target#pacer-}
+            mkdir -p "bins/$target" && unzip -q "$f" -d "bins/$target"
+          done
+          find bins -type f | sort
+
+      - name: Build packages
+        run: node npm/build-packages.mjs --version "${{ inputs.tag }}" --bins bins --scope "${{ inputs.scope }}"
+
+      - name: Pack (dry run)
+        if: ${{ inputs.dry_run }}
+        run: |
+          for dir in npm/dist/pacer-*/ npm/dist/pacer/; do
+            echo "── $dir"
+            (cd "$dir" && npm pack --dry-run)
+          done
+
+      # Platform packages first: a launcher on the registry whose
+      # optionalDependencies do not resolve yet is a broken install for
+      # anyone who happens to be looking.
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for dir in npm/dist/pacer-*/; do
+            (cd "$dir" && npm publish --access public)
+          done
+          (cd npm/dist/pacer && npm publish --access public)
