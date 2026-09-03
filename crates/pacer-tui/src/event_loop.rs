@@ -30,7 +30,8 @@ mod focus_walk;
 mod list_order;
 use focus_walk::{
     at_top_row, bar_return_target, double_tapped, enter_terminal_pane, enter_workspaces_bar,
-    leave_workspaces_bar, panel_name, walk_focus_back, walk_focus_forward,
+    leave_workspaces_bar, panel_name, step_focus_left, step_focus_right, walk_focus_back,
+    walk_focus_forward,
 };
 use list_order::{apply_sort, cycle_focused_sort};
 
@@ -1667,20 +1668,21 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
         // beside it to move to. j/↓ and Enter are the way out (below).
         Action::FocusLeft if app.focus == Focus::Workspaces => move_selection(app, -1, out),
         Action::FocusRight if app.focus == Focus::Workspaces => move_selection(app, 1, out),
-        // h/← and l/→ are the vim twins of the ⇧Tab/Tab walk: one panel
-        // at a time, stopping at the ends of the row. A single press at an
-        // end stays put — leaning on the key can't spill over — and a
+        // h/← and l/→ are the ⇧Tab/Tab walk's vim twins, but they follow
+        // the screen: one tile at a time towards wherever the mosaic put
+        // its neighbour, stopping at the ends of the row. A single press at
+        // an end stays put — leaning on the key can't spill over — and a
         // double tap jumps the boundary the way ^⇧H / ^⇧L would: h,h at the
-        // leftmost column steps up into the Workspaces bar (only while it's
-        // shown; hidden, there is nothing above to jump to), l,l at Sessions
-        // crosses into the pane and takes its input.
-        Action::FocusLeft => match app.focus {
-            focus if focus == app.first_sidebar_focus() => {
+        // leftmost tile steps up into the Workspaces bar (only while it's
+        // shown; hidden, there is nothing above to jump to), l,l at the
+        // tile next to the pane crosses into it and takes its input.
+        Action::FocusLeft => match step_focus_left(app) {
+            Some(prev) => app.focus = prev,
+            None => {
                 if app.show_workspaces && double_tapped(app, action, armed, &chord, "workspaces") {
-                    walk_focus_back(app);
+                    enter_workspaces_bar(app);
                 }
             }
-            _ => walk_focus_back(app),
         },
         // ⌘N / N: open the Nth tab in the Workspaces bar from any panel.
         // Focus stays where it is — the switch re-scopes the panels under
@@ -1706,21 +1708,22 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
         Action::FocusTerminal => {
             app.focus = app.next_visible_focus(app.focus);
         }
-        Action::FocusRight => match app.focus {
-            Focus::Sessions => {
+        // Standing in the pane unlocked (Ctrl+→): l,l takes the lock, as
+        // ^⇧L does. A dead or empty pane has nothing to lock into.
+        Action::FocusRight if app.focus == Focus::Terminal => {
+            let live = app.term.as_ref().is_some_and(|t| !t.exited);
+            if live && double_tapped(app, action, armed, &chord, "type into terminal") {
+                enter_terminal_pane(app, out);
+            }
+        }
+        Action::FocusRight => match step_focus_right(app) {
+            Some(Focus::Terminal) => {
                 if double_tapped(app, action, armed, &chord, "enter pane") {
-                    walk_focus_forward(app, out);
+                    enter_terminal_pane(app, out);
                 }
             }
-            // Standing in the pane unlocked (Ctrl+→): l,l takes the lock,
-            // as ^⇧L does. A dead or empty pane has nothing to lock into.
-            Focus::Terminal => {
-                let live = app.term.as_ref().is_some_and(|t| !t.exited);
-                if live && double_tapped(app, action, armed, &chord, "type into terminal") {
-                    walk_focus_forward(app, out);
-                }
-            }
-            _ => walk_focus_forward(app, out),
+            Some(next) => app.focus = next,
+            None => {}
         },
         // Show/hide the Workspaces bar. Hiding it moves a cursor parked
         // there onto the first visible sidebar.
@@ -8513,6 +8516,72 @@ mod tests {
             "nothing above to jump to, so nothing arms"
         );
         assert!(app.flash.is_none(), "and no hint promises one");
+    }
+
+    /// Once the mosaic lets Sessions move in beside Projects, h/← from
+    /// Sessions must cross to Projects — its real screen neighbour — not
+    /// jump to Prs, which is where the fixed rank order would still send
+    /// it regardless of where the panel actually landed on screen.
+    #[test]
+    fn h_and_l_follow_a_custom_layout_not_the_default_column_order() {
+        use crate::layout::Side;
+        let mut app = App::new();
+        app.body_area = ratatui::layout::Rect::new(0, 0, 120, 35);
+        app.move_panel(2, Side::Left); // Projects | Sessions | Worktrees/Prs | Terminal
+        let mut out = Vec::new();
+        let h = |app: &mut App, out: &mut Vec<ClientRequest>| {
+            press(app, KeyCode::Char('h'), KeyModifiers::NONE, out)
+        };
+
+        app.focus = Focus::Sessions;
+        h(&mut app, &mut out);
+        assert_eq!(
+            app.focus,
+            Focus::Projects,
+            "h from Sessions crosses to its real left neighbour, Projects"
+        );
+
+        // And back the other way: l from Sessions reaches the stack now on
+        // its right. The fixed order answers Terminal here, which the old
+        // Sessions arm only ever entered behind a double tap — a single
+        // press left focus where it was.
+        app.focus = Focus::Sessions;
+        assert_eq!(app.next_visible_focus(Focus::Sessions), Focus::Terminal);
+        press(&mut app, KeyCode::Char('l'), KeyModifiers::NONE, &mut out);
+        assert_eq!(
+            app.focus,
+            Focus::Prs,
+            "l from Sessions crosses to the tile on its right, not the pane"
+        );
+    }
+
+    /// A panel dragged past the pane has the pane on its left, and the pane
+    /// is never a stop going back. h/← steps over it onto the panel beyond
+    /// rather than treating it as the row's left edge and jumping up into
+    /// the Workspaces bar. PRs is moved out of the Worktrees stack first so
+    /// the tile beyond the pane is Worktrees — the fixed order would answer
+    /// PRs here, so only geometry gets this right.
+    #[test]
+    fn h_steps_over_a_pane_the_mosaic_put_in_the_way() {
+        use crate::layout::Side;
+        let mut app = App::new();
+        app.body_area = ratatui::layout::Rect::new(0, 0, 120, 35);
+        app.move_panel(3, Side::Left); // Prs | Projects | Worktrees | Sessions | Terminal
+        app.move_panel(2, Side::Right); // …| Worktrees | Terminal | Sessions
+        let mut out = Vec::new();
+        assert_eq!(
+            app.previous_visible_focus(Focus::Sessions),
+            Focus::Prs,
+            "the fixed order still answers PRs, so the assert below discriminates"
+        );
+
+        app.focus = Focus::Sessions;
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE, &mut out);
+        assert_eq!(
+            app.focus,
+            Focus::Worktrees,
+            "h steps over the pane onto the panel beyond it"
+        );
     }
 
     /// The double tap is a gesture, not a state: a second press that comes

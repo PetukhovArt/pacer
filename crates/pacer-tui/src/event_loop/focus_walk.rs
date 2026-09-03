@@ -1,10 +1,11 @@
 //! The panel walk: focus moving across the columns — Tab / ⇧Tab and
-//! ^⇧L / ^⇧H one panel at a time, `h`/`l` (←/→) as their vim twins —
-//! and the double tap that jumps a walk edge: `l`,`l` at Sessions into the
-//! pane, `h`,`h` or `k`,`k` up into the Workspaces bar, `j`,`j` back down
-//! out of it. `event_loop.rs` dispatches the keys; this module decides
-//! where focus lands. The state it drives is `App::focus`, `App::edge_tap`,
-//! `App::bar_return` and the pane's input lock.
+//! ^⇧L / ^⇧H one panel at a time in the panels' own order, `h`/`l` (←/→)
+//! one tile at a time in the mosaic's — and the double tap that jumps a
+//! walk edge: `l`,`l` next to the pane into it, `h`,`h` or `k`,`k` up into
+//! the Workspaces bar, `j`,`j` back down out of it. `event_loop.rs`
+//! dispatches the keys; this module decides where focus lands. The state it
+//! drives is `App::focus`, `App::edge_tap`, `App::bar_return` and the
+//! pane's input lock.
 
 use super::fire_pending_attach;
 use crate::app::{App, Focus};
@@ -52,13 +53,14 @@ pub(super) fn double_tapped(
     false
 }
 
-/// The forward panel walk — Tab / ^⇧L, and l/→ (double-tapped at the
-/// end) — one visible column right (a hidden Projects or Worktrees panel
-/// is skipped), stopping dead at the terminal pane so leaning on the key
-/// can't spill past it and back round to the Workspaces bar. Landing on
-/// the pane takes the input lock: walking that far means the user is
-/// going to type at the agent, and the preview under the Sessions cursor
-/// is already the session they picked.
+/// The forward panel walk — Tab / ^⇧L — one visible column right (a
+/// hidden Projects or Worktrees panel is skipped), stopping dead at the
+/// terminal pane so leaning on the key can't spill past it and back round
+/// to the Workspaces bar. Landing on the pane takes the input lock: walking
+/// that far means the user is going to type at the agent, and the preview
+/// under the Sessions cursor is already the session they picked. Tab walks
+/// the panels' own order, not the screen's: `step_focus_right` is the one
+/// that follows the mosaic.
 pub(super) fn walk_focus_forward(app: &mut App, out: &mut Vec<ClientRequest>) {
     match app.next_visible_focus(app.focus) {
         Focus::Terminal => enter_terminal_pane(app, out),
@@ -66,17 +68,41 @@ pub(super) fn walk_focus_forward(app: &mut App, out: &mut Vec<ClientRequest>) {
     }
 }
 
-/// The backward panel walk — ⇧Tab / ^⇧H, and h/← (double-tapped at the
-/// end) — one visible column left, stopping dead at the first stop: the
-/// Workspaces bar while it's shown, otherwise the first visible sidebar.
-/// Never wraps into the pane: ^⇧H is also the unlock hatch out of a locked
-/// pane, so a wrap made the key cycle first column → pane → Sessions → …
-/// forever, with nothing to stop against. Forward is the way into the
-/// pane, and Ctrl+→ crosses into it without taking the input lock.
+/// The backward panel walk — ⇧Tab / ^⇧H — one visible column left,
+/// stopping dead at the first stop: the Workspaces bar while it's shown,
+/// otherwise the first visible sidebar. Never wraps into the pane: ^⇧H is
+/// also the unlock hatch out of a locked pane, so a wrap made the key cycle
+/// first column → pane → Sessions → … forever, with nothing to stop
+/// against. Forward is the way into the pane, and Ctrl+→ crosses into it
+/// without taking the input lock.
 pub(super) fn walk_focus_back(app: &mut App) {
     match app.previous_visible_focus(app.focus) {
         Focus::Workspaces => enter_workspaces_bar(app),
         prev => app.focus = prev,
+    }
+}
+
+/// Where l/→ goes: the tile touching the focused one on its right, as the
+/// mosaic has it on screen — so a panel the user dragged elsewhere is
+/// reached from where it now sits, not from the order it was born in.
+/// `Some(Focus::Terminal)` is the pane, which the caller enters behind a
+/// double tap; `None` is the body's right edge, where the walk stops.
+pub(super) fn step_focus_right(app: &App) -> Option<Focus> {
+    app.adjacent_focus(app.focus, crate::layout::Side::Right)
+}
+
+/// Where h/← goes, the mirror of `step_focus_right` — except that the pane
+/// is never a stop going back: ^⇧H is also the unlock hatch out of a locked
+/// pane, so backward focus landing on it made the key cycle with nothing to
+/// stop against. A pane the mosaic has put in the way is stepped over to
+/// whatever lies beyond it. `None` is the left edge, where h,h steps up
+/// into the Workspaces bar.
+pub(super) fn step_focus_left(app: &App) -> Option<Focus> {
+    let side = crate::layout::Side::Left;
+    match app.adjacent_focus(app.focus, side) {
+        // There is only one pane, so one step over it is always enough.
+        Some(Focus::Terminal) => app.adjacent_focus(Focus::Terminal, side),
+        landed => landed,
     }
 }
 

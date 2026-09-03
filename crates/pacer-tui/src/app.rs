@@ -2667,6 +2667,18 @@ impl App {
         }
     }
 
+    /// `panel_index` the other way round — kept beside it so a new panel
+    /// has one switch to answer, not two.
+    pub fn focus_for_panel(idx: usize) -> Option<Focus> {
+        match idx {
+            0 => Some(Focus::Projects),
+            1 => Some(Focus::Worktrees),
+            2 => Some(Focus::Sessions),
+            3 => Some(Focus::Prs),
+            _ => None,
+        }
+    }
+
     /// The body under the Workspaces bar: what the mosaic tiles.
     pub fn panels_area(&self) -> Rect {
         let bar = self.workspaces_bar_h().min(self.body_area.height);
@@ -2691,6 +2703,41 @@ impl App {
     pub fn resolved_layout(&self) -> crate::layout::Resolved {
         self.layout
             .resolve(self.panels_area(), self.panels_visible())
+    }
+
+    /// The mosaic tile a panel/terminal focus stands for, if it has one —
+    /// the Workspaces bar sits above the mosaic, not in it.
+    fn leaf_for_focus(focus: Focus) -> Option<crate::layout::Leaf> {
+        match focus {
+            Focus::Terminal => Some(crate::layout::Leaf::Terminal),
+            Focus::Workspaces => None,
+            other => Self::panel_index(other).map(crate::layout::Leaf::Panel),
+        }
+    }
+
+    /// The panel or terminal touching `focus` on screen, on `side` — how
+    /// the h/l and ←/→ walk crosses columns once the mosaic lets the user
+    /// rearrange them. `None` at a screen edge, or from the Workspaces bar.
+    ///
+    /// Before the first draw sets `body_area`, the mosaic resolves to
+    /// zero-size rects with no overlap to measure a neighbour from; the
+    /// fixed column order stands in until a real one is on screen.
+    pub fn adjacent_focus(&self, focus: Focus, side: crate::layout::Side) -> Option<Focus> {
+        let leaf = Self::leaf_for_focus(focus)?;
+        let area = self.panels_area();
+        if area.width == 0 || area.height == 0 {
+            let next = match side {
+                crate::layout::Side::Right => self.next_visible_focus(focus),
+                crate::layout::Side::Left => self.previous_visible_focus(focus),
+                crate::layout::Side::Above | crate::layout::Side::Below => focus,
+            };
+            return (next != focus && next != Focus::Workspaces).then_some(next);
+        }
+        let resolved = self.resolved_layout();
+        match resolved.neighbour(leaf, side)? {
+            crate::layout::Leaf::Terminal => Some(Focus::Terminal),
+            crate::layout::Leaf::Panel(idx) => Self::focus_for_panel(idx),
+        }
     }
 
     /// Ids of the rules on screen, each a draggable boundary.

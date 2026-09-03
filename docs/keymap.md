@@ -7,7 +7,7 @@ can't trap yourself.
 
 | Key | Action |
 |---|---|
-| `Tab` / `Shift+Tab`, `h`/`l` or `←`/`→`, `j`/`k` | move focus / selection through visible panels; the walk stops at both ends (`Tab` at the terminal pane, `Shift+Tab` at the first visible panel) instead of cycling, and landing on a live pane takes its input. `h`/`l` stop one short of each end, and a double tap there (`l`,`l` at Sessions, `h`,`h` at the first visible panel) jumps the boundary; so do `k`,`k` on a panel's first row (up into the workspaces bar) and `j`,`j` in the bar (back down) |
+| `Tab` / `Shift+Tab`, `h`/`l` or `←`/`→`, `j`/`k` | move focus / selection through visible panels; the walk stops at both ends (`Tab` at the terminal pane, `Shift+Tab` at the first visible panel) instead of cycling, and landing on a live pane takes its input. `Tab` walks the panels' own order, while `h`/`l` follow the layout on screen — one tile towards whichever panel you moved next door. They stop one short of each end, and a double tap there (`l`,`l` beside the pane, `h`,`h` at the leftmost tile) jumps the boundary; so do `k`,`k` on a panel's first row (up into the workspaces bar) and `j`,`j` in the bar (back down). A panel moved past the terminal is still reached by `h`, which steps over the pane rather than into it |
 | `Ctrl+→` | cross into the terminal pane *without* taking its input |
 | `Enter` | drill in; on a session: attach |
 | `/` | fuzzy jump across every workspace, project, worktree, session and open PR — in *every* workspace, each row pathed `workspace/project/branch/session`, so typing another workspace's name jumps you into it (`Ctrl+n`/`p` move, `Ctrl+o` opens the hit, `Ctrl+f` just lands the selection on it) |

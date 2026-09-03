@@ -5,6 +5,10 @@ applies everywhere.
 
 ## Unreleased
 
+- `h`/`l` and `←`/`→` now follow the panels' places on screen, so a panel moved with
+  `⇧←`/`⇧→`/`⇧↑`/`⇧↓` is reached from where it sits: they used to walk the fixed
+  Projects/Worktrees/PRs/Sessions order regardless of the layout, skipping past the panel actually
+  next door. A panel moved past the terminal is reachable too — `h` steps over the pane to it.
 - Session rows drop the trailing CLI badge when every session in the tree runs the same CLI — the
   badge is back as soon as a second kind appears.
 - **(Windows)** The Hotkeys tab no longer warns about `^⇧`, `^→` and `^⌫` chords, which the

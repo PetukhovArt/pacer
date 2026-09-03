@@ -560,7 +560,7 @@ impl Resolved {
     /// The tile touching `leaf` on `side`, when there is one: the nearest
     /// in that direction among those overlapping it across the other axis,
     /// the widest overlap winning.
-    fn neighbour(&self, leaf: Leaf, side: Side) -> Option<Leaf> {
+    pub(crate) fn neighbour(&self, leaf: Leaf, side: Side) -> Option<Leaf> {
         let me = self.area(leaf)?;
         // Overlap is measured across the other axis.
         let across = match side.dir() {
