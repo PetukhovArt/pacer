@@ -38,7 +38,7 @@ detect_target() {
         ;;
     # This script is the unix path. pacer itself runs on Windows too — it is
     # installed there through npm or cargo, neither of which needs a shell.
-    *) err "this installer is for macOS and Linux. On Windows: npm install -g pacer (see docs/windows.md)" ;;
+    *) err "this installer is for macOS and Linux. On Windows: npm install -g @petukhovart/pacer (see docs/windows.md)" ;;
     esac
 }
 
