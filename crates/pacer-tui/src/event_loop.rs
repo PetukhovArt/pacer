@@ -1054,7 +1054,8 @@ fn ui_state_json(app: &App) -> String {
         session_agent: app.selected_session().map(|a| a.id.to_string()),
         show_archived: app.show_archived,
         collapsed: app.collapsed,
-        panel_widths: None,
+        // The classic widths ride along for a binary older than the mosaic.
+        panel_widths: Some(app.panel_widths()),
         layout: Some(app.layout.clone()),
         diff_files_width: Some(app.diff_files_width),
         pinned: app.pinned.iter().cloned().collect(),
@@ -1598,7 +1599,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
     }
 
     // Reading a pull request in the pane: the diff modal's scroll keys work
-    // here too. Page/Home/End only — shift+↑/↓ already move a project, and
+    // here too. Page/Home/End only — shift+↑/↓ move the panel itself, and
     // ↑/↓ have to keep walking the PR list itself. From either list that
     // can rest on one; a focused pane keeps its keys for the PTY.
     if app.previewed_pr().is_some() && matches!(app.focus, Focus::Worktrees | Focus::Sessions) {

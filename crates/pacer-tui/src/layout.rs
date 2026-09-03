@@ -310,7 +310,9 @@ impl Node {
         if pair && *d == dir {
             std::mem::swap(first, second);
             if !first.contains(Leaf::Terminal) && !second.contains(Leaf::Terminal) {
-                *size = total.saturating_sub(*size);
+                // `total` is content + rule + content; both sizes count
+                // the rule, so the other side's is the rest plus one.
+                *size = total.saturating_sub(*size) + 1;
             }
             return true;
         }
@@ -897,6 +899,35 @@ mod tests {
         let w = r.area(Leaf::Panel(1)).unwrap();
         assert_eq!((w.x, w.width, w.y + w.height), (0, 120, 35));
         assert!(layout.is_complete());
+    }
+
+    /// Two panels side by side past the terminal: swapping them back and
+    /// forth keeps both widths exactly.
+    #[test]
+    fn swapping_panel_siblings_keeps_both_widths() {
+        let widths = |layout: &PanelLayout| {
+            let r = layout.resolve(body(), ALL);
+            let (w, s) = (
+                r.area(Leaf::Panel(1)).unwrap(),
+                r.area(Leaf::Panel(2)).unwrap(),
+            );
+            (w.x, w.width, s.x, s.width)
+        };
+        let mut layout = PanelLayout::default();
+        layout.move_panel(2, Side::Right, body(), ALL);
+        layout.move_panel(1, Side::Right, body(), ALL);
+        // P | T | W | S
+        let (wx, ww, sx, sw) = widths(&layout);
+        assert!(wx > layout.resolve(body(), ALL).area(Leaf::Terminal).unwrap().x);
+        assert!(sx > wx);
+        // Swap: P | T | S | W — same two widths, other order.
+        layout.move_panel(1, Side::Right, body(), ALL);
+        let (wx2, ww2, sx2, sw2) = widths(&layout);
+        assert!(sx2 < wx2);
+        assert_eq!((ww2, sw2), (ww, sw));
+        // And back.
+        layout.move_panel(1, Side::Left, body(), ALL);
+        assert_eq!(widths(&layout), (wx, ww, sx, sw));
     }
 
     #[test]
