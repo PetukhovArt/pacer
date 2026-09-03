@@ -30,7 +30,8 @@ pacer runs natively on Windows 10 and 11, the same way it does on macOS and Linu
 - **(Windows)** `Shift+Enter` and other Ctrl/Alt chords reach console programs.
 - **(Windows)** A multi-line paste (`Ctrl+V`) reaches the agent as one message, not line by line.
 - **(Windows)** `pacer ssh` hands over the console, the exit code and `Ctrl+C` correctly.
-- **(Windows)** `pacer upgrade` declines and points at `cargo install` instead of failing obscurely.
+- **(Windows)** `pacer upgrade` declines and points at `npm update` or `cargo install` instead of
+  failing obscurely.
 
 ### Added
 

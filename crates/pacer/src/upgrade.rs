@@ -7,11 +7,9 @@
 //! **The subcommand is Unix-only**, and this is the one place in the Windows
 //! port that cuts rather than `#[cfg]`s a Unix path. Everything else has a
 //! Windows spelling worth writing; this does not. It is a wrapper around a
-//! `sh` script that fetches a prebuilt binary from the release assets — a
-//! script this platform cannot run and assets that do not exist for it, since
-//! nothing publishes a Windows build. A `#[cfg(windows)]` branch here would
-//! be a branch that could only ever fail, so the subcommand refuses with the
-//! reason instead.
+//! `sh` script, which this platform cannot run. A `#[cfg(windows)]` branch
+//! here would be a branch that could only ever fail, so the subcommand
+//! refuses with the reason instead.
 //!
 //! `install_url` and `KILL_HINT` stay on both platforms: `pacer ssh` and
 //! `pacer tunnel` install pacer on the *remote*, which is POSIX whatever
@@ -40,14 +38,14 @@ pub(crate) const KILL_HINT: &str =
     "      run 'pacer kill' to restart onto the new binary (stops all sessions).";
 
 /// Refused on Windows — see the module docs. The message names the reason
-/// and the way out rather than a bare "unsupported": a user who typed this
-/// wants a newer pacer, and `cargo install --path .` is how they get one.
+/// and both ways out rather than a bare "unsupported": a user who typed this
+/// wants a newer pacer, and npm or cargo is how they get one.
 #[cfg(windows)]
 pub fn run_upgrade(_force: bool) -> Result<()> {
     anyhow::bail!(
-        "pacer upgrade is not available on Windows: it runs install.sh, which \
-         fetches a prebuilt binary, and no Windows build is published. Update \
-         from a checkout instead — `git pull && cargo install --path crates/pacer`."
+        "pacer upgrade is not available on Windows: it runs install.sh, a POSIX \
+         script. Update with `npm update -g @petukhovart/pacer`, or from a \
+         checkout with `git pull && cargo install --path crates/pacer`."
     )
 }
 
