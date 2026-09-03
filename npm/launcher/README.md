@@ -1,6 +1,6 @@
 # pacer
 
-**Mission control for your coding agents.**
+**Where your coding agents live.**
 
 Run **Claude Code**, **Codex** and **Cursor** across every project and git worktree you own — from one
 terminal, one keyboard, one tree. A background daemon owns the PTYs, so they keep working when you close

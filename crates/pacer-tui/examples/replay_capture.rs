@@ -1,7 +1,7 @@
 //! Diagnosis: replay a captured PTY stream through the same vt100 the TUI
 //! uses, and print the grid it lands on.
 //!
-//! Record with `NEBULA_PTY_CAPTURE=<dir> pacer daemon` (or a whole run),
+//! Record with `PACER_PTY_CAPTURE=<dir> pacer daemon` (or a whole run),
 //! reproduce the artifact, then:
 //!
 //!   cargo run -p pacer-tui --example replay_capture -- <dir>/agent-<id>.raw

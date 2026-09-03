@@ -7,30 +7,30 @@ use std::path::PathBuf;
 
 /// Id of the agent a hook or CLI invocation is running inside. Set on every
 /// agent PTY, scrubbed from plain terminals.
-pub const AGENT_ID: &str = "NEBULA_AGENT_ID";
+pub const AGENT_ID: &str = "PACER_AGENT_ID";
 /// Base URL of the daemon's hook receiver, set on agent PTYs.
-pub const API_URL: &str = "NEBULA_API_URL";
+pub const API_URL: &str = "PACER_API_URL";
 /// Bearer token the hook receiver expects, set on agent PTYs.
-pub const API_TOKEN: &str = "NEBULA_API_TOKEN";
+pub const API_TOKEN: &str = "PACER_API_TOKEN";
 /// Overrides the runtime dir holding the socket and pidfile.
-pub const RUNTIME_DIR: &str = "NEBULA_RUNTIME_DIR";
+pub const RUNTIME_DIR: &str = "PACER_RUNTIME_DIR";
 /// Overrides the data dir holding the database, config and logs.
-pub const DATA_DIR: &str = "NEBULA_DATA_DIR";
+pub const DATA_DIR: &str = "PACER_DATA_DIR";
 /// Replaces every agent CLI with one command line, taken verbatim (tests
 /// stand in `/bin/sh` or a stub script for `claude`).
-pub const AGENT_CMD: &str = "NEBULA_AGENT_CMD";
+pub const AGENT_CMD: &str = "PACER_AGENT_CMD";
 /// Idle-session reaper sweep period in ms; tests shorten it.
-pub const IDLE_REAP_MS: &str = "NEBULA_IDLE_REAP_MS";
+pub const IDLE_REAP_MS: &str = "PACER_IDLE_REAP_MS";
 /// External-worktree sync probe period in ms; tests shorten it.
-pub const WORKTREE_SYNC_MS: &str = "NEBULA_WORKTREE_SYNC_MS";
+pub const WORKTREE_SYNC_MS: &str = "PACER_WORKTREE_SYNC_MS";
 /// Cloud-mirror refresh cadence in seconds; `0` turns it off.
-pub const CLOUD_MIRROR_SECS: &str = "NEBULA_CLOUD_MIRROR_SECS";
+pub const CLOUD_MIRROR_SECS: &str = "PACER_CLOUD_MIRROR_SECS";
 /// `RUST_LOG`-style tracing filter for both the daemon and the TUI.
-pub const LOG: &str = "NEBULA_LOG";
+pub const LOG: &str = "PACER_LOG";
 /// Overrides the install script URL `pacer upgrade` / `pacer ssh` fetch.
-pub const INSTALL_URL: &str = "NEBULA_INSTALL_URL";
+pub const INSTALL_URL: &str = "PACER_INSTALL_URL";
 /// Editor command the file modals open, ahead of the config's `editor`.
-pub const EDITOR: &str = "NEBULA_EDITOR";
+pub const EDITOR: &str = "PACER_EDITOR";
 
 /// Env vars that identify an agent session to the daemon. They are set on
 /// every agent PTY and must never leak into plain terminals.
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn non_empty_treats_unset_and_empty_alike() {
-        let var = format!("NEBULA_TEST_NON_EMPTY_{}", std::process::id());
+        let var = format!("PACER_TEST_NON_EMPTY_{}", std::process::id());
         assert_eq!(non_empty(&var), None);
         std::env::set_var(&var, "");
         assert_eq!(non_empty(&var), None);

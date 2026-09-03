@@ -42,9 +42,14 @@ Paths, env vars and the hook tag are load-bearing on data that already exists on
 `crates/pacer-core/src/paths.rs` (runtime dir, socket, pidfile, endpoint file, data dir, database),
 `crates/pacer-core/src/env.rs` (env vars) and `crates/pacer-daemon/src/hooks/installer.rs` (the hook
 tag and the Cursor rule file). Changing any of them needs a migration, not a find-and-replace — the
-tests pass either way, and existing installations lose their sessions, pins and settings. `paths.rs`
-carries a doc comment saying so; the Makefile's `dev-seed` target and `docs/configuration.md` quote
-the same paths, so keep the three in step.
+tests pass either way, and existing installations lose their sessions, pins and settings.
+
+A rename has been done once, and its shape is the one to copy: `paths::adopt_legacy` reads the old
+data dir when the new one does not exist yet — adoption in place, nothing copied, so there is no
+half-migrated state to recover from — the Cursor rule installer deletes the file under the old name
+before writing the new one, and the runtime dir needs nothing because it holds no state. The
+Makefile's `dev-seed` target and `docs/configuration.md` quote the same paths, so keep the three in
+step.
 
 </important>
 

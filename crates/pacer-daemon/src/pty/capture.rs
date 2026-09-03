@@ -1,6 +1,6 @@
 //! Raw PTY capture, for debugging rendering artifacts.
 //!
-//! `NEBULA_PTY_CAPTURE=<dir>` makes every PTY SESSION append the exact bytes
+//! `PACER_PTY_CAPTURE=<dir>` makes every PTY SESSION append the exact bytes
 //! its child wrote to `<dir>/<id>.raw`, plus a `<id>.meta` jsonl of the
 //! resizes interleaved by byte offset. That pair is enough to replay a
 //! session offline (`cargo run -p pacer-tui --example replay_capture`) and
@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-pub const CAPTURE_DIR_ENV: &str = "NEBULA_PTY_CAPTURE";
+pub const CAPTURE_DIR_ENV: &str = "PACER_PTY_CAPTURE";
 
 pub struct Capture {
     raw: File,

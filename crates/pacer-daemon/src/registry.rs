@@ -46,7 +46,7 @@ const PREWARM_HOOK_BUFFER_CAP: usize = 64;
 /// the branch each time, so this trades freshness against a git checkout
 /// and a CLI boot per tick.
 const CLOUD_MIRROR_REFRESH: Duration = Duration::from_secs(45);
-/// Floor for the `NEBULA_CLOUD_MIRROR_SECS` override. A teleport is a git
+/// Floor for the `PACER_CLOUD_MIRROR_SECS` override. A teleport is a git
 /// checkout plus a CLI boot; below this the row would spend its life
 /// respawning.
 const CLOUD_MIRROR_MIN: Duration = Duration::from_secs(2);
@@ -59,7 +59,7 @@ const CLOUD_MIRROR_MIN: Duration = Duration::from_secs(2);
 /// the spawn itself gets to report.
 const CLI_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Mirror cadence, `NEBULA_CLOUD_MIRROR_SECS` overriding the default (and
+/// Mirror cadence, `PACER_CLOUD_MIRROR_SECS` overriding the default (and
 /// `0` disabling the follow entirely — the pane is then only refreshed by
 /// hand, from the row's menu). Read once: this is a daemon-wide knob, not
 /// something to re-probe per tick.
@@ -92,7 +92,7 @@ pub(crate) struct CreateAgentSpec {
 
 /// A pre-spawned agent CLI waiting to be adopted by the next CreateAgent for
 /// the same (worktree, kind). The PTY lives in the normal sessions map under
-/// a pre-generated agent id, so its NEBULA_AGENT_ID env is already the id
+/// a pre-generated agent id, so its PACER_AGENT_ID env is already the id
 /// the adopted row will use. Hook events that arrive before the row exists
 /// (SessionStart carries the resume session id) are buffered here and
 /// replayed at adoption.
@@ -2441,7 +2441,7 @@ impl Daemon {
             tracing::warn!(error = %e, cwd = %worktree.path.display(), "hook install failed");
         }
 
-        // NEBULA_AGENT_CMD overrides for tests; default is the kind's CLI.
+        // PACER_AGENT_CMD overrides for tests; default is the kind's CLI.
         let cmd_override = std::env::var(env::AGENT_CMD).ok();
         let pr_system_prompt = if cloud.is_none() {
             self.store
@@ -2708,7 +2708,7 @@ impl Daemon {
 /// `claude --resume <sid>` and `cursor-agent --resume <sid>` (flag) vs
 /// `codex resume <sid>` (subcommand, so resume args must lead). Codex and
 /// cursor always get their skip-permissions flag (`--yolo` / `--force`),
-/// appended after the resume args — same convention as Mission Control.
+/// appended after the resume args.
 /// Model/effort choices follow: `claude --model m --effort e`,
 /// `codex -m m -c model_reasoning_effort=e` (cursor has neither knob).
 /// Claude then gets pacer's worktree guidance appended to its system

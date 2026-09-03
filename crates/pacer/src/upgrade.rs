@@ -28,7 +28,7 @@ use std::process::Command;
 const INSTALL_URL: &str =
     "https://raw.githubusercontent.com/PetukhovArt/pacer/main/install.sh";
 
-/// The published install script, with `NEBULA_INSTALL_URL` as the override
+/// The published install script, with `PACER_INSTALL_URL` as the override
 /// hook (tests point it at a file:// URL). Shared with `pacer ssh`.
 pub(crate) fn install_url() -> String {
     pacer_core::env::non_empty(pacer_core::env::INSTALL_URL)
@@ -108,11 +108,11 @@ fn upgrade_with(url: &str, staging_dir: &Path, force: bool) -> Result<()> {
 
     let script = stage_script(url, staging_dir)?;
     // Inherited stdio: the script's own progress lines are the UI here.
-    // NEBULA_UPGRADE_HANDOFF tells install.sh to skip its "daemon still
+    // PACER_UPGRADE_HANDOFF tells install.sh to skip its "daemon still
     // running" note — finish_daemon_handoff owns that messaging here.
     let result = Command::new("sh")
         .arg(&script)
-        .env("NEBULA_UPGRADE_HANDOFF", "1")
+        .env("PACER_UPGRADE_HANDOFF", "1")
         .status()
         .with_context(|| format!("run {}", script.display()));
     let _ = std::fs::remove_file(&script);

@@ -78,7 +78,7 @@ branch, a row still in the main checkout is first re-homed into a `cloud-<id>` w
 
 A teleport is a snapshot, not a live link, which is why the mirror re-pulls — and why **the first key
 you type into the pane ends it**: from then on the session is yours, an ordinary local Claude that
-started from a cloud transcript, and pacer stops respawning it under you. `NEBULA_CLOUD_MIRROR_SECS`
+started from a cloud transcript, and pacer stops respawning it under you. `PACER_CLOUD_MIRROR_SECS`
 changes the cadence; `0` turns the follow off, leaving **Attach cloud session** (the row's `m` menu) as
 the manual refresh. To steer the cloud agent without a browser, pick **Send to cloud session** — the
 same wrapped editor — and pacer runs `claude -p <message> --cloud <id>` and pulls the transcript
@@ -167,7 +167,7 @@ The panels aren't the only view. With a worktree selected, from any panel:
 | Key | View |
 |---|---|
 | **`g`** | **Git diff.** Changed files down the left, the diff on the right, with a live fuzzy filter. On an open-PR row it shows that pull request's diff instead. `Ctrl+r` marks a file reviewed ✓ and sinks it to the bottom — pacer-side bookkeeping only, no git state is touched — and every mark clears itself when HEAD moves or the file changes again, so what's left unticked is genuinely what you haven't read. |
-| **`f`** | **Find file.** Fuzzy finder over the worktree. `Enter` opens the file in an editor modal (vim by default; the `editor` setting or `NEBULA_EDITOR` picks another), `Ctrl+y` copies the path — ready to paste into an agent. |
+| **`f`** | **Find file.** Fuzzy finder over the worktree. `Enter` opens the file in an editor modal (vim by default; the `editor` setting or `PACER_EDITOR` picks another), `Ctrl+y` copies the path — ready to paste into an agent. |
 | **`F`** | **Find in files.** `git grep` into the same modal; `Enter` opens the hit at its line. |
 | **`b`** | **File tree browser.** Tree on the left, syntax-highlighted preview on the right, and an always-live filter that narrows the tree to matching files and the directories holding them. |
 

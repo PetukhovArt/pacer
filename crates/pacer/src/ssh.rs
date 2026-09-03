@@ -27,7 +27,7 @@ macro_rules! install_prelude {
         concat!(
             // sshd hands a remote command a bare PATH — no login shell runs,
             // so nothing the user configured applies. Prepend install.sh's
-            // default NEBULA_INSTALL_DIR, and append both Homebrew prefixes:
+            // default PACER_INSTALL_DIR, and append both Homebrew prefixes:
             // on a macOS remote that is the only place ttyd (which
             // `pacer browser` needs) or a brew-installed pacer lives.
             "export PATH=\"$HOME/.local/bin:$PATH:/opt/homebrew/bin:/usr/local/bin\"; ",

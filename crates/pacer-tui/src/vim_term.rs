@@ -139,7 +139,7 @@ impl VimTerm {
             #[cfg(windows)]
             if resolved.is_none() {
                 msg.push_str(
-                    " (not on PATH — set NEBULA_EDITOR or pick another editor in Settings)",
+                    " (not on PATH — set PACER_EDITOR or pick another editor in Settings)",
                 );
             }
             msg

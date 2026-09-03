@@ -7,16 +7,17 @@ without a restart — and `s` in the TUI is an overlay over the same file.
 
 | | Path |
 |---|---|
-| macOS | `~/Library/Application Support/dev.nebula.nebula/` |
-| Linux | `~/.local/share/nebula/` (data), `~/.local/state/nebula/` (logs) |
-| Windows | `%APPDATA%\nebula\nebula\data\` |
+| macOS | `~/Library/Application Support/dev.pacer.pacer/` |
+| Linux | `~/.local/share/pacer/` (data), `~/.local/state/pacer/` (logs) |
+| Windows | `%APPDATA%\pacer\pacer\data\` |
 
-The directory is still called `nebula` — the project's old name, kept on purpose. Renaming it would
-strand every existing install's sessions, pins and settings in a directory nothing reads any more. Same
-for `nebula.db` and the runtime dir.
-
-That directory holds `config.json`, `agent_presets.json`, `nebula.db`, and a `state/` subdirectory with
+That directory holds `config.json`, `agent_presets.json`, `pacer.db`, and a `state/` subdirectory with
 `daemon.log` and `tui.log`.
+
+An install from before the project was renamed from `nebula` keeps its data where it left it — the old
+directory is adopted in place, nothing is copied or moved, so sessions, pins and settings survive the
+upgrade. To tidy it up by hand: `pacer kill`, rename the directory to the name above and `nebula.db`
+inside it to `pacer.db`, then start pacer again.
 
 ## Settings
 
@@ -45,14 +46,14 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 
 | Variable | Effect |
 |---|---|
-| `NEBULA_EDITOR` | editor command, ahead of the `editor` setting |
-| `NEBULA_LOG` | `RUST_LOG`-style filter for both daemon and TUI (`NEBULA_LOG=debug`) |
-| `NEBULA_CLOUD_MIRROR_SECS` | cloud-mirror refresh cadence in seconds; `0` turns the follow off |
-| `NEBULA_DATA_DIR` | data dir (database, config, logs) — how tests and parallel instances isolate themselves |
-| `NEBULA_RUNTIME_DIR` | runtime dir holding the socket / endpoint file and pidfile |
-| `NEBULA_AGENT_CMD` | replace every agent CLI with one command line, taken verbatim (`make dev AGENT=/bin/cat`) |
-| `NEBULA_INSTALL_URL` | install-script URL used by `pacer upgrade` and `pacer ssh` |
-| `NEBULA_INSTALL_DIR` | install destination for `install.sh` (default `~/.local/bin`) |
+| `PACER_EDITOR` | editor command, ahead of the `editor` setting |
+| `PACER_LOG` | `RUST_LOG`-style filter for both daemon and TUI (`PACER_LOG=debug`) |
+| `PACER_CLOUD_MIRROR_SECS` | cloud-mirror refresh cadence in seconds; `0` turns the follow off |
+| `PACER_DATA_DIR` | data dir (database, config, logs) — how tests and parallel instances isolate themselves |
+| `PACER_RUNTIME_DIR` | runtime dir holding the socket / endpoint file and pidfile |
+| `PACER_AGENT_CMD` | replace every agent CLI with one command line, taken verbatim (`make dev AGENT=/bin/cat`) |
+| `PACER_INSTALL_URL` | install-script URL used by `pacer upgrade` and `pacer ssh` |
+| `PACER_INSTALL_DIR` | install destination for `install.sh` (default `~/.local/bin`) |
 
-Agent PTYs additionally carry `NEBULA_AGENT_ID`, `NEBULA_API_URL` and `NEBULA_API_TOKEN` so hooks and
+Agent PTYs additionally carry `PACER_AGENT_ID`, `PACER_API_URL` and `PACER_API_TOKEN` so hooks and
 `pacer rename` / `worktree` / `spawn` can find their own session. They are scrubbed from plain terminals.

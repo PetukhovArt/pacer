@@ -16888,18 +16888,17 @@ diff --git a/src/b.rs b/src/b.rs
             Some(ClientRequest::GetMetrics { req_id }) => *req_id,
             other => panic!("expected GetMetrics, got {other:?}"),
         };
-        let spare =
-            |id: &str, pid: u32, mb: u64, model: Option<&str>| pacer_core::SessionMetrics {
-                session: SessionRef::Agent(AgentId(id.into())),
-                pid,
-                rss_bytes: mb * 1024 * 1024,
-                procs: 3,
-                prewarm: Some(pacer_core::PrewarmInfo {
-                    worktree: pacer_core::WorktreeId("w1".into()),
-                    kind: pacer_core::AgentKind::Claude,
-                    model: model.map(str::to_string),
-                }),
-            };
+        let spare = |id: &str, pid: u32, mb: u64, model: Option<&str>| pacer_core::SessionMetrics {
+            session: SessionRef::Agent(AgentId(id.into())),
+            pid,
+            rss_bytes: mb * 1024 * 1024,
+            procs: 3,
+            prewarm: Some(pacer_core::PrewarmInfo {
+                worktree: pacer_core::WorktreeId("w1".into()),
+                kind: pacer_core::AgentKind::Claude,
+                model: model.map(str::to_string),
+            }),
+        };
         hse(
             &mut app,
             ServerEvent::Metrics {
@@ -17200,7 +17199,7 @@ diff --git a/src/b.rs b/src/b.rs
             cfg.editor = "nvim".into();
             cfg.save().unwrap();
             // What the overlays should capture: the setting, unless the
-            // test environment carries a NEBULA_EDITOR override.
+            // test environment carries a PACER_EDITOR override.
             let expect = crate::config::Config::load().editor_command();
 
             let mut app = App::new();

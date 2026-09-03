@@ -123,7 +123,7 @@ pub struct PtySession {
     /// The child's process tree, claimed at spawn: what the kill watchdog
     /// reaches for when the child outlives its hangup (see `pty::kill`).
     group: kill::ProcessGroup,
-    /// Raw-output capture, off unless `NEBULA_PTY_CAPTURE` is set.
+    /// Raw-output capture, off unless `PACER_PTY_CAPTURE` is set.
     capture: Mutex<Option<Capture>>,
     /// Set by the first `write_input`. A Cloud mirror stops re-teleporting
     /// once its pane has been typed into: the moment the user talks to the
@@ -136,7 +136,7 @@ pub struct SpawnSpec {
     pub program: String,
     pub args: Vec<String>,
     pub cwd: std::path::PathBuf,
-    /// Extra env vars (NEBULA_* for agents). Plain terminals get none.
+    /// Extra env vars (PACER_* for agents). Plain terminals get none.
     pub env: Vec<(String, String)>,
     /// Env var names to scrub from the inherited environment. Only ever a
     /// fixed list (the agent-session vars), so it is borrowed, not built.

@@ -7,14 +7,20 @@ use std::path::{Path, PathBuf};
 const FALLBACK_RUNTIME_ROOT: &str = "/tmp";
 
 /// Runtime dir holding the socket + pidfile. Mode 0700 — this is the auth
-/// boundary, same model as tmux. `NEBULA_RUNTIME_DIR` overrides (tests,
+/// boundary, same model as tmux. `PACER_RUNTIME_DIR` overrides (tests,
 /// parallel instances).
+///
+/// Nothing is carried over from the pre-rename `nebula-*` dir, and nothing
+/// needs to be: it holds only a socket, a pidfile and a buildstamp, all
+/// rebuilt on the next start. A daemon still running from before the rename
+/// keeps its own dir and does not collide — but it also will not be found,
+/// so the upgrade path is `pacer kill` first, as it already was.
 pub fn runtime_dir() -> PathBuf {
     if let Some(dir) = env::non_empty(env::RUNTIME_DIR) {
         return PathBuf::from(dir);
     }
     if let Some(dir) = env::non_empty("XDG_RUNTIME_DIR") {
-        return PathBuf::from(dir).join("nebula");
+        return PathBuf::from(dir).join("pacer");
     }
     default_runtime_dir()
 }
@@ -22,7 +28,7 @@ pub fn runtime_dir() -> PathBuf {
 #[cfg(unix)]
 fn default_runtime_dir() -> PathBuf {
     let uid = libc_geteuid();
-    Path::new(FALLBACK_RUNTIME_ROOT).join(format!("nebula-{uid}"))
+    Path::new(FALLBACK_RUNTIME_ROOT).join(format!("pacer-{uid}"))
 }
 
 /// Windows has no shared `/tmp` and no uid to key one off: `%TEMP%` is
@@ -31,7 +37,7 @@ fn default_runtime_dir() -> PathBuf {
 /// uid suffix and carries no explicit mode.
 #[cfg(windows)]
 fn default_runtime_dir() -> PathBuf {
-    std::env::temp_dir().join("nebula")
+    std::env::temp_dir().join("pacer")
 }
 
 // Avoid a libc dependency in this dep-light crate for one call.
@@ -66,29 +72,52 @@ pub fn buildstamp_path() -> PathBuf {
 }
 
 /// The platform's per-user dirs for this app (`~/Library/Application
-/// Support/dev.nebula.nebula` on macOS, `~/.local/share/nebula` on Linux).
-/// The `nebula` in those paths is the project's old name, kept on purpose:
-/// renaming it would strand every existing install's sessions, pins and
-/// settings in a directory nothing reads any more. Same for the runtime
-/// dir and the DB filename below.
+/// Support/dev.pacer.pacer` on macOS, `~/.local/share/pacer` on Linux).
 fn project_dirs() -> Option<directories::ProjectDirs> {
+    directories::ProjectDirs::from("dev", "pacer", "pacer")
+}
+
+/// The same dirs under the project's pre-rename name. Read-only history: an
+/// install from before `nebula` became `pacer` keeps its database, config and
+/// logs where it left them.
+fn legacy_project_dirs() -> Option<directories::ProjectDirs> {
     directories::ProjectDirs::from("dev", "nebula", "nebula")
+}
+
+/// Prefer `current`; fall back to a pre-rename `legacy` path that already
+/// exists. Adoption in place, not migration: nothing is copied or moved, so
+/// there is no half-migrated state to recover from and a downgrade still
+/// finds its data. A fresh install has no legacy dir and never looks twice.
+fn adopt_legacy(current: PathBuf, legacy: Option<PathBuf>) -> PathBuf {
+    match legacy {
+        Some(old) if !current.exists() && old.exists() => old,
+        _ => current,
+    }
 }
 
 pub fn data_dir() -> PathBuf {
     if let Some(dir) = env::non_empty(env::DATA_DIR) {
         return PathBuf::from(dir);
     }
-    project_dirs()
-        .map(|d| d.data_dir().to_path_buf())
-        .unwrap_or_else(|| env::home_dir().unwrap_or_default().join(".nebula"))
+    let home = || env::home_dir().unwrap_or_default();
+    adopt_legacy(
+        project_dirs()
+            .map(|d| d.data_dir().to_path_buf())
+            .unwrap_or_else(|| home().join(".pacer")),
+        Some(
+            legacy_project_dirs()
+                .map(|d| d.data_dir().to_path_buf())
+                .unwrap_or_else(|| home().join(".nebula")),
+        ),
+    )
 }
 
 pub fn db_path() -> PathBuf {
-    data_dir().join("nebula.db")
+    let dir = data_dir();
+    adopt_legacy(dir.join("pacer.db"), Some(dir.join("nebula.db")))
 }
 
-/// User settings file (JSON). Lives beside the DB so `NEBULA_DATA_DIR`
+/// User settings file (JSON). Lives beside the DB so `PACER_DATA_DIR`
 /// isolates it for tests and parallel instances too.
 pub fn config_path() -> PathBuf {
     data_dir().join("config.json")
@@ -100,13 +129,17 @@ pub fn log_dir() -> PathBuf {
     if env::non_empty(env::DATA_DIR).is_some() {
         return data_dir().join("state");
     }
-    project_dirs()
-        .map(|d| {
-            d.state_dir()
-                .map(|s| s.to_path_buf())
-                .unwrap_or_else(|| d.data_dir().join("state"))
-        })
-        .unwrap_or_else(|| data_dir().join("state"))
+    let state_of = |d: directories::ProjectDirs| {
+        d.state_dir()
+            .map(|s| s.to_path_buf())
+            .unwrap_or_else(|| d.data_dir().join("state"))
+    };
+    adopt_legacy(
+        project_dirs()
+            .map(state_of)
+            .unwrap_or_else(|| data_dir().join("state")),
+        legacy_project_dirs().map(state_of),
+    )
 }
 
 /// Canonicalize a path for containment tests and for handing to other
@@ -209,7 +242,7 @@ mod tests {
     /// component, never a string prefix.
     #[test]
     fn containment_is_component_wise_and_reflexive() {
-        let root = std::env::temp_dir().join("nebula-contains");
+        let root = std::env::temp_dir().join("pacer-contains");
         assert!(contains(&root, &root), "a path contains itself");
         assert!(contains(&root, &root.join("a").join("b")));
         assert!(!contains(&root.join("a"), &root));
@@ -248,7 +281,7 @@ mod tests {
         );
         assert!(canonical.is_absolute());
         // A path that does not resolve comes back untouched.
-        let absent = tmp.join("nebula-no-such-dir-9e3a1");
+        let absent = tmp.join("pacer-no-such-dir-9e3a1");
         assert_eq!(canonical_or_raw(&absent), absent);
     }
 
@@ -298,8 +331,8 @@ mod tests {
             EnvRestore::new(crate::env::RUNTIME_DIR),
             EnvRestore::new(crate::env::DATA_DIR),
         );
-        let runtime = std::env::temp_dir().join(format!("nebula-paths-rt-{}", std::process::id()));
-        let data = std::env::temp_dir().join(format!("nebula-paths-data-{}", std::process::id()));
+        let runtime = std::env::temp_dir().join(format!("pacer-paths-rt-{}", std::process::id()));
+        let data = std::env::temp_dir().join(format!("pacer-paths-data-{}", std::process::id()));
 
         std::env::set_var(crate::env::RUNTIME_DIR, &runtime);
         std::env::set_var(crate::env::DATA_DIR, &data);
@@ -309,7 +342,7 @@ mod tests {
         assert_eq!(buildstamp_path(), runtime.join("daemon.build"));
         assert_eq!(endpoint_path(), runtime.join("daemon.endpoint"));
         assert_eq!(data_dir(), data);
-        assert_eq!(db_path(), data.join("nebula.db"));
+        assert_eq!(db_path(), data.join("pacer.db"));
         assert_eq!(config_path(), data.join("config.json"));
         // Logs follow the data override so isolated instances keep their
         // logs beside their state.
@@ -328,5 +361,31 @@ mod tests {
             runtime_dir().display(),
             data_dir().display()
         );
+    }
+
+    /// The whole rename migration is this one rule, so pin every branch of
+    /// it: a fresh install must not be dragged onto a stale `nebula` dir, an
+    /// upgrade must not be booted empty next to its own data, and once the
+    /// new dir exists it wins even while the old one is still lying around.
+    #[test]
+    fn legacy_paths_are_adopted_only_when_the_new_one_is_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let current = tmp.path().join("pacer");
+        let legacy = tmp.path().join("nebula");
+
+        // Neither exists: a fresh install lands on the new name.
+        assert_eq!(adopt_legacy(current.clone(), Some(legacy.clone())), current);
+
+        // Only the pre-rename dir exists: adopt it, in place.
+        std::fs::create_dir(&legacy).unwrap();
+        assert_eq!(adopt_legacy(current.clone(), Some(legacy.clone())), legacy);
+
+        // Both exist — the new one has been written since, so it is the
+        // live one; the leftover must not pull state backwards.
+        std::fs::create_dir(&current).unwrap();
+        assert_eq!(adopt_legacy(current.clone(), Some(legacy.clone())), current);
+
+        // No legacy candidate at all (a platform whose dirs did not resolve).
+        assert_eq!(adopt_legacy(current.clone(), None), current);
     }
 }

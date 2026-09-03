@@ -170,7 +170,7 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
             SettingSpec {
                 kind: SettingKind::Editor,
                 label: "File editor",
-                hint: "Editor f/b/F and ⌥click launch (NEBULA_EDITOR overrides)",
+                hint: "Editor f/b/F and ⌥click launch (PACER_EDITOR overrides)",
             },
             SettingSpec {
                 kind: SettingKind::PrListFilter,
@@ -425,7 +425,7 @@ pub struct Config {
     /// find-in-files (`F`), and ⌥click file links launch, invoked as
     /// `<editor> +<line> <file>`. Any command passes through verbatim, so
     /// hand-edited configs can name editors the picker doesn't list. The
-    /// `NEBULA_EDITOR` env var overrides it for the process; see
+    /// `PACER_EDITOR` env var overrides it for the process; see
     /// [`Config::editor_command`].
     pub editor: String,
     /// Create new agent sessions straight from the kind picker, with no
@@ -550,7 +550,7 @@ impl Config {
     /// other fields already there.
     pub fn save(&self) -> std::io::Result<()> {
         // A test that reaches a save without pinning the path would write
-        // the dev's own settings file (and `NEBULA_DATA_DIR` only moves it
+        // the dev's own settings file (and `PACER_DATA_DIR` only moves it
         // to their dev instance's, which is no better). Saves hang off
         // ordinary keystrokes now — `Shift+W` is one — so make the miss
         // loud instead of leaving it to be noticed in a diff later.
@@ -686,7 +686,7 @@ impl Config {
         crate::theme::Theme::by_name(&self.theme)
     }
 
-    /// The editor the file overlays launch: `NEBULA_EDITOR` when set,
+    /// The editor the file overlays launch: `PACER_EDITOR` when set,
     /// otherwise the `editor` setting, otherwise vim.
     pub fn editor_command(&self) -> String {
         resolve_editor(

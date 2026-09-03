@@ -563,7 +563,7 @@ mod tests {
     /// process, not about a payload.
     ///
     /// ```text
-    /// NEBULA_GITLAB_TEST_REPO=<a GitLab checkout> \
+    /// PACER_GITLAB_TEST_REPO=<a GitLab checkout> \
     ///   cargo test -p pacer-tui --lib gitlab::tests::mine -- --ignored --nocapture
     /// ```
     ///
@@ -571,10 +571,10 @@ mod tests {
     /// how someone runs *every* slow test, and a machine with no GitLab
     /// checkout has nothing to say about this one.
     #[tokio::test]
-    #[ignore = "needs a glab login for the repo named by NEBULA_GITLAB_TEST_REPO"]
+    #[ignore = "needs a glab login for the repo named by PACER_GITLAB_TEST_REPO"]
     async fn mine_narrows_the_list_to_your_own_merge_requests() {
-        let Ok(dir) = std::env::var("NEBULA_GITLAB_TEST_REPO") else {
-            println!("skipped: set NEBULA_GITLAB_TEST_REPO to a GitLab checkout");
+        let Ok(dir) = std::env::var("PACER_GITLAB_TEST_REPO") else {
+            println!("skipped: set PACER_GITLAB_TEST_REPO to a GitLab checkout");
             return;
         };
         let dir = Path::new(&dir);
@@ -826,7 +826,14 @@ mod tests {
         .expect("a list");
         let rows: Vec<(&str, &str, &str, Option<bool>)> = got
             .iter()
-            .map(|c| (c.author.as_str(), c.thread.as_str(), c.path.as_str(), c.resolved))
+            .map(|c| {
+                (
+                    c.author.as_str(),
+                    c.thread.as_str(),
+                    c.path.as_str(),
+                    c.resolved,
+                )
+            })
             .collect();
         assert_eq!(
             rows,

@@ -65,7 +65,7 @@ impl TestEnv {
         self.spawn_daemon_in(Path::new("/bin/sh"), Some(agent_cmd), envs)
     }
 
-    /// Daemon with no `NEBULA_AGENT_CMD` override, so agent spawns take the
+    /// Daemon with no `PACER_AGENT_CMD` override, so agent spawns take the
     /// real login-shell path, and `$SHELL` set to `shell`. Lets a test decide
     /// what the daemon can find on PATH.
     fn spawn_daemon_with_shell(&self, shell: &Path) -> DaemonProc {
@@ -106,7 +106,7 @@ impl TestEnv {
         path
     }
 
-    /// Write the daemon's `config.json` (read from `NEBULA_DATA_DIR`)
+    /// Write the daemon's `config.json` (read from `PACER_DATA_DIR`)
     /// before boot.
     fn write_config(&self, json: &str) {
         let data = self.tmp.path().join("data");
@@ -357,7 +357,7 @@ async fn full_crud_attach_and_restart_persistence() {
         "terminal cwd should be the worktree: {text}"
     );
 
-    // ---- CreateAgent (NEBULA_AGENT_CMD=/bin/sh stands in for claude) ----
+    // ---- CreateAgent (PACER_AGENT_CMD=/bin/sh stands in for claude) ----
     write_frame(
         &mut c,
         &ClientRequest::CreateAgent {
@@ -671,7 +671,7 @@ async fn kitty_keyboard_negotiation_passthrough() {
 }
 
 /// True end-to-end status detection: the agent PTY (a /bin/sh stand-in for
-/// claude) uses its *injected* NEBULA_* env to curl the daemon's hook
+/// claude) uses its *injected* PACER_* env to curl the daemon's hook
 /// endpoint, exactly like the installed claude hooks would — and the
 /// subscribed client sees StatusChanged.
 #[tokio::test]
@@ -747,7 +747,7 @@ async fn hook_post_from_agent_pty_drives_status() {
     assert!(settings_path.exists(), "hooks installed into worktree");
     let settings: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
-    assert!(settings["hooks"]["Stop"][0]["_nebulaManaged"]
+    assert!(settings["hooks"]["Stop"][0]["_pacerManaged"]
         .as_bool()
         .unwrap());
 
@@ -766,9 +766,9 @@ async fn hook_post_from_agent_pty_drives_status() {
     .unwrap();
     let curl = |event: &str, body: &str| {
         format!(
-            "curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \
+            "curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H 'Content-Type: application/json' -d '{body}' \
-             \"$NEBULA_API_URL/api/hooks/claude?agentId=$NEBULA_AGENT_ID&hookEvent={event}\"\n"
+             \"$PACER_API_URL/api/hooks/claude?agentId=$PACER_AGENT_ID&hookEvent={event}\"\n"
         )
     };
 
@@ -1084,9 +1084,9 @@ async fn hook_cwd_rehomes_agent_to_other_worktree() {
         feat_worktree.path.display()
     );
     let curl = format!(
-        "curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \
+        "curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
          -H 'Content-Type: application/json' -d '{body}' \
-         \"$NEBULA_API_URL/api/hooks/claude?agentId=$NEBULA_AGENT_ID&hookEvent=UserPromptSubmit\"\n"
+         \"$PACER_API_URL/api/hooks/claude?agentId=$PACER_AGENT_ID&hookEvent=UserPromptSubmit\"\n"
     );
     write_frame(
         &mut c,
@@ -1319,9 +1319,9 @@ async fn codex_hooks_install_and_drive_status() {
     std::fs::write(
         stale.join("hooks.json"),
         r#"{"hooks":{"Stop":[
-            {"_nebulaManaged":true,"hooks":[{"type":"command",
-              "command":"curl $NEBULA_API_URL/api/hooks/codex?agentId=$NEBULA_AGENT_ID"}]},
-            {"_mcManaged":true,"hooks":[{"type":"command","command":"curl $MC_API_URL/x"}]}]}}"#,
+            {"_pacerManaged":true,"hooks":[{"type":"command",
+              "command":"curl $PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID"}]},
+            {"_otherToolManaged":true,"hooks":[{"type":"command","command":"curl $OTHER_TOOL_URL/x"}]}]}}"#,
     )
     .unwrap();
     let mut daemon =
@@ -1395,7 +1395,7 @@ async fn codex_hooks_install_and_drive_status() {
     assert!(hooks_path.exists(), "codex hooks installed into codex home");
     let hooks: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&hooks_path).unwrap()).unwrap();
-    assert!(hooks["hooks"]["Stop"][0]["_nebulaManaged"]
+    assert!(hooks["hooks"]["Stop"][0]["_pacerManaged"]
         .as_bool()
         .unwrap());
     assert!(hooks["hooks"]["Stop"][0]["hooks"][0]["command"]
@@ -1410,7 +1410,7 @@ async fn codex_hooks_install_and_drive_status() {
         serde_json::from_str(&std::fs::read_to_string(stale.join("hooks.json")).unwrap()).unwrap();
     let stop = stale_hooks["hooks"]["Stop"].as_array().unwrap();
     assert_eq!(stop.len(), 1, "only the foreign group survives: {stop:#?}");
-    assert!(stop[0]["_mcManaged"].as_bool().unwrap());
+    assert!(stop[0]["_otherToolManaged"].as_bool().unwrap());
 
     // Drive the shell inside the agent PTY to POST codex hooks with its env.
     let sref = SessionRef::Agent(agent_id.clone());
@@ -1427,9 +1427,9 @@ async fn codex_hooks_install_and_drive_status() {
     .unwrap();
     let curl = |event: &str, body: &str| {
         format!(
-            "curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \
+            "curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H 'Content-Type: application/json' -d '{body}' \
-             \"$NEBULA_API_URL/api/hooks/codex?agentId=$NEBULA_AGENT_ID&hookEvent={event}\"\n"
+             \"$PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID&hookEvent={event}\"\n"
         )
     };
 
@@ -1908,9 +1908,9 @@ async fn prewarmed_session_is_adopted_by_create_agent() {
         &script,
         concat!(
             "#!/bin/sh\n",
-            "curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \\\n",
+            "curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \\\n",
             "  -H 'Content-Type: application/json' -d '{\"session_id\":\"warm-sid-99\"}' \\\n",
-            "  \"$NEBULA_API_URL/api/hooks/claude?agentId=$NEBULA_AGENT_ID&hookEvent=SessionStart\" \\\n",
+            "  \"$PACER_API_URL/api/hooks/claude?agentId=$PACER_AGENT_ID&hookEvent=SessionStart\" \\\n",
             "  >/dev/null 2>&1\n",
             "sleep 3\n",
             "echo PREWARM_READY\n",
@@ -2330,7 +2330,7 @@ async fn archive_and_delete_kill_the_agent_process() {
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\necho $$ > '{}'/$NEBULA_AGENT_ID.pid\nexec sleep 600\n",
+            "#!/bin/sh\necho $$ > '{}'/$PACER_AGENT_ID.pid\nexec sleep 600\n",
             pid_dir.display()
         ),
     )
@@ -2822,7 +2822,7 @@ fn wait_for_exit(daemon: &mut DaemonProc) {
 }
 
 /// Poll the env dump the fake agent CLI writes on boot, returning the
-/// NEBULA_* variables the real CLI's hooks (and `pacer rename`) would see.
+/// PACER_* variables the real CLI's hooks (and `pacer rename`) would see.
 async fn read_env_file(path: &Path) -> std::collections::HashMap<String, String> {
     let deadline = tokio::time::Instant::now() + EVENT_TIMEOUT;
     loop {
@@ -2885,12 +2885,12 @@ async fn auto_title_instruction_and_rename_flow() {
     let repo = env.make_repo();
     let env_dir = env.tmp.path().join("agent-env");
     std::fs::create_dir_all(&env_dir).unwrap();
-    // Stand-in CLI: capture the NEBULA_* env its hooks would use, then park.
+    // Stand-in CLI: capture the PACER_* env its hooks would use, then park.
     let script = env.tmp.path().join("agent.sh");
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nenv | grep '^NEBULA_' > '{}'/$NEBULA_AGENT_ID.env\nexec sleep 600\n",
+            "#!/bin/sh\nenv | grep '^PACER_' > '{}'/$PACER_AGENT_ID.env\nexec sleep 600\n",
             env_dir.display()
         ),
     )
@@ -2986,14 +2986,14 @@ async fn pacer_worktree_cli_relocates_the_session_when_the_turn_ends() {
     let repo = env.make_repo();
     let env_dir = env.tmp.path().join("agent-env");
     std::fs::create_dir_all(&env_dir).unwrap();
-    // Stand-in CLI: dump the NEBULA_* env its hooks would use, log where
+    // Stand-in CLI: dump the PACER_* env its hooks would use, log where
     // each boot runs, then park.
     let script = env.tmp.path().join("agent.sh");
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nenv | grep '^NEBULA_' > '{d}'/$NEBULA_AGENT_ID.env\n\
-             pwd >> '{d}'/$NEBULA_AGENT_ID.pwd\nexec sleep 600\n",
+            "#!/bin/sh\nenv | grep '^PACER_' > '{d}'/$PACER_AGENT_ID.env\n\
+             pwd >> '{d}'/$PACER_AGENT_ID.pwd\nexec sleep 600\n",
             d = env_dir.display()
         ),
     )
@@ -3364,7 +3364,7 @@ async fn subscribe(c: &mut UnixStream) -> Vec<ServerEvent> {
 /// agent in the caller's worktree — booted at once, on the default name so
 /// AUTO-TITLE applies, matching the caller's harness unless `--kind` names
 /// another — while the caller's own process is left alone. The task itself
-/// reaches argv only outside `NEBULA_AGENT_CMD`, so it is covered by the
+/// reaches argv only outside `PACER_AGENT_CMD`, so it is covered by the
 /// registry's argv unit tests, not here.
 #[tokio::test]
 async fn pacer_spawn_cli_starts_a_sibling_session_in_the_same_worktree() {
@@ -3377,7 +3377,7 @@ async fn pacer_spawn_cli_starts_a_sibling_session_in_the_same_worktree() {
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nenv | grep '^NEBULA_' > '{d}'/$NEBULA_AGENT_ID.env\nexec sleep 600\n",
+            "#!/bin/sh\nenv | grep '^PACER_' > '{d}'/$PACER_AGENT_ID.env\nexec sleep 600\n",
             d = env_dir.display()
         ),
     )
@@ -3493,7 +3493,7 @@ async fn pacer_spawn_cli_starts_a_sibling_session_in_the_same_worktree() {
 }
 
 /// Run the `pacer` CLI the way a hook would inside an agent session: the
-/// test daemon's runtime dir plus the session's `NEBULA_AGENT_ID`.
+/// test daemon's runtime dir plus the session's `PACER_AGENT_ID`.
 fn agent_cli(
     env: &TestEnv,
     agent_id: &pacer_core::AgentId,

@@ -258,7 +258,7 @@ pub fn split_connection(conn: Connection) -> IpcChannels {
     }
 }
 
-/// The agent id a one-shot CLI runs as, from the raw `NEBULA_AGENT_ID`
+/// The agent id a one-shot CLI runs as, from the raw `PACER_AGENT_ID`
 /// value. Unset and empty are the same miss, and the error names the
 /// `pacer <verb>` that needs it. Pure so the message is testable.
 fn agent_id_from(value: Option<String>, verb: &str) -> Result<String> {
@@ -320,7 +320,7 @@ pub enum RenameMode {
 }
 
 /// One-shot client for `pacer rename`, run from inside an agent session's
-/// CLI: resolve the agent from NEBULA_AGENT_ID and ask the daemon to title
+/// CLI: resolve the agent from PACER_AGENT_ID and ask the daemon to title
 /// it. Never spawns a daemon — no daemon means no session worth titling.
 ///
 /// Daemon-reported outcomes (renamed, or "already titled" on the non-force
@@ -360,7 +360,9 @@ pub async fn spawn_sibling_for_current_agent(task: &str, kind: Option<AgentKind>
     let agent_id = current_agent_id("spawn")?;
     let task = task.trim();
     if task.is_empty() {
-        bail!("the task is empty — `pacer spawn \"<task>\"` needs the work the new session starts on");
+        bail!(
+            "the task is empty — `pacer spawn \"<task>\"` needs the work the new session starts on"
+        );
     }
     let Ok(stream) = try_connect().await else {
         bail!("no pacer daemon is running — no session started");

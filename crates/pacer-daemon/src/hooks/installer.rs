@@ -11,14 +11,14 @@
 //! hook must print a JSON response (`{"continue": true}`) to stdout or
 //! gating events fall back to fail-open error handling.
 //!
-//! Rules (learned the hard way in mission-control):
+//! Rules, each one paid for by a bug:
 //! - MERGE, never replace: user hooks are preserved untouched.
-//! - Our groups carry `_nebulaManaged: true` and are stripped + rebuilt on
+//! - Our groups carry `_pacerManaged: true` and are stripped + rebuilt on
 //!   every spawn, so upgrades never accumulate duplicates. A legacy-signature
 //!   check (command contains our endpoint + env var) catches untagged strays.
 //! - A corrupt file ABORTS the install — never clobber user data.
 //! - Commands are env-guarded, so the hooks are inert when the user runs
-//!   `claude`/`codex`/`cursor-agent` outside pacer (no NEBULA_* in env →
+//!   `claude`/`codex`/`cursor-agent` outside pacer (no PACER_* in env →
 //!   exit 0).
 //!
 //! Codex caveat, and the reason its hooks are the one set that does NOT go
@@ -166,7 +166,7 @@ fn is_pacer_command(cmd: Option<&Value>) -> bool {
 }
 
 fn is_pacer_group(group: &Value) -> bool {
-    if group.get("_nebulaManaged").and_then(Value::as_bool) == Some(true) {
+    if group.get("_pacerManaged").and_then(Value::as_bool) == Some(true) {
         return true;
     }
     // Legacy/untagged detection by command signature — nested Claude/Codex
@@ -190,7 +190,7 @@ fn managed_group(endpoint: &str, event: &str, matcher: Option<&str>) -> Value {
         "hooks".into(),
         json!([{ "type": "command", "command": hook_command(endpoint, event) }]),
     );
-    group.insert("_nebulaManaged".into(), json!(true));
+    group.insert("_pacerManaged".into(), json!(true));
     Value::Object(group)
 }
 
@@ -279,7 +279,7 @@ pub fn install_codex_hooks(codex_home: &Path) -> Result<()> {
 
 /// Drop the per-worktree `.codex/hooks.json` groups an older pacer wrote:
 /// left in place they are a second, never-trusted copy of the same hooks
-/// that codex would re-prompt for. Foreign groups (mission-control's) stay;
+/// that codex would re-prompt for. Groups another tool wrote stay;
 /// a file left holding nothing at all is removed, and so is a `.codex`
 /// directory that existed only for it.
 pub fn prune_codex_worktree_hooks(cwd: &Path) -> Result<()> {
@@ -347,7 +347,7 @@ pub fn install_cursor_hooks(cwd: &Path) -> Result<()> {
         let groups_arr = array_mut(groups, &format!("hooks.{cursor_event}"), &path)?;
         groups_arr.push(json!({
             "command": cursor_hook_command(pacer_event),
-            "_nebulaManaged": true,
+            "_pacerManaged": true,
         }));
     }
 
@@ -445,7 +445,11 @@ fn merge_managed_hooks(
 /// the daemon accepts at most one auto-title per session.
 pub fn install_cursor_title_rule(cwd: &Path) -> Result<()> {
     let dir = cwd.join(CURSOR_DIR).join("rules");
-    write_text_atomic(&dir, "nebula-title.mdc", &cursor_title_rule())
+    // The rule shipped under the project's old name until the rename. Two
+    // copies of an always-on rule would both fire, so drop the old one —
+    // it is ours to delete, nobody else writes that filename.
+    let _ = std::fs::remove_file(dir.join("nebula-title.mdc"));
+    write_text_atomic(&dir, "pacer-title.mdc", &cursor_title_rule())
 }
 
 /// Same instruction the injectable CLIs get, wrapped in cursor's rule
@@ -458,7 +462,7 @@ description: Pacer session auto-title (managed by pacer — edits are overwritte
 alwaysApply: true
 ---
 
-This rule applies only when the environment variable NEBULA_AGENT_ID is set
+This rule applies only when the environment variable PACER_AGENT_ID is set
 (the session runs inside pacer). If it is unset, ignore this rule entirely.
 
 On the first user message of a new conversation:
@@ -480,27 +484,27 @@ mod tests {
     fn hook_commands_are_spelled_exactly() {
         assert_eq!(
             hook_command("claude", "UserPromptSubmit"),
-            "if [ -z \"$NEBULA_AGENT_ID\" ] || [ -z \"$NEBULA_API_URL\" ]; then exit 0; fi; \
-             curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \
+            "if [ -z \"$PACER_AGENT_ID\" ] || [ -z \"$PACER_API_URL\" ]; then exit 0; fi; \
+             curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H \"Content-Type: application/json\" --data-binary @- \
-             \"$NEBULA_API_URL/api/hooks/claude?agentId=$NEBULA_AGENT_ID&hookEvent=UserPromptSubmit\" \
+             \"$PACER_API_URL/api/hooks/claude?agentId=$PACER_AGENT_ID&hookEvent=UserPromptSubmit\" \
              2>/dev/null || true"
         );
         assert_eq!(
             hook_command("codex", "Stop"),
-            "if [ -z \"$NEBULA_AGENT_ID\" ] || [ -z \"$NEBULA_API_URL\" ]; then exit 0; fi; \
-             curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \
+            "if [ -z \"$PACER_AGENT_ID\" ] || [ -z \"$PACER_API_URL\" ]; then exit 0; fi; \
+             curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H \"Content-Type: application/json\" --data-binary @- \
-             \"$NEBULA_API_URL/api/hooks/codex?agentId=$NEBULA_AGENT_ID&hookEvent=Stop\" \
+             \"$PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID&hookEvent=Stop\" \
              >/dev/null 2>&1 || true"
         );
         assert_eq!(
             cursor_hook_command("Stop"),
-            "if [ -z \"$NEBULA_AGENT_ID\" ] || [ -z \"$NEBULA_API_URL\" ]; then \
+            "if [ -z \"$PACER_AGENT_ID\" ] || [ -z \"$PACER_API_URL\" ]; then \
              printf '{\"continue\": true}\\n'; exit 0; fi; \
-             curl -sS -m 3 -X POST -H \"Authorization: Bearer $NEBULA_API_TOKEN\" \
+             curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H \"Content-Type: application/json\" --data-binary @- \
-             \"$NEBULA_API_URL/api/hooks/cursor?agentId=$NEBULA_AGENT_ID&hookEvent=Stop\" \
+             \"$PACER_API_URL/api/hooks/cursor?agentId=$PACER_AGENT_ID&hookEvent=Stop\" \
              >/dev/null 2>&1 || true; printf '{\"continue\": true}\\n'"
         );
     }
@@ -521,7 +525,7 @@ mod tests {
         let settings = read_settings(tmp.path());
         let stop = &settings["hooks"]["Stop"];
         assert_eq!(stop.as_array().unwrap().len(), 1);
-        assert_eq!(stop[0]["_nebulaManaged"], json!(true));
+        assert_eq!(stop[0]["_pacerManaged"], json!(true));
         assert!(stop[0]["hooks"][0]["command"]
             .as_str()
             .unwrap()
@@ -552,7 +556,7 @@ mod tests {
             matchers,
             vec!["AskUserQuestion", "Bash|EnterWorktree|ExitWorktree"]
         );
-        assert!(groups.iter().all(|g| g["_nebulaManaged"] == json!(true)));
+        assert!(groups.iter().all(|g| g["_pacerManaged"] == json!(true)));
     }
 
     #[test]
@@ -618,7 +622,7 @@ mod tests {
         let hooks = read_json(tmp.path(), "hooks.json");
         let stop = &hooks["hooks"]["Stop"];
         assert_eq!(stop.as_array().unwrap().len(), 1);
-        assert_eq!(stop[0]["_nebulaManaged"], json!(true));
+        assert_eq!(stop[0]["_pacerManaged"], json!(true));
         let cmd = stop[0]["hooks"][0]["command"].as_str().unwrap();
         assert!(cmd.contains("/api/hooks/codex?"), "codex endpoint: {cmd}");
         assert!(cmd.contains("hookEvent=Stop"));
@@ -673,16 +677,16 @@ mod tests {
             serde_json::to_string(&json!({
                 "hooks": {
                     "Stop": [
-                        { "_nebulaManaged": true,
+                        { "_pacerManaged": true,
                           "hooks": [{ "type": "command",
-                            "command": "curl $NEBULA_API_URL/api/hooks/codex?agentId=$NEBULA_AGENT_ID" }] },
-                        { "_mcManaged": true,
-                          "hooks": [{ "type": "command", "command": "curl $MC_API_URL/api/hooks/codex" }] }
+                            "command": "curl $PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID" }] },
+                        { "_otherToolManaged": true,
+                          "hooks": [{ "type": "command", "command": "curl $OTHER_TOOL_URL/hooks/codex" }] }
                     ],
                     "UserPromptSubmit": [
-                        { "_nebulaManaged": true,
+                        { "_pacerManaged": true,
                           "hooks": [{ "type": "command",
-                            "command": "curl $NEBULA_API_URL/api/hooks/codex?agentId=$NEBULA_AGENT_ID" }] }
+                            "command": "curl $PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID" }] }
                     ]
                 }
             }))
@@ -696,7 +700,7 @@ mod tests {
         assert!(hooks["hooks"].get("UserPromptSubmit").is_none());
         let stop = hooks["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 1);
-        assert_eq!(stop[0]["_mcManaged"], json!(true));
+        assert_eq!(stop[0]["_otherToolManaged"], json!(true));
 
         // Second worktree: the file was pacer's alone, so nothing is left
         // behind — not the file, not the directory it needed.
@@ -707,9 +711,9 @@ mod tests {
             solo_dir.join("hooks.json"),
             serde_json::to_string(&json!({
                 "hooks": { "Stop": [
-                    { "_nebulaManaged": true,
+                    { "_pacerManaged": true,
                       "hooks": [{ "type": "command",
-                        "command": "curl $NEBULA_API_URL/api/hooks/codex?agentId=$NEBULA_AGENT_ID" }] }
+                        "command": "curl $PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID" }] }
                 ] }
             }))
             .unwrap(),
@@ -728,16 +732,31 @@ mod tests {
     fn cursor_title_rule_is_written_and_rewritten() {
         let tmp = tempfile::tempdir().unwrap();
         install_cursor_title_rule(tmp.path()).unwrap();
-        let path = tmp.path().join(".cursor/rules/nebula-title.mdc");
+        let path = tmp.path().join(".cursor/rules/pacer-title.mdc");
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("alwaysApply: true"));
         assert!(text.contains("pacer rename"));
-        assert!(text.contains("NEBULA_AGENT_ID"), "must be env-guarded");
+        assert!(text.contains("PACER_AGENT_ID"), "must be env-guarded");
         // Wholly pacer-owned: a scribbled-on file is simply replaced.
         std::fs::write(&path, "user scribbles").unwrap();
         install_cursor_title_rule(tmp.path()).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("pacer rename"));
+    }
+
+    /// Both rules are `alwaysApply`, so leaving the pre-rename file behind
+    /// would fire the auto-title instruction twice in every cursor session.
+    #[test]
+    fn cursor_title_rule_removes_the_pre_rename_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join(".cursor/rules");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("nebula-title.mdc"), "old rule").unwrap();
+
+        install_cursor_title_rule(tmp.path()).unwrap();
+
+        assert!(!dir.join("nebula-title.mdc").exists());
+        assert!(dir.join("pacer-title.mdc").exists());
     }
 
     #[test]
@@ -765,7 +784,7 @@ mod tests {
         let stop = settings["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2, "user group + pacer group");
         assert_eq!(stop[0]["hooks"][0]["command"], json!("say done"));
-        assert_eq!(stop[1]["_nebulaManaged"], json!(true));
+        assert_eq!(stop[1]["_pacerManaged"], json!(true));
     }
 
     #[test]
@@ -798,7 +817,7 @@ mod tests {
                     "Stop": [
                         // Old pacer install without the marker.
                         { "hooks": [{ "type": "command",
-                            "command": "curl $NEBULA_API_URL/api/hooks/claude?agentId=$NEBULA_AGENT_ID" }] }
+                            "command": "curl $PACER_API_URL/api/hooks/claude?agentId=$PACER_AGENT_ID" }] }
                     ]
                 }
             }))
@@ -824,7 +843,8 @@ mod tests {
 
     #[test]
     fn codex_preserves_foreign_managed_groups() {
-        // Mission Control also writes _mcManaged groups into hook files.
+        // Other agent tooling writes its own tagged groups into the same
+        // file; a reinstall of ours must not disturb them.
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
         std::fs::create_dir_all(dir).unwrap();
@@ -833,8 +853,8 @@ mod tests {
             serde_json::to_string(&json!({
                 "hooks": {
                     "Stop": [
-                        { "hooks": [{ "type": "command", "command": "curl $MC_API_URL/api/hooks/codex" }],
-                          "_mcManaged": true }
+                        { "hooks": [{ "type": "command", "command": "curl $OTHER_TOOL_URL/hooks/codex" }],
+                          "_otherToolManaged": true }
                     ]
                 }
             }))
@@ -847,8 +867,8 @@ mod tests {
         let hooks = read_json(tmp.path(), "hooks.json");
         let stop = hooks["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2, "foreign managed group + pacer group");
-        assert_eq!(stop[0]["_mcManaged"], json!(true));
-        assert_eq!(stop[1]["_nebulaManaged"], json!(true));
+        assert_eq!(stop[0]["_otherToolManaged"], json!(true));
+        assert_eq!(stop[1]["_pacerManaged"], json!(true));
     }
 
     #[test]
@@ -874,7 +894,7 @@ mod tests {
         // camelCase cursor events, flat command entries.
         let stop = &hooks["hooks"]["stop"];
         assert_eq!(stop.as_array().unwrap().len(), 1);
-        assert_eq!(stop[0]["_nebulaManaged"], json!(true));
+        assert_eq!(stop[0]["_pacerManaged"], json!(true));
         let cmd = stop[0]["command"].as_str().unwrap();
         assert!(cmd.contains("/api/hooks/cursor?"), "cursor endpoint: {cmd}");
         assert!(cmd.contains("hookEvent=Stop"));
@@ -925,9 +945,9 @@ mod tests {
     #[test]
     fn cursor_migrates_legacy_claude_shaped_groups_and_keeps_foreign() {
         // An older pacer wrote Claude-dialect groups (PascalCase events,
-        // nested hooks arrays) that cursor never fires; mission-control
-        // writes flat _mcManaged groups into the same file. Migration must
-        // remove the former and preserve the latter.
+        // nested hooks arrays) that cursor never fires, while another tool
+        // wrote flat tagged groups into the same file. Migration must remove
+        // the former and preserve the latter.
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join(".cursor");
         std::fs::create_dir_all(&dir).unwrap();
@@ -937,17 +957,17 @@ mod tests {
                 "version": 1,
                 "hooks": {
                     "Stop": [
-                        { "_nebulaManaged": true,
+                        { "_pacerManaged": true,
                           "hooks": [{ "type": "command",
-                            "command": "curl $NEBULA_API_URL/api/hooks/cursor?agentId=$NEBULA_AGENT_ID&hookEvent=Stop" }] }
+                            "command": "curl $PACER_API_URL/api/hooks/cursor?agentId=$PACER_AGENT_ID&hookEvent=Stop" }] }
                     ],
                     "UserPromptSubmit": [
-                        { "_nebulaManaged": true,
+                        { "_pacerManaged": true,
                           "hooks": [{ "type": "command",
-                            "command": "curl $NEBULA_API_URL/api/hooks/cursor?agentId=$NEBULA_AGENT_ID&hookEvent=UserPromptSubmit" }] }
+                            "command": "curl $PACER_API_URL/api/hooks/cursor?agentId=$PACER_AGENT_ID&hookEvent=UserPromptSubmit" }] }
                     ],
                     "stop": [
-                        { "command": "curl $MC_API_URL/api/hooks/cursor", "_mcManaged": true }
+                        { "command": "curl $OTHER_TOOL_URL/hooks/cursor", "_otherToolManaged": true }
                     ]
                 }
             }))
@@ -963,8 +983,8 @@ mod tests {
         // Foreign managed group survives ahead of ours.
         let stop = hooks["hooks"]["stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2, "mc group + pacer group");
-        assert_eq!(stop[0]["_mcManaged"], json!(true));
-        assert_eq!(stop[1]["_nebulaManaged"], json!(true));
+        assert_eq!(stop[0]["_otherToolManaged"], json!(true));
+        assert_eq!(stop[1]["_pacerManaged"], json!(true));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //! the tricky interleavings (Stop racing SubagentStart, post-turn helpers,
 //! idle notifications, foreign sessions) are unit-testable.
 //!
-//! Semantics ported from mission-control's battle-tested implementation:
+//! Semantics, in the order they are evaluated:
 //! - `Stop` does NOT mean done while Task-tool subagents are still active;
 //!   hold `running` and promote to `finished` only after a drain grace.
 //! - A `SubagentStart` shortly *after* a finish heals back to `running`

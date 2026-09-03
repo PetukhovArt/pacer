@@ -8,11 +8,11 @@
 # exists. Running it again updates in place.
 #
 # Environment overrides:
-#   NEBULA_INSTALL_DIR   install destination (default: ~/.local/bin)
+#   PACER_INSTALL_DIR   install destination (default: ~/.local/bin)
 set -eu
 
 REPO="PetukhovArt/pacer"
-INSTALL_DIR="${NEBULA_INSTALL_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="${PACER_INSTALL_DIR:-$HOME/.local/bin}"
 
 say() { printf '%s\n' "$*"; }
 err() {
@@ -93,8 +93,8 @@ main() {
     # running on the old binary until it's restarted, and `pacer kill` is the
     # user's call because it stops every session. `pacer upgrade` handles this
     # itself (shutting down an idle daemon) and suppresses the note via
-    # NEBULA_UPGRADE_HANDOFF.
-    if [ -z "${NEBULA_UPGRADE_HANDOFF:-}" ] && pgrep -f 'pacer daemon' >/dev/null 2>&1; then
+    # PACER_UPGRADE_HANDOFF.
+    if [ -z "${PACER_UPGRADE_HANDOFF:-}" ] && pgrep -f 'pacer daemon' >/dev/null 2>&1; then
         say "note: a pacer daemon from the previous version is still running."
         say "      run 'pacer kill' to restart onto the new one (stops all sessions)."
     fi

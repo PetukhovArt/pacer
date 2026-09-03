@@ -1,6 +1,6 @@
 //! `pacer tunnel` up to the point it would need a network. PATH is scrubbed
 //! so the ssh lookup fails deterministically whether or not the machine
-//! running these tests has an OpenSSH client, and `NEBULA_DATA_DIR` is
+//! running these tests has an OpenSSH client, and `PACER_DATA_DIR` is
 //! redirected because the command records the destination for the TUI's host
 //! picker before it connects — into the real data dir otherwise.
 

@@ -48,7 +48,7 @@ predates a lot of what the TUI draws; prefer Windows Terminal.
 - **Transport.** Unix keeps an `AF_UNIX` socket in a `0700` runtime dir, where a successful connect is
   already proof of identity. Windows has no such socket, so the daemon binds a loopback TCP listener and
   a client presents a bearer token — the same model the hook receiver already uses on every platform.
-  Port and token live in an endpoint file beside the pidfile, inside the per-user `%TEMP%\nebula`, which
+  Port and token live in an endpoint file beside the pidfile, inside the per-user `%TEMP%\pacer`, which
   the profile's ACL already closes to other unprivileged users.
 - **Daemon lifetime.** The daemon runs windowless in the background and survives the client closing. A
   second daemon won't start over a live one, and `pacer kill` stops it cleanly.
@@ -78,9 +78,9 @@ here you set the two environment variables yourself, and `cargo run` then gets i
 token and database:
 
 ```powershell
-$env:NEBULA_RUNTIME_DIR = "$env:TEMP\pacer-dev"
-$env:NEBULA_DATA_DIR    = "$env:USERPROFILE\.pacer-dev\main"
-$env:NEBULA_AGENT_CMD   = 'cmd.exe'   # optional: stub agents, spawn no real claude
+$env:PACER_RUNTIME_DIR = "$env:TEMP\pacer-dev"
+$env:PACER_DATA_DIR    = "$env:USERPROFILE\.pacer-dev\main"
+$env:PACER_AGENT_CMD   = 'cmd.exe'   # optional: stub agents, spawn no real claude
 cargo run
 ```
 
@@ -88,7 +88,7 @@ Give each checkout its own pair of paths — two checkouts sharing a runtime dir
 silently drives the first one's daemon. `pacer kill` with the same variables set stops that dev daemon;
 deleting the two directories resets the instance.
 
-`NEBULA_AGENT_CMD` is one program name, taken verbatim with no arguments, so the unix `make dev
+`PACER_AGENT_CMD` is one program name, taken verbatim with no arguments, so the unix `make dev
 AGENT=/bin/cat` idiom has no direct translation — name a harmless console program instead.
 
 To install a build for real use and cut the live daemon over to it:

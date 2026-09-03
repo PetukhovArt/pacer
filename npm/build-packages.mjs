@@ -105,7 +105,7 @@ fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(launcherDir, 'LICENSE'));
 
 write(path.join(launcherDir, 'package.json'), {
   name: name(''),
-  description: 'Mission control for your coding agents — run Claude Code, Codex and Cursor across every project and git worktree from one terminal',
+  description: 'Where your coding agents live — run Claude Code, Codex and Cursor across every project and git worktree from one terminal',
   ...common,
   keywords: ['claude', 'claude-code', 'codex', 'cursor', 'ai', 'agent', 'tui', 'terminal', 'multiplexer', 'worktree'],
   bin: { pacer: 'bin/pacer.js' },

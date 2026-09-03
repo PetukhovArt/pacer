@@ -2,7 +2,7 @@
 
 # pacer
 
-**Mission control for your coding agents.**
+**Where your coding agents live.**
 
 Run **Claude Code**, **Codex** and **Cursor** across every project and git worktree you own — from one
 terminal, one keyboard, one tree. They keep working when you close it.
@@ -76,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/PetukhovArt/pacer/main/install.sh |
 ```
 
 It downloads the prebuilt binary for your platform from the latest GitHub release into `~/.local/bin`
-(override with `NEBULA_INSTALL_DIR`), falling back to `cargo install --git` when no release matches.
+(override with `PACER_INSTALL_DIR`), falling back to `cargo install --git` when no release matches.
 Afterwards, `pacer upgrade` runs that same script for you.
 
 **From source** — any platform, needs a Rust toolchain:
