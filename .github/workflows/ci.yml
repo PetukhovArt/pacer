@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A branch only needs its newest commit checked; supersede the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+
+  test:
+    name: test (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Several test repos commit without setting an author, and a fresh
+      # runner has no global identity to fall back on.
+      - name: Give git an identity
+        run: |
+          git config --global user.name pacer-ci
+          git config --global user.email ci@pacer.dev
+
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # e2e_pty and e2e_tui are `#![cfg(unix)]`, e2e_windows is `#![cfg(windows)]`
+      # — each host runs its own half of the end-to-end grid.
+      - run: cargo test --workspace --locked
