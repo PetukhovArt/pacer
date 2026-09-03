@@ -1054,7 +1054,8 @@ fn ui_state_json(app: &App) -> String {
         session_agent: app.selected_session().map(|a| a.id.to_string()),
         show_archived: app.show_archived,
         collapsed: app.collapsed,
-        panel_widths: Some(app.panel_widths),
+        panel_widths: None,
+        layout: Some(app.layout.clone()),
         diff_files_width: Some(app.diff_files_width),
         pinned: app.pinned.iter().cloned().collect(),
     };
@@ -1113,10 +1114,16 @@ fn restore_ui_state(app: &mut App, json: &str) -> bool {
     };
     app.show_archived = state.show_archived;
     app.pinned = state.pinned.into_iter().collect();
-    if let Some(w) = state.panel_widths {
-        // normalize_panel_widths re-fits to the actual screen on the next
-        // draw.
-        app.panel_widths = w.map(|v| v.clamp(crate::app::MIN_PANEL_W, MAX_RESTORED_WIDTH));
+    // The draw re-fits every size to the actual screen; only cap what a
+    // blob from a far wider screen could quote. A blob predating the mosaic
+    // carries the classic column widths instead.
+    if let Some(layout) = state.layout.filter(|l| l.is_complete()) {
+        app.layout = layout;
+        app.layout.clamp_sizes(MAX_RESTORED_WIDTH);
+    } else if let Some(w) = state.panel_widths {
+        app.layout = crate::layout::PanelLayout::columns(
+            w.map(|v| v.clamp(crate::app::MIN_PANEL_W, MAX_RESTORED_WIDTH)),
+        );
     }
     if let Some(w) = state.diff_files_width {
         // The draw re-caps it to the actual modal width.
@@ -1744,6 +1751,24 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
         Action::ToggleWorktrees => {
             set_hide_worktrees(app, !app.hide_worktrees);
             save_panel_visibility(app);
+        }
+        // Re-tile the body: the focused panel moves beside whatever it
+        // touches in that direction, or onto the body's edge. The layout
+        // rides along in the UI state blob, like the column widths did.
+        Action::MovePanel(side) => {
+            let idx = match app.focus {
+                Focus::Projects => 0,
+                Focus::Worktrees => 1,
+                Focus::Sessions => 2,
+                Focus::Workspaces | Focus::Terminal => {
+                    app.flash = Some("Focus a panel to move it".into());
+                    return;
+                }
+            };
+            app.move_panel(idx, side);
+            out.push(ClientRequest::SaveUiState {
+                json: ui_state_json(app),
+            });
         }
         // The Workspaces bar is a horizontal strip: ↑ has nowhere left to
         // go and ←/→ walk the tabs. j/↓ is the way back down, and like h/l
@@ -5940,7 +5965,22 @@ fn pointer_wants_resize(app: &App, column: u16, row: u16) -> bool {
 /// drags, so drag state keeps the shape honest where hover can't.
 fn update_pointer(app: &mut App, mouse: &MouseEvent) {
     app.pointer_shape = if pointer_wants_resize(app, mouse.column, mouse.row) {
-        PointerShape::ColResize
+        // A horizontal rule of the mosaic wants the vertical arrows; every
+        // other draggable boundary (the modals' file lists) is a column.
+        let horizontal = app.overlay.is_none()
+            && match (app.splitter_drag, app.hit_at(mouse.column, mouse.row)) {
+                (Some(drag), _) => drag.dir == crate::layout::Dir::Col,
+                (None, Some(HitTarget::Splitter(i))) => app
+                    .resolved_layout()
+                    .boundary(i)
+                    .is_some_and(|b| b.dir == crate::layout::Dir::Col),
+                _ => false,
+            };
+        if horizontal {
+            PointerShape::RowResize
+        } else {
+            PointerShape::ColResize
+        }
     } else {
         PointerShape::Default
     };
@@ -6473,9 +6513,18 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
             match app.hit_at(mouse.column, mouse.row) {
                 Some(HitTarget::Splitter(i)) => {
                     // Arm a resize drag; focus and selections stay put.
+                    let dir = app
+                        .resolved_layout()
+                        .boundary(i)
+                        .map_or(crate::layout::Dir::Row, |b| b.dir);
+                    let grabbed = match dir {
+                        crate::layout::Dir::Row => mouse.column,
+                        crate::layout::Dir::Col => mouse.row,
+                    };
                     app.splitter_drag = Some(SplitterDrag {
                         idx: i,
-                        grab_offset: app.splitter_x(i) as i32 - mouse.column as i32,
+                        dir,
+                        grab_offset: app.splitter_x(i) as i32 - grabbed as i32,
                     });
                 }
                 // A workspace row opens that workspace here, as ↑/↓ in the
@@ -6578,11 +6627,11 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
         }
         MouseEventKind::Drag(MouseButton::Left) => {
             if let Some(drag) = app.splitter_drag {
-                app.set_splitter(
-                    drag.idx,
-                    mouse.column as i32 + drag.grab_offset,
-                    app.body_area.width,
-                );
+                let at = match drag.dir {
+                    crate::layout::Dir::Row => mouse.column,
+                    crate::layout::Dir::Col => mouse.row,
+                };
+                app.set_splitter(drag.idx, at as i32 + drag.grab_offset);
                 app.dirty = true;
             } else if let Some(sel) = &mut app.term_selection {
                 if sel.dragging {
@@ -10841,7 +10890,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(!row.contains("ago"), "never-run row stays bare:\n{row}");
 
         // Squeeze the panel: the label drops rather than eat the name.
-        app.panel_widths[2] = 20;
+        app.set_panel_width(2, 20);
         let row = row_with(&mut app, "alpha");
         assert!(row.contains("claude"), "harness badge survives:\n{row}");
         assert!(!row.contains("ago"), "ago label yields to the name:\n{row}");
@@ -13560,7 +13609,7 @@ diff --git a/src/b.rs b/src/b.rs
             &mut out,
         );
         assert_eq!(
-            app.panel_widths,
+            app.panel_widths(),
             [30, 22, crate::app::DEFAULT_PANEL_WIDTHS[2]]
         );
 
@@ -13591,7 +13640,7 @@ diff --git a/src/b.rs b/src/b.rs
             mev(MouseEventKind::Drag(MouseButton::Left), 2, 5),
             &mut out,
         );
-        assert_eq!(app.panel_widths[0], MIN_PANEL_W);
+        assert_eq!(app.panel_widths()[0], MIN_PANEL_W);
 
         // Far right: the terminal pane keeps its minimum width.
         handle_mouse(
@@ -13599,10 +13648,10 @@ diff --git a/src/b.rs b/src/b.rs
             mev(MouseEventKind::Drag(MouseButton::Left), 200, 5),
             &mut out,
         );
-        let total: u16 = app.panel_widths.iter().sum();
+        let total: u16 = app.panel_widths().iter().sum();
         assert_eq!(app.body_area.width - total, MIN_TERM_W);
         assert_eq!(
-            app.panel_widths[1..],
+            app.panel_widths()[1..],
             [22, crate::app::DEFAULT_PANEL_WIDTHS[2]],
             "only panel 0 moved"
         );
@@ -13628,7 +13677,7 @@ diff --git a/src/b.rs b/src/b.rs
             mev(MouseEventKind::Drag(MouseButton::Left), 24, 5),
             &mut out,
         );
-        assert_eq!(app.panel_widths[0], 25);
+        assert_eq!(app.panel_widths()[0], 25);
     }
 
     #[test]
@@ -13717,28 +13766,34 @@ diff --git a/src/b.rs b/src/b.rs
     }
 
     #[test]
-    fn normalize_panel_widths_shrinks_rightmost_first() {
+    fn ui_state_roundtrip_includes_the_layout() {
+        use crate::layout::{PanelLayout, Side};
         let mut app = App::new();
-        app.panel_widths = [40, 40, 40];
-        app.normalize_panel_widths(100);
-        assert_eq!(
-            app.panel_widths,
-            [40, 30, 10],
-            "sessions floors first, then worktrees gives way"
-        );
-        let total: u16 = app.panel_widths.iter().sum();
-        assert_eq!(100 - total, crate::app::MIN_TERM_W);
-    }
-
-    #[test]
-    fn ui_state_roundtrip_includes_panel_widths() {
-        let mut app = App::new();
-        app.panel_widths = [33, 44, 55];
+        app.layout = PanelLayout::columns([33, 44, 55]);
+        app.body_area = ratatui::layout::Rect::new(0, 0, 160, 40);
+        app.move_panel(2, Side::Below);
         let json = ui_state_json(&app);
 
         let mut restored = App::new();
         restore_ui_state(&mut restored, &json);
-        assert_eq!(restored.panel_widths, [33, 44, 55]);
+        assert_eq!(restored.layout, app.layout);
+
+        // A blob from the column era carries widths only: they seed the
+        // classic layout.
+        let mut columns = App::new();
+        restore_ui_state(
+            &mut columns,
+            r#"{"project":null,"worktree":null,"session_agent":null,"show_archived":false,"collapsed":false,"panel_widths":[33,44,55]}"#,
+        );
+        assert_eq!(columns.layout, PanelLayout::columns([33, 44, 55]));
+
+        // A tree missing a tile is unusable; the default stands in.
+        let mut broken = App::new();
+        restore_ui_state(
+            &mut broken,
+            r#"{"project":null,"worktree":null,"session_agent":null,"show_archived":false,"collapsed":false,"layout":{"root":{"Leaf":"Terminal"}}}"#,
+        );
+        assert_eq!(broken.layout, PanelLayout::default());
 
         // Old blobs without the field keep the defaults — including ones
         // still carrying the retired `workspaces_w` of the column era,
@@ -13748,7 +13803,7 @@ diff --git a/src/b.rs b/src/b.rs
             &mut legacy,
             r#"{"project":null,"worktree":null,"session_agent":null,"show_archived":false,"collapsed":false,"workspaces_w":26}"#,
         );
-        assert_eq!(legacy.panel_widths, crate::app::DEFAULT_PANEL_WIDTHS);
+        assert_eq!(legacy.layout, PanelLayout::default());
     }
 
     fn project(id: &str, name: &str, sort_order: i64) -> pacer_core::Entity {
@@ -14064,7 +14119,12 @@ diff --git a/src/b.rs b/src/b.rs
         ] {
             handle_key(&mut app, key, &mut out);
         }
-        assert!(out.is_empty(), "no reorder request goes out: {out:?}");
+        // (Shift+↓ re-tiles the body now, which saves the layout.)
+        assert!(
+            out.iter()
+                .all(|r| matches!(r, ClientRequest::SaveUiState { .. })),
+            "no reorder request goes out: {out:?}"
+        );
         let order: Vec<&str> = app
             .project_rows()
             .into_iter()
@@ -14296,17 +14356,17 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(!row.contains("⌂ root"), "no room for the word:\n{row}");
 
         // A wider column gets the whole badge back.
-        app.panel_widths[1] = 34;
+        app.set_panel_width(1, 34);
         let row = row_with(&mut app, "main");
         assert!(
             row.contains("main ⌂ root 23m ago"),
             "full badge and the label:\n{row}"
         );
-        app.panel_widths[1] = crate::app::DEFAULT_PANEL_WIDTHS[1];
+        app.set_panel_width(1, crate::app::DEFAULT_PANEL_WIDTHS[1]);
 
         // Squeeze the columns: the labels drop rather than eat the names.
-        app.panel_widths[0] = 14;
-        app.panel_widths[1] = 14;
+        app.set_panel_width(0, 14);
+        app.set_panel_width(1, 14);
         let text = render(&mut app);
         let projects_and_worktrees: Vec<&str> = text
             .lines()
@@ -19299,8 +19359,9 @@ diff --git a/src/b.rs b/src/b.rs
     /// is shown or hidden, and there is no splitter for it to own.
     #[test]
     fn the_workspaces_bar_costs_rows_not_columns() {
-        use crate::app::{DEFAULT_PANEL_WIDTHS, WORKSPACES_BAR_H};
+        use crate::app::WORKSPACES_BAR_H;
         let mut app = App::new();
+        app.body_area = ratatui::layout::Rect::new(0, 0, 160, 40);
         assert!(app.show_workspaces);
         assert_eq!(app.splitter_indices(), vec![0, 1, 2]);
         assert_eq!(app.workspaces_bar_h(), WORKSPACES_BAR_H);
@@ -19309,17 +19370,12 @@ diff --git a/src/b.rs b/src/b.rs
 
         // Dragging the projects|worktrees boundary to screen x=45 leaves
         // Projects 45 wide: nothing sits ahead of it any more.
-        app.set_splitter(0, 45, 160);
-        assert_eq!(app.panel_widths[0], 45);
+        app.set_splitter(0, 45);
+        assert_eq!(app.panel_widths()[0], 45);
+        app.set_splitter(0, 20);
 
-        // A 100-wide body: only the terminal pane's minimum comes off the
-        // budget, and Sessions gives up the rest.
-        app.panel_widths = DEFAULT_PANEL_WIDTHS;
-        app.normalize_panel_widths(100);
-        assert_eq!(
-            app.panel_widths, DEFAULT_PANEL_WIDTHS,
-            "80 columns of budget fit them all"
-        );
+        // The rules sit under the bar, not beside it.
+        assert_eq!(app.resolved_layout().boundaries[0].rule.y, WORKSPACES_BAR_H);
 
         // Hiding the bar changes nothing horizontal.
         app.show_workspaces = false;
@@ -19617,7 +19673,7 @@ diff --git a/src/b.rs b/src/b.rs
         let mut app = App::new();
         seed_tree(&mut app);
         seed_default_workspace(&mut app);
-        let widths = app.panel_widths;
+        let widths = app.panel_widths();
         let mut terminal = Terminal::new(TestBackend::new(160, 30)).unwrap();
 
         terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
@@ -19646,7 +19702,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(both_hidden.contains("⇧B: show worktrees"), "{both_hidden}");
         assert_eq!(app.term_area.x, widths[2] + 1);
         assert_eq!(app.splitter_indices(), vec![2]);
-        assert_eq!(app.panel_widths, widths, "hidden widths stay remembered");
+        assert_eq!(app.panel_widths(), widths, "hidden widths stay remembered");
         assert_eq!(app.focus, Focus::Sessions);
 
         set_hide_projects(&mut app, false);
@@ -19656,7 +19712,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(restored.contains("PROJECTS"), "{restored}");
         assert!(restored.contains("WORKTREES"), "{restored}");
         assert_eq!(app.term_area.x, widths.iter().sum::<u16>() + 1);
-        assert_eq!(app.panel_widths, widths);
+        assert_eq!(app.panel_widths(), widths);
         assert_eq!(app.focus, Focus::Sessions, "restoring does not steal focus");
     }
 

@@ -60,6 +60,7 @@ can't trap yourself.
 | `1`–`9` (or `⌘1`–`⌘9`) | open that numbered tab without leaving the panel you're in. `⌘` is what the tabs advertise, but Terminal.app and most other emulators never encode it into pty bytes — the bare digit is the one that always arrives |
 | In the Workspaces bar: `←`/`→`, `↓`/`Enter`, `n`/`r`/`d`, `m` | the cursor is the open workspace, so `←`/`→` switches; `↓` or `Enter` steps down into the first visible panel; create / rename / delete the open one (delete refuses a non-empty workspace); `m` or right-click lists the same verbs |
 | `Shift+P` / `Shift+B` | show / hide the Projects / Worktrees panel. The terminal pane takes the released width; showing a panel restores its remembered width without stealing focus. Persisted as `hide_projects` / `hide_worktrees` |
+| `Shift+←`/`→`/`↑`/`↓` (or `⌥⇧H`/`J`/`K`/`L`) | re-tile the body: the focused panel moves one step that way. Beside another panel it swaps places with it; into a tile running the other way (a column, the terminal) it stacks onto the near side of it and the next step walks past; at the edge of the body it becomes a full strip along that edge. So from the default layout `↑` puts a panel across the top and `→` in Sessions puts it right of the terminal. Widths and heights follow the panel; the arrangement is remembered per pacer database |
 
 ## General
 
@@ -89,6 +90,8 @@ Every prompt, filter and query is the same line editor: `←`/`→` and `⌥←`
 
 Left-click selects/attaches, right-click opens context menus, double-click in the terminal selects a
 word, `⌥`-click opens the URL or `file:line` under the cursor (browser / editor modal), and dragging a
-visible panel border resizes it. Hidden panels keep their last width for the next time they are shown. A
+visible panel border resizes it — vertical rules by column, horizontal rules by row once a panel is
+stacked above or below something. Hidden panels keep their place and size for the next time they are
+shown. A
 click outside any modal (help, settings, a confirm, a prompt, the pickers) dismisses it, exactly as `Esc`
 would. Text selection: hold `Shift` while dragging (mouse-capture bypass — same as tmux).

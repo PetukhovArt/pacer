@@ -54,9 +54,10 @@ pub enum HitTarget {
     /// Panel background (registered after rows, so rows win).
     PanelBg(Focus),
     TerminalPane,
-    /// Draggable right boundary of a visible sidebar panel. The index is
-    /// logical (0 Projects, 1 Worktrees, 2 Sessions), so hidden panels keep
-    /// their remembered widths without owning a boundary.
+    /// Draggable rule between two tiles of the body mosaic: the id of the
+    /// split in `crate::layout` (0, 1, 2 left to right in the classic
+    /// three-column layout). A split with a hidden side owns no rule but
+    /// keeps its id and size.
     Splitter(usize),
 }
 
@@ -1958,9 +1959,14 @@ pub struct UiState {
     pub session_agent: Option<String>,
     pub show_archived: bool,
     pub collapsed: bool,
-    /// Panel widths (projects, worktrees, sessions); absent in older blobs.
+    /// Panel widths (projects, worktrees, sessions) of the classic
+    /// three-column layout; what blobs older than `layout` carry.
     #[serde(default)]
     pub panel_widths: Option<[u16; 3]>,
+    /// The body mosaic; absent in older blobs, which fall back to
+    /// `panel_widths`.
+    #[serde(default)]
+    pub layout: Option<crate::layout::PanelLayout>,
     /// Diff modal file-list width; absent in older blobs.
     #[serde(default)]
     pub diff_files_width: Option<u16>,
@@ -2009,8 +2015,10 @@ impl TermSelection {
 pub struct SplitterDrag {
     /// Which boundary (see `HitTarget::Splitter`).
     pub idx: usize,
-    /// `boundary_x - grab column` at mouse-down, so the boundary tracks the
-    /// cursor without jumping a cell depending on which border cell was
+    /// A vertical rule follows the mouse column, a horizontal one its row.
+    pub dir: crate::layout::Dir,
+    /// `boundary - grab coordinate` at mouse-down, so the boundary tracks
+    /// the cursor without jumping a cell depending on which border cell was
     /// grabbed.
     pub grab_offset: i32,
 }
@@ -2024,8 +2032,10 @@ pub struct SplitterDrag {
 pub enum PointerShape {
     #[default]
     Default,
-    /// Horizontal-resize arrows over a draggable panel boundary.
+    /// Horizontal-resize arrows over a draggable vertical rule.
     ColResize,
+    /// Vertical-resize arrows over a draggable horizontal rule.
+    RowResize,
 }
 
 impl PointerShape {
@@ -2034,6 +2044,7 @@ impl PointerShape {
         match self {
             PointerShape::Default => "default",
             PointerShape::ColResize => "col-resize",
+            PointerShape::RowResize => "row-resize",
         }
     }
 }
@@ -2204,11 +2215,9 @@ pub struct App {
     /// File paths detected on the visible screen during the last draw;
     /// ⌥click opens them in the editor modal.
     pub term_file_links: Vec<crate::links::FileLink>,
-    /// Widths of the Projects / Worktrees / Sessions panels; the terminal
-    /// pane takes the remainder.
-    pub panel_widths: [u16; 3],
-    /// Width of the Workspaces column when it's shown. Kept out of
-    /// `panel_widths` so old persisted layouts still deserialize.
+    /// The body mosaic: how the three panels and the terminal pane tile the
+    /// space under the Workspaces bar. See `crate::layout`.
+    pub layout: crate::layout::PanelLayout,
     /// File-list width of the diff modal, remembered across opens.
     pub diff_files_width: u16,
     /// Selected tab of the settings modal, remembered across opens.
@@ -2419,7 +2428,7 @@ impl App {
             last_session_click: None,
             term_links: Vec::new(),
             term_file_links: Vec::new(),
-            panel_widths: DEFAULT_PANEL_WIDTHS,
+            layout: crate::layout::PanelLayout::default(),
             diff_files_width: DEFAULT_DIFF_FILES_W,
             settings_tab: 0,
             settings_selected: vec![0; crate::config::tab_count()],
@@ -2604,7 +2613,7 @@ impl App {
         }
     }
 
-    /// Visible sidebar indices, left to right. Sessions is always present.
+    /// Visible sidebar indices, in logical order. Sessions is always present.
     pub fn visible_panel_indices(&self) -> Vec<usize> {
         (0..3).filter(|idx| self.panel_visible(*idx)).collect()
     }
@@ -2618,65 +2627,65 @@ impl App {
         }
     }
 
-    /// Every visible sidebar owns the draggable boundary on its right.
+    pub fn panels_visible(&self) -> [bool; 3] {
+        [!self.hide_projects, !self.hide_worktrees, true]
+    }
+
+    /// The body under the Workspaces bar: what the mosaic tiles.
+    pub fn panels_area(&self) -> Rect {
+        let bar = self.workspaces_bar_h().min(self.body_area.height);
+        Rect {
+            y: self.body_area.y + bar,
+            height: self.body_area.height - bar,
+            ..self.body_area
+        }
+    }
+
+    /// Column widths of the three panels, as the classic layout fixes them
+    /// (0 for a panel the tree stretches instead).
+    pub fn panel_widths(&self) -> [u16; 3] {
+        std::array::from_fn(|i| self.layout.panel_width(i).unwrap_or(0))
+    }
+
+    pub fn set_panel_width(&mut self, idx: usize, width: u16) {
+        self.layout.set_panel_width(idx, width);
+    }
+
+    /// The mosaic laid out over the current body.
+    pub fn resolved_layout(&self) -> crate::layout::Resolved {
+        self.layout
+            .resolve(self.panels_area(), self.panels_visible())
+    }
+
+    /// Ids of the rules on screen, each a draggable boundary.
     pub fn splitter_indices(&self) -> Vec<usize> {
-        self.visible_panel_indices()
+        self.resolved_layout()
+            .boundaries
+            .iter()
+            .map(|b| b.id)
+            .collect()
     }
 
-    /// Screen x of splitter `idx` — the column where the panel to its right
-    /// starts, i.e. the right edge of panel `idx`.
+    /// Screen coordinate of boundary `idx` — the column (or, for a
+    /// horizontal rule, the row) where the tile past it starts.
     pub fn splitter_x(&self, idx: usize) -> u16 {
-        self.visible_panel_indices()
-            .into_iter()
-            .filter(|visible| *visible <= idx)
-            .map(|visible| self.panel_widths[visible])
-            .sum()
+        self.resolved_layout().boundary(idx).map_or(0, |b| b.pos())
     }
 
-    /// Move splitter `idx` so its boundary lands at `boundary_x`, clamped so
-    /// the panel keeps `MIN_PANEL_W` and the terminal pane keeps `MIN_TERM_W`.
-    pub fn set_splitter(&mut self, idx: usize, boundary_x: i32, body_w: u16) {
-        let want = boundary_x.max(0) as u16;
-        if !self.panel_visible(idx) {
-            return;
-        }
-        let visible = self.visible_panel_indices();
-        let left: u16 = visible
-            .iter()
-            .copied()
-            .filter(|visible| *visible < idx)
-            .map(|visible| self.panel_widths[visible])
-            .sum();
-        let fixed_right: u16 = visible
-            .iter()
-            .copied()
-            .filter(|visible| *visible > idx)
-            .map(|visible| self.panel_widths[visible])
-            .sum();
-        let max = body_w.saturating_sub(left + fixed_right + MIN_TERM_W);
-        if max < MIN_PANEL_W {
-            return; // terminal too small to honor the minimums
-        }
-        self.panel_widths[idx] = want.saturating_sub(left).clamp(MIN_PANEL_W, max);
+    /// Drag boundary `idx` so its far edge lands at screen coordinate `pos`,
+    /// within the tiles' minimums.
+    pub fn set_splitter(&mut self, idx: usize, pos: i32) {
+        let area = self.panels_area();
+        let visible = self.panels_visible();
+        self.layout.set_boundary(idx, pos, area, visible);
     }
 
-    /// Re-fit panel widths to the current body width, shrinking the rightmost
-    /// panel first, each floored at `MIN_PANEL_W`. Keeps the terminal pane at
-    /// `MIN_TERM_W` whenever the screen allows it at all. The Workspaces bar
-    /// spans the full width above them, so it costs the panels nothing here.
-    pub fn normalize_panel_widths(&mut self, body_w: u16) {
-        let budget = body_w.saturating_sub(MIN_TERM_W);
-        let visible = self.visible_panel_indices();
-        for i in visible.iter().rev().copied() {
-            let others: u16 = visible
-                .iter()
-                .copied()
-                .filter(|j| *j != i)
-                .map(|j| self.panel_widths[j])
-                .sum();
-            let max = budget.saturating_sub(others);
-            self.panel_widths[i] = self.panel_widths[i].clamp(MIN_PANEL_W, max.max(MIN_PANEL_W));
-        }
+    /// Re-home a sidebar panel beside its neighbour on `side` (or onto the
+    /// body's edge when it has none there). See `crate::layout`.
+    pub fn move_panel(&mut self, idx: usize, side: crate::layout::Side) {
+        let area = self.panels_area();
+        let visible = self.panels_visible();
+        self.layout.move_panel(idx, side, area, visible);
     }
 
     pub fn alloc_req_id(&mut self, intent: PendingIntent) -> u64 {

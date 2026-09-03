@@ -4,6 +4,7 @@
 use crate::app::{App, ConnState, Focus, HitTarget, Overlay, PaletteTarget, SessionRow};
 use crate::git_diff::{classify_diff_line, DiffLineKind};
 use crate::keymap::Action;
+use crate::layout::{Dir, Leaf};
 use crate::text_input::TextInput;
 use crate::theme::Theme;
 use pacer_core::{AgentStatus, SessionRef};
@@ -82,41 +83,24 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 
     app.body_area = body;
-    app.normalize_panel_widths(body.width);
     // The Workspaces bar (Shift+W) runs across the top of the body — zero
-    // rows tall when hidden; the three panels and the terminal pane take
+    // rows tall when hidden; the mosaic of panels and terminal pane takes
     // the full width of whatever is left under it.
-    let [workspaces_a, panels_a] = Layout::vertical([
-        Constraint::Length(app.workspaces_bar_h()),
-        Constraint::Min(0),
-    ])
-    .areas(body);
-    let visible_panels = app.visible_panel_indices();
-    let constraints = visible_panels
-        .iter()
-        .map(|idx| Constraint::Length(app.panel_widths[*idx]))
-        .chain(std::iter::once(Constraint::Min(crate::app::MIN_TERM_W)));
-    let areas = panels_a.layout_vec(&Layout::horizontal(constraints));
-    let mut panel_areas: [Option<Rect>; 3] = [None; 3];
-    for (idx, area) in visible_panels.iter().copied().zip(areas.iter().copied()) {
-        panel_areas[idx] = Some(area);
-    }
-    let term_a = areas[visible_panels.len()];
+    let workspaces_a = Rect {
+        height: app.workspaces_bar_h().min(body.height),
+        ..body
+    };
+    let resolved = app.resolved_layout();
+    let panel_areas: [Option<Rect>; 3] = std::array::from_fn(|i| resolved.area(Leaf::Panel(i)));
+    let term_a = resolved
+        .area(Leaf::Terminal)
+        .expect("the terminal pane is always visible");
 
-    // Splitter grab zones: the two touching border cells at each panel
-    // boundary. Registered first so they win `hit_at`'s first-match scan —
-    // and only over the panels, so the tab bar above stays clickable.
-    for i in app.splitter_indices() {
-        let x = app.splitter_x(i);
-        app.hits.push((
-            Rect {
-                x: x.saturating_sub(1),
-                y: panels_a.y,
-                width: 2,
-                height: panels_a.height,
-            },
-            HitTarget::Splitter(i),
-        ));
+    // Splitter grab zones: the two cells straddling each rule. Registered
+    // first so they win `hit_at`'s first-match scan — and only over the
+    // panels, so the tab bar above stays clickable.
+    for b in &resolved.boundaries {
+        app.hits.push((b.grab(), HitTarget::Splitter(b.id)));
     }
 
     if app.show_workspaces {
@@ -134,19 +118,19 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         panel_areas[2].expect("Sessions panel is always visible"),
     );
     draw_terminal(f, app, term_a);
-    draw_splitter_grips(f.buffer_mut(), app, panels_a);
+    draw_rules(f.buffer_mut(), &resolved, app.theme);
+    draw_splitter_grips(f.buffer_mut(), app, &resolved);
     // Focus cue (opt-in, `focus_tint` setting): the focused panel's whole
-    // background picks up a faint accent tint. The sidebar columns stop
-    // one cell short of their right rule so the tint stays inside the
-    // panel.
+    // background picks up a faint accent tint. Tiles exclude the rules
+    // around them, so the tint stays inside the panel.
     if app.focus_tint {
         let tinted = match app.focus {
             // The bar's last row is its rule, which belongs to the boundary
             // rather than to the bar — leave it untinted.
             Focus::Workspaces => Some(shrink_b(workspaces_a)),
-            Focus::Projects => panel_areas[0].map(shrink_r),
-            Focus::Worktrees => panel_areas[1].map(shrink_r),
-            Focus::Sessions => panel_areas[2].map(shrink_r),
+            Focus::Projects => panel_areas[0],
+            Focus::Worktrees => panel_areas[1],
+            Focus::Sessions => panel_areas[2],
             Focus::Terminal => Some(term_a),
         };
         if let Some(tinted) = tinted {
@@ -1823,14 +1807,6 @@ fn visible_positions<'a>(positions: &'a [usize], shown: &str, full: &str) -> &'a
     }
 }
 
-/// A sidebar column's rect minus its right rule column.
-fn shrink_r(area: Rect) -> Rect {
-    Rect {
-        width: area.width.saturating_sub(1),
-        ..area
-    }
-}
-
 /// The Workspaces bar's rect minus its bottom rule row.
 fn shrink_b(area: Rect) -> Rect {
     Rect {
@@ -1848,22 +1824,56 @@ fn shrink_b(area: Rect) -> Rect {
 /// each column rule, one step brighter than the rule so the boundary reads
 /// as grabbable without turning the chrome back up. Accent while that
 /// splitter is hovered (terminals that report motion) or mid-drag.
-fn draw_splitter_grips(buf: &mut ratatui::buffer::Buffer, app: &App, body: Rect) {
-    if body.height < 7 {
-        return; // no room for a grip plus breathing space
-    }
+fn draw_splitter_grips(
+    buf: &mut ratatui::buffer::Buffer,
+    app: &App,
+    resolved: &crate::layout::Resolved,
+) {
     let th = app.theme;
-    let mid = body.y + body.height / 2;
-    for i in app.splitter_indices() {
-        // The rule column: the left panel's `Borders::RIGHT` cell, one
-        // short of the boundary where the next panel starts.
-        let x = app.splitter_x(i).saturating_sub(1);
-        let active = app.splitter_drag.map(|d| d.idx) == Some(i) || app.hover_splitter == Some(i);
+    for b in &resolved.boundaries {
+        let active =
+            app.splitter_drag.map(|d| d.idx) == Some(b.id) || app.hover_splitter == Some(b.id);
         let fg = if active { th.accent } else { th.muted };
-        for y in mid - 1..=mid + 1 {
-            if let Some(cell) = buf.cell_mut((x, y)) {
-                cell.set_symbol("┃");
+        // Three cells centred on the rule, with breathing space either side.
+        let (glyph, cells): (&str, Vec<(u16, u16)>) = match b.dir {
+            Dir::Row => {
+                if b.rule.height < 7 {
+                    continue;
+                }
+                let mid = b.rule.y + b.rule.height / 2;
+                ("┃", (mid - 1..=mid + 1).map(|y| (b.rule.x, y)).collect())
+            }
+            Dir::Col => {
+                if b.rule.width < 7 {
+                    continue;
+                }
+                let mid = b.rule.x + b.rule.width / 2;
+                ("━", (mid - 1..=mid + 1).map(|x| (x, b.rule.y)).collect())
+            }
+        };
+        for xy in cells {
+            if let Some(cell) = buf.cell_mut(xy) {
+                cell.set_symbol(glyph);
                 cell.set_style(Style::default().fg(fg));
+            }
+        }
+    }
+}
+
+/// The dim rules between the tiles of the mosaic. Panels draw no border of
+/// their own, so this is the only chrome between them and the terminal.
+fn draw_rules(buf: &mut ratatui::buffer::Buffer, resolved: &crate::layout::Resolved, th: Theme) {
+    for b in &resolved.boundaries {
+        let glyph = match b.dir {
+            Dir::Row => "│",
+            Dir::Col => "─",
+        };
+        for y in b.rule.y..b.rule.y + b.rule.height {
+            for x in b.rule.x..b.rule.x + b.rule.width {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_symbol(glyph);
+                    cell.set_style(Style::default().fg(th.edge));
+                }
             }
         }
     }
@@ -2209,7 +2219,7 @@ fn render_button<'a>(
     );
 }
 
-/// Borderless sidebar column: a single dim rule on the right edge, an
+/// Borderless sidebar column (the mosaic draws the rules around it): an
 /// uppercase header row, one blank spacer, then the list area (returned).
 /// The header carries the focus signal — accent when focused, muted
 /// otherwise — so the chrome itself can stay quiet.
@@ -2221,11 +2231,7 @@ fn draw_column(
     focused: bool,
     th: Theme,
 ) -> Rect {
-    let block = Block::default()
-        .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(th.edge));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
+    let inner = area;
     let header_style = if focused {
         Style::default().fg(th.accent).add_modifier(Modifier::BOLD)
     } else {
@@ -4663,8 +4669,11 @@ mod tests {
         let th = Theme::default();
         let mut app = App::new();
         let body = Rect::new(0, 0, 120, 35);
+        app.body_area = body;
+        app.show_workspaces = false;
         let mut buf = ratatui::buffer::Buffer::empty(body);
-        draw_splitter_grips(&mut buf, &app, body);
+        let resolved = app.resolved_layout();
+        draw_splitter_grips(&mut buf, &app, &resolved);
         let mid = body.height / 2; // 17
         assert_eq!(app.splitter_indices(), vec![0, 1, 2]);
         for i in app.splitter_indices() {
@@ -4680,29 +4689,36 @@ mod tests {
 
         // Hover lights only that splitter's grip.
         app.hover_splitter = Some(0);
-        draw_splitter_grips(&mut buf, &app, body);
+        draw_splitter_grips(&mut buf, &app, &resolved);
         assert_eq!(
             buf.cell((app.splitter_x(0) - 1, mid)).unwrap().fg,
             th.accent
         );
         assert_eq!(buf.cell((app.splitter_x(1) - 1, mid)).unwrap().fg, th.muted);
 
-        // The Workspaces bar runs across the top and owns no boundary, so
-        // hiding it leaves every grip exactly where it was.
-        app.show_workspaces = false;
+        // A horizontal rule gets a horizontal grip, centred on its row.
         app.hover_splitter = None;
+        app.move_panel(1, crate::layout::Side::Above);
+        let resolved = app.resolved_layout();
         let mut buf = ratatui::buffer::Buffer::empty(body);
-        draw_splitter_grips(&mut buf, &app, body);
-        assert_eq!(
-            buf.cell((app.splitter_x(0) - 1, mid)).unwrap().symbol(),
-            "┃"
-        );
-        app.show_workspaces = true;
+        draw_splitter_grips(&mut buf, &app, &resolved);
+        let top = resolved
+            .boundaries
+            .iter()
+            .find(|b| b.dir == Dir::Col)
+            .unwrap();
+        let cx = body.width / 2;
+        for x in cx - 1..=cx + 1 {
+            assert_eq!(buf.cell((x, top.rule.y)).unwrap().symbol(), "━");
+        }
 
         // A body too short for a grip plus breathing space draws nothing.
         let tiny = Rect::new(0, 0, 120, 6);
+        app.layout = crate::layout::PanelLayout::default();
+        app.body_area = tiny;
+        let resolved = app.resolved_layout();
         let mut buf = ratatui::buffer::Buffer::empty(tiny);
-        draw_splitter_grips(&mut buf, &app, tiny);
+        draw_splitter_grips(&mut buf, &app, &resolved);
         assert!(buf.content().iter().all(|c| c.symbol() == " "));
     }
 

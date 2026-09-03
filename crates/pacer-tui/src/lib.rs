@@ -14,6 +14,7 @@ pub mod hosts;
 pub mod ipc;
 pub mod keymap;
 pub mod keys;
+pub mod layout;
 pub mod links;
 pub mod orphan_overlay;
 pub mod paste_burst;
