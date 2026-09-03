@@ -5,6 +5,8 @@ applies everywhere.
 
 ## Unreleased
 
+## 0.18.0 — 2026-09-03
+
 ### Windows support
 
 pacer runs natively on Windows 10 and 11, the same way it does on macOS and Linux.

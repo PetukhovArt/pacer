@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "pacer"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "pacer-core"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "directories",
  "rand 0.10.2",
@@ -1307,7 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "pacer-daemon"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "pacer-tui"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "crossterm",
