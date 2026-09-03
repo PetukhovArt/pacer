@@ -1289,8 +1289,7 @@ mod tests {
     /// with the table retired rather than erroring partway.
     #[test]
     fn migration_21_retires_notes_from_a_v9_database() {
-        let path =
-            std::env::temp_dir().join(format!("pacer-mig21-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("pacer-mig21-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();
@@ -1334,8 +1333,7 @@ mod tests {
     /// rewriting or invalidating its existing AGENT rows.
     #[test]
     fn migration_22_adds_pr_context_without_backfill() {
-        let path =
-            std::env::temp_dir().join(format!("pacer-mig22-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("pacer-mig22-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();
@@ -1380,8 +1378,7 @@ mod tests {
     /// 'default' workspace, marked open, with every existing project in it.
     #[test]
     fn migration_13_moves_existing_projects_into_default_workspace() {
-        let path =
-            std::env::temp_dir().join(format!("pacer-mig13-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("pacer-mig13-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();
@@ -1421,8 +1418,7 @@ mod tests {
     /// projects underneath load untouched.
     #[test]
     fn migration_18_drops_the_divider_columns() {
-        let path =
-            std::env::temp_dir().join(format!("pacer-mig18-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("pacer-mig18-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();
@@ -1475,8 +1471,7 @@ mod tests {
     /// drops the old projects table — child rows must survive it.
     #[test]
     fn migration_14_scopes_repo_uniqueness_to_workspace() {
-        let path =
-            std::env::temp_dir().join(format!("pacer-mig14-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("pacer-mig14-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();

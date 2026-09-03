@@ -3494,11 +3494,7 @@ async fn pacer_spawn_cli_starts_a_sibling_session_in_the_same_worktree() {
 
 /// Run the `pacer` CLI the way a hook would inside an agent session: the
 /// test daemon's runtime dir plus the session's `PACER_AGENT_ID`.
-fn agent_cli(
-    env: &TestEnv,
-    agent_id: &pacer_core::AgentId,
-    args: &[&str],
-) -> std::process::Output {
+fn agent_cli(env: &TestEnv, agent_id: &pacer_core::AgentId, args: &[&str]) -> std::process::Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_pacer"))
         .args(args)
         .env(env::RUNTIME_DIR, &env.runtime_dir)

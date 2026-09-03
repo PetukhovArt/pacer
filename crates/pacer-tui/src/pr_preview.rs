@@ -390,10 +390,7 @@ mod tests {
         );
         let out = text(&lines(&d, 60, Theme::default()));
         assert!(out.starts_with(" #42 Attach links"), "{out}");
-        assert!(
-            out.contains("open · petukhov · main ← feat/links"),
-            "{out}"
-        );
+        assert!(out.contains("open · petukhov · main ← feat/links"), "{out}");
         assert!(out.contains("+106 -4 · 2 files"), "{out}");
         assert!(out.contains("Makes the row."), "{out}");
         assert!(out.contains("── 2 comments ──"), "{out}");
@@ -413,7 +410,11 @@ mod tests {
             at: format!("2026-09-01T{at}:00Z"),
             body: body.into(),
             thread: thread.into(),
-            path: if thread.is_empty() { String::new() } else { "src/a.ts:58".into() },
+            path: if thread.is_empty() {
+                String::new()
+            } else {
+                "src/a.ts:58".into()
+            },
             resolved: if thread.is_empty() { None } else { Some(true) },
             ..Default::default()
         };

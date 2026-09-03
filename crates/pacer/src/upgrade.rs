@@ -25,8 +25,7 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Command;
 
-const INSTALL_URL: &str =
-    "https://raw.githubusercontent.com/PetukhovArt/pacer/main/install.sh";
+const INSTALL_URL: &str = "https://raw.githubusercontent.com/PetukhovArt/pacer/main/install.sh";
 
 /// The published install script, with `PACER_INSTALL_URL` as the override
 /// hook (tests point it at a file:// URL). Shared with `pacer ssh`.
