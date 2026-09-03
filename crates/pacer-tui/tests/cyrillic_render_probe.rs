@@ -13,7 +13,8 @@
 //! `vt100`, and compare that grid against ratatui's own buffer.
 
 use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
+use ratatui::layout::Rect;
+use ratatui::{Terminal, TerminalOptions, Viewport};
 use std::cell::RefCell;
 use std::rc::Rc;
 use tui_term::widget::PseudoTerminal;
@@ -82,7 +83,17 @@ fn buffer_grid(buf: &ratatui::buffer::Buffer) -> Vec<String> {
 /// terminal emulator, and assert the two agree after each one.
 fn drive(frames: &[Vec<&str>]) {
     let tap = Tap::default();
-    let mut terminal = Terminal::new(CrosstermBackend::new(tap.clone())).unwrap();
+    // A fixed viewport, not the default one: `Terminal::new` asks the
+    // backend for the size, which needs a tty and gets none under a CI
+    // runner. The probe's whole geometry is COLS x ROWS anyway - that is
+    // what the two vt100 parsers below are sized to.
+    let mut terminal = Terminal::with_options(
+        CrosstermBackend::new(tap.clone()),
+        TerminalOptions {
+            viewport: Viewport::Fixed(Rect::new(0, 0, COLS, ROWS)),
+        },
+    )
+    .unwrap();
 
     let mut child = vt100::Parser::new(ROWS, COLS, 0);
     let mut outer = vt100::Parser::new(ROWS, COLS, 0);
