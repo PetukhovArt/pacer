@@ -135,13 +135,13 @@ impl VimTerm {
         }
 
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
-            let mut msg = format!("failed to launch {program}: {e}");
+            let msg = format!("failed to launch {program}: {e}");
             #[cfg(windows)]
-            if resolved.is_none() {
-                msg.push_str(
-                    " (not on PATH — set PACER_EDITOR or pick another editor in Settings)",
-                );
-            }
+            let msg = if resolved.is_none() {
+                format!("{msg} (not on PATH — set PACER_EDITOR or pick another editor in Settings)")
+            } else {
+                msg
+            };
             msg
         })?;
         drop(pair.slave);

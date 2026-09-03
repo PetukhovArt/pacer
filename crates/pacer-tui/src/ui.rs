@@ -1002,11 +1002,11 @@ fn draw_overlay(f: &mut Frame, app: &mut App) {
                         sref: Some(m.session.clone()),
                     });
                 }
-                rows.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+                rows.sort_by_key(|a| std::cmp::Reverse(a.bytes));
                 // The spares hang off one header row as a small tree:
                 // the header carries their sum, each leaf its own reading.
                 if !spares.is_empty() {
-                    spares.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+                    spares.sort_by_key(|a| std::cmp::Reverse(a.bytes));
                     let count = spares.len();
                     rows.push(Row {
                         name: format!("warm spares ({count})"),

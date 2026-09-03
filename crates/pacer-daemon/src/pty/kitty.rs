@@ -184,7 +184,7 @@ impl KittyScanner {
                 _ => {}
             },
             // DA1 (CSI c / CSI 0 c): claim VT102 so detection loops terminate.
-            b'c' if params.is_empty() || params == [b'0'] => {
+            b'c' if params.is_empty() || params == *b"0" => {
                 actions.reply.extend_from_slice(b"\x1b[?6c");
             }
             // win32-input-mode. Sent by the ConPTY host at open (`h`) and by

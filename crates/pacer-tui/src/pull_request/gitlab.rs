@@ -169,7 +169,7 @@ pub(super) async fn list(dir: &Path, filter: super::ListFilter) -> Option<Vec<Op
                 }
             }
             // Each page came newest-first; the merge keeps that order.
-            rows.sort_by(|a, b| b.number.cmp(&a.number));
+            rows.sort_by_key(|a| std::cmp::Reverse(a.number));
             (rows, path)
         }
         _ => page(dir, &[]).await?,

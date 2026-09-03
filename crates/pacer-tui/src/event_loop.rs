@@ -3383,12 +3383,12 @@ fn handle_overlay_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>
                 }
                 // Forget the entry — no confirm, the next `pacer ssh` to it
                 // just re-adds it.
-                KeyCode::Char('d') | KeyCode::Char('x') | KeyCode::Backspace | KeyCode::Delete => {
-                    if view.selected < view.hosts.len() {
-                        let entry = view.hosts.remove(view.selected);
-                        view.selected = clamp_selection(view.selected as i64, view.hosts.len());
-                        crate::hosts::remove(&entry);
-                    }
+                KeyCode::Char('d') | KeyCode::Char('x') | KeyCode::Backspace | KeyCode::Delete
+                    if view.selected < view.hosts.len() =>
+                {
+                    let entry = view.hosts.remove(view.selected);
+                    view.selected = clamp_selection(view.selected as i64, view.hosts.len());
+                    crate::hosts::remove(&entry);
                 }
                 _ => {}
             }
@@ -6137,9 +6137,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                if view.files_drag.take().is_some() {
-                    app.dirty = true;
-                }
+                app.dirty |= view.files_drag.take().is_some();
             }
             _ => {}
         }
@@ -6291,9 +6289,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                if view.files_drag.take().is_some() {
-                    app.dirty = true;
-                }
+                app.dirty |= view.files_drag.take().is_some();
             }
             _ => {}
         }
