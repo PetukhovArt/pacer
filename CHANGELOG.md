@@ -36,6 +36,8 @@ pacer runs natively on Windows 10 and 11, the same way it does on macOS and Linu
   the body like a tiling window manager: swap it with a neighbour, stack it above or below the
   terminal, or park it on any edge of the screen. Horizontal rules drag like the vertical ones. The
   arrangement is remembered.
+- **PRs panel.** The open pull requests are a panel of their own, stacked under Worktrees by default,
+  with its own cursor, filter and `Shift+R` toggle — and movable like the other three.
 - **GitLab alongside GitHub.** Merge requests, comments, approvals and diffs in the same interface,
   self-hosted instances included.
 - **Review and pipeline status on OPEN PRS rows**, as icons to the left of the number, each in its own

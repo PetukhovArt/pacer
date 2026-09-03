@@ -32,7 +32,7 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 | `pr_list_filter` | `all` | which open pull requests the group lists: `all`, `mine`, `involved` |
 | `sort_projects` / `sort_worktrees` / `sort_sessions` | `created` | per-column order: `created`, `recent` or `name` (pins float first) |
 | `show_workspaces` | | show the Workspaces bar |
-| `hide_projects` / `hide_worktrees` | `false` | start with that sidebar hidden; the Sessions panel always stays visible |
+| `hide_projects` / `hide_worktrees` / `hide_prs` | `false` | start with that sidebar hidden; the Sessions panel always stays visible |
 | `claude_enabled` / `codex_enabled` / `cursor_enabled` | `true` | which harnesses the new-session menu offers |
 | `claude_model` / `claude_effort` / `codex_model` / `codex_effort` | | defaults the picker takes on `Enter` |
 | `keybindings` | | overrides for any action in [keymap.md](keymap.md), written by Settings → Hotkeys |

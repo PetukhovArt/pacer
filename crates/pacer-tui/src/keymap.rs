@@ -96,6 +96,7 @@ pub enum Action {
     ToggleWorkspaces,
     ToggleProjects,
     ToggleWorktrees,
+    TogglePrs,
     /// Re-tile the body: move the focused panel one step in a direction.
     MovePanel(crate::layout::Side),
     /// Open the Nth workspace tab (1-based) straight from the top bar.
@@ -461,6 +462,15 @@ pub const ACTIONS: &[ActionSpec] = &[
         group: "GENERAL",
         scope: Scope::Global,
         defaults: &["shift+b"],
+    },
+    ActionSpec {
+        action: Action::TogglePrs,
+        id: "toggle_prs",
+        label: "PRs panel",
+        hint: "Show or hide the PRs panel",
+        group: "GENERAL",
+        scope: Scope::Global,
+        defaults: &["shift+r"],
     },
     ActionSpec {
         action: Action::MovePanel(crate::layout::Side::Left),

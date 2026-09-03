@@ -25,9 +25,9 @@ Up to four columns, left to right: **Projects → Worktrees → Sessions → Ter
 visible panel — instead of cycling. Landing on a live pane hands it the keyboard, so `Tab` all the way
 right and start typing at the agent.
 
-`Shift+P` shows or hides the Projects panel and `Shift+B` does the same for Worktrees. Each toggle is
-independent, the terminal pane takes the released width, and showing a panel restores its remembered
-size without moving focus.
+`Shift+P` shows or hides the Projects panel, `Shift+B` does the same for Worktrees and `Shift+R` for
+the open pull requests under it. Each toggle is independent, the terminal pane takes the released
+width, and showing a panel restores its remembered size without moving focus.
 
 With no projects yet you get the splash instead — press `n` to add one without leaving the TUI.
 

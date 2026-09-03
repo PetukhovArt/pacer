@@ -14,6 +14,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
+mod prs_panel;
+use prs_panel::draw_prs;
+
 /// Outer size of the editor modal, as (width, height) percent of the frame.
 /// Shared with the event loop's pre-draw PTY size guess.
 pub const VIM_MODAL_PCT: (u16, u16) = (94, 92);
@@ -91,7 +94,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ..body
     };
     let resolved = app.resolved_layout();
-    let panel_areas: [Option<Rect>; 3] = std::array::from_fn(|i| resolved.area(Leaf::Panel(i)));
+    let panel_areas: [Option<Rect>; crate::layout::PANELS] =
+        std::array::from_fn(|i| resolved.area(Leaf::Panel(i)));
     let term_a = resolved
         .area(Leaf::Terminal)
         .expect("the terminal pane is always visible");
@@ -117,6 +121,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         app,
         panel_areas[2].expect("Sessions panel is always visible"),
     );
+    if let Some(area) = panel_areas[3] {
+        draw_prs(f, app, area);
+    }
     draw_terminal(f, app, term_a);
     draw_rules(f.buffer_mut(), &resolved, app.theme);
     draw_splitter_grips(f.buffer_mut(), app, &resolved);
@@ -131,6 +138,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Focus::Projects => panel_areas[0],
             Focus::Worktrees => panel_areas[1],
             Focus::Sessions => panel_areas[2],
+            Focus::Prs => panel_areas[3],
             Focus::Terminal => Some(term_a),
         };
         if let Some(tinted) = tinted {
@@ -2755,32 +2763,24 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
     app.hits.push((inner, HitTarget::PanelBg(Focus::Projects)));
 }
 
-/// One laid-out entry of the Worktrees panel. Checkout rows and pull-request
-/// rows share a single virtual-row layout, computed unbounded by the panel
-/// height, so a project with a long open-PR list scrolls as one column.
+/// One laid-out entry of the Worktrees panel, in a virtual-row layout
+/// computed unbounded by the panel height so the column scrolls as one.
 enum WorktreeEntry {
-    Header(String),
-    /// Index into `visible_worktree_rows()`.
+    /// Index into `visible_worktrees()`.
     Row(usize),
 }
 
 impl WorktreeEntry {
-    /// Rows the entry occupies: a header one, a pill its 3-row cell (they
-    /// stack on a `PILL_H` stride, so neighboring pads overlap).
+    /// Rows the entry occupies: a pill its 3-row cell (they stack on a
+    /// `PILL_H` stride, so neighboring pads overlap).
     fn height(&self) -> usize {
-        match self {
-            WorktreeEntry::Row(_) => PILL_H as usize + 1,
-            _ => 1,
-        }
+        PILL_H as usize + 1
     }
 }
 
 fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
     let th = app.theme;
     let focused = app.focus == Focus::Worktrees;
-    // The title's count stays a worktree count: the open-PR rows below are
-    // links out of pacer, and counting them here would say "9 worktrees"
-    // over a list of two checkouts.
     let wt_count = app.visible_worktrees().len();
     let count = Some(wt_count).filter(|n| *n > 0);
     let title = panel_title(app, Focus::Worktrees, "WORKTREES");
@@ -2800,8 +2800,7 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
             )
         })
         .collect();
-    let prs = app.visible_open_prs().to_vec();
-    if worktrees.is_empty() && prs.is_empty() {
+    if worktrees.is_empty() {
         if app.tree.has_visible_projects() {
             f.render_widget(
                 Paragraph::new(hint_line(&[("n", " starts a worktree")], th)),
@@ -2812,22 +2811,9 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    let dim = Style::default().fg(th.dim);
-
     // ---- lay the column out in virtual rows ----
     let mut layout: Vec<(usize, WorktreeEntry)> = Vec::new();
     let mut vrow: usize = 0;
-    let header = |layout: &mut Vec<(usize, WorktreeEntry)>, vrow: &mut usize, text: String| {
-        // A blank row above every group after the first keeps the groups
-        // scannable without drawing more chrome.
-        if *vrow > 0 {
-            *vrow += 1;
-        }
-        let e = WorktreeEntry::Header(text);
-        let h = e.height();
-        layout.push((*vrow, e));
-        *vrow += h;
-    };
     for i in 0..worktrees.len() {
         layout.push((vrow, WorktreeEntry::Row(i)));
         vrow += PILL_H as usize;
@@ -2835,24 +2821,6 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
         // worktrees below.
         if worktrees[i].1 && worktrees.len() > 1 {
             vrow += 1;
-        }
-    }
-    if !prs.is_empty() {
-        // A list cut off at the fetch cap says so rather than passing
-        // itself off as the whole set.
-        let more = if prs.len() >= crate::pull_request::LIST_LIMIT {
-            "+"
-        } else {
-            ""
-        };
-        header(
-            &mut layout,
-            &mut vrow,
-            format!("OPEN PRS · {}{more}", prs.len()),
-        );
-        for i in 0..prs.len() {
-            layout.push((vrow, WorktreeEntry::Row(worktrees.len() + i)));
-            vrow += PILL_H as usize;
         }
     }
 
@@ -2871,15 +2839,9 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
             .position(|(_, e)| matches!(e, WorktreeEntry::Row(i) if *i == app.sel_worktree))
         {
             let (top, entry) = &layout[pos];
-            // Scrolling up to the first row of a group brings that group's
-            // header along, so the cursor never sits under a bare edge.
-            let up_to = match pos.checked_sub(1).map(|p| &layout[p]) {
-                Some((h, WorktreeEntry::Header(_))) => *h,
-                _ => *top,
-            };
             let bottom = top + entry.height();
-            if up_to < app.worktrees_scroll {
-                app.worktrees_scroll = up_to;
+            if *top < app.worktrees_scroll {
+                app.worktrees_scroll = *top;
             } else if bottom > app.worktrees_scroll + view_h {
                 app.worktrees_scroll = bottom - view_h;
             }
@@ -2904,12 +2866,7 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
         }
         let hit_h = pill_hit_height(*top, layout.get(pos + 1).map(|(t, _)| *t));
         match entry {
-            WorktreeEntry::Header(text) => {
-                if let Some(r) = row_rect_at(inner, y) {
-                    f.render_widget(Paragraph::new(Span::styled(format!(" {text}"), dim)), r);
-                }
-            }
-            WorktreeEntry::Row(i) if *i < worktrees.len() => {
+            WorktreeEntry::Row(i) => {
                 let (branch, is_main, roll, unseen, stamped, pinned) = &worktrees[*i];
                 let (badges, badge_len) = row_badges(*unseen, th);
                 let star = if *pinned { 2 } else { 0 };
@@ -2959,38 +2916,6 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 }
                 for (text, style) in badges {
                     spans.push(Span::styled(text, style));
-                }
-                render_pill(f, inner, y, spans, *i == app.sel_worktree, focused, th);
-                if let Some(hit) = rows_rect_at(inner, y, hit_h) {
-                    app.hits.push((hit, HitTarget::Worktree(*i)));
-                }
-            }
-            WorktreeEntry::Row(i) => {
-                // A pull request reads like the Sessions panel's link rows —
-                // the arrow says "leaves pacer". The group header already
-                // says these are open, so only a draft earns a badge; in a
-                // column this narrow the width is better spent on the title.
-                let pr = &prs[*i - worktrees.len()];
-                let badge = pr.is_draft.then(|| format!(" {}", pr.badge()));
-                let badge_len = badge.as_ref().map_or(0, |b| b.chars().count());
-                // Two status cells sit between the arrow and the number:
-                // reviewers first, then CI, in the order you'd ask about
-                // them. They cost the title `STATUS_W` columns, so they're
-                // only there when this project has something to put in them.
-                let status = pr_status_spans(pr, th);
-                let status_w = if status.is_empty() { 0 } else { STATUS_W };
-                let label_max = (inner.width as usize)
-                    .saturating_sub(3)
-                    .saturating_sub(status_w)
-                    .saturating_sub(badge_len);
-                let mut spans = vec![Span::styled("↗ ", Style::default().fg(th.accent))];
-                spans.extend(status);
-                spans.push(Span::styled(
-                    truncate(&pr.label(), label_max),
-                    Style::default().fg(th.muted),
-                ));
-                if let Some(badge) = badge {
-                    spans.push(Span::styled(badge, Style::default().fg(th.dim)));
                 }
                 render_pill(f, inner, y, spans, *i == app.sel_worktree, focused, th);
                 if let Some(hit) = rows_rect_at(inner, y, hit_h) {
@@ -3877,9 +3802,7 @@ fn draw_footer_bar(f: &mut Frame, app: &App, area: Rect) -> Option<Rect> {
                 k(Action::ContextMenu),
                 k(Action::Help)
             ),
-            // An open-PR row answers to a different set of verbs than a
-            // checkout does, so the hint follows the cursor into the group.
-            Focus::Worktrees if app.selected_worktree_pr().is_some() => format!(
+            Focus::Prs => format!(
                 "{}: claude session  {}: open in browser  {}: diff  PgUp/PgDn: scroll  {}: search  {}: menu  {}: help",
                 k(Action::New),
                 k(Action::Activate),
@@ -3948,6 +3871,9 @@ fn draw_footer_bar(f: &mut Frame, app: &App, area: Rect) -> Option<Rect> {
             }
             if app.hide_worktrees {
                 restore.push(hint(Action::ToggleWorktrees, "worktrees"));
+            }
+            if app.hide_prs {
+                restore.push(hint(Action::TogglePrs, "prs"));
             }
             if !restore.is_empty() {
                 text = format!("{}  {text}", restore.join("  "));
@@ -4675,8 +4601,9 @@ mod tests {
         let resolved = app.resolved_layout();
         draw_splitter_grips(&mut buf, &app, &resolved);
         let mid = body.height / 2; // 17
-        assert_eq!(app.splitter_indices(), vec![0, 1, 2]);
-        for i in app.splitter_indices() {
+        assert_eq!(app.splitter_indices(), vec![0, 1, 2, 3]);
+        // The vertical rules; id 2 is the Worktrees/PRs stack's row.
+        for i in [0, 1, 3] {
             let x = app.splitter_x(i) - 1;
             for y in mid - 1..=mid + 1 {
                 let cell = buf.cell((x, y)).unwrap();
@@ -4715,6 +4642,7 @@ mod tests {
         // A body too short for a grip plus breathing space draws nothing.
         let tiny = Rect::new(0, 0, 120, 6);
         app.layout = crate::layout::PanelLayout::default();
+        app.hide_prs = true; // no stack, so no horizontal rule either
         app.body_area = tiny;
         let resolved = app.resolved_layout();
         let mut buf = ratatui::buffer::Buffer::empty(tiny);

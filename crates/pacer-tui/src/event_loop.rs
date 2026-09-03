@@ -337,7 +337,7 @@ async fn main_loop(
                 // worktree list with j/k can't spawn a `gh` per row passed —
                 // only whatever the selection is resting on when it fires.
                 lookup_pull_request(&mut app, &pr_tx);
-                lookup_open_prs(&mut app, &prs_tx, &mut out);
+                lookup_open_prs(&mut app, &prs_tx);
                 next_git_poll = tokio::time::Instant::now() + GIT_POLL;
             }
             // Metrics poll: always on for the footer's memory/session
@@ -435,7 +435,7 @@ async fn main_loop(
             answer = prs_rx.recv() => {
                 // Never None: `prs_tx` lives as long as the loop.
                 if let Some(answer) = answer {
-                    take_open_prs_answer(&mut app, answer, &mut out);
+                    take_open_prs_answer(&mut app, answer);
                 }
             }
             // The hover debounce: the cursor has rested on a pull request
@@ -456,7 +456,7 @@ async fn main_loop(
                             let retired = !detail.is_open();
                             app.pr_detail.insert(url.clone(), detail);
                             if retired {
-                                drop_retired_pr(&mut app, &url, &mut out);
+                                drop_retired_pr(&mut app, &url);
                             }
                         }
                         None => { app.pr_detail_failed.insert(url); }
@@ -609,11 +609,7 @@ fn note_pr_answer(app: &mut App, worktree: &WorktreeId, found: bool) {
 /// for the project on screen, and a workspace of thirty repos must not cost
 /// thirty API calls a beat. Skipped while one is in flight and until the
 /// timer the last answer armed. The reply arrives on `prs_tx`.
-fn lookup_open_prs(
-    app: &mut App,
-    prs_tx: &tokio::sync::mpsc::UnboundedSender<OpenPrsAnswer>,
-    out: &mut Vec<ClientRequest>,
-) {
+fn lookup_open_prs(app: &mut App, prs_tx: &tokio::sync::mpsc::UnboundedSender<OpenPrsAnswer>) {
     let Some((id, path)) = app
         .selected_project()
         .map(|p| (p.id.clone(), p.repo_path.clone()))
@@ -627,7 +623,7 @@ fn lookup_open_prs(
     // don't spend a process finding that out, but let the backoff run — the
     // checkout can come back (an unmounted volume, a restored directory).
     if !path.is_dir() {
-        note_open_prs_answer(app, id, None, out);
+        note_open_prs_answer(app, id, None);
         return;
     }
     app.open_prs_inflight.insert(id.clone());
@@ -664,13 +660,13 @@ struct OpenPrsAnswer {
 /// stale answer lands as if it were current and arms the next lookup a
 /// full refresh beat out — the "the setting does nothing" symptom, back
 /// for one poll window.
-fn take_open_prs_answer(app: &mut App, answer: OpenPrsAnswer, out: &mut Vec<ClientRequest>) {
+fn take_open_prs_answer(app: &mut App, answer: OpenPrsAnswer) {
     if answer.filter != app.pr_filter {
         app.open_prs_inflight.remove(&answer.project);
         app.dirty = true;
         return;
     }
-    note_open_prs_answer(app, answer.project, answer.list, out);
+    note_open_prs_answer(app, answer.project, answer.list);
     refresh_palette(app);
 }
 
@@ -700,12 +696,11 @@ fn note_open_prs_answer(
     app: &mut App,
     project: pacer_core::ProjectId,
     list: Option<Vec<crate::pull_request::OpenPr>>,
-    out: &mut Vec<ClientRequest>,
 ) {
     // Which pull request the cursor is resting on, before the list under it
     // changes. A refresh that retires a merged PR must not slide the
     // selection onto whatever row inherits its index.
-    let cursor = app.selected_worktree_pr();
+    let cursor = app.selected_pr();
     app.open_prs_inflight.remove(&project);
     let previous = app.open_prs.get(&project);
     let found = list.as_ref().is_some_and(|l| !l.is_empty());
@@ -730,31 +725,21 @@ fn note_open_prs_answer(
         },
     );
     forget_retired_prs(app);
-    reconcile_open_pr_cursor(app, cursor, out);
+    reconcile_open_pr_cursor(app, cursor);
 }
 
-/// Follow the Worktrees cursor across a change to the open-pull-request
-/// list. Three cases, and the row count moved under all of them:
+/// Follow the PRs cursor across a change to the open-pull-request list.
+/// Three cases, and the row count moved under all of them:
 ///
 /// * the cursor wasn't on a pull request — nothing to do;
 /// * its pull request is still open — keep the cursor on *it*, wherever the
 ///   new list put it, rather than on whatever now holds its old index;
 /// * its pull request has been merged or closed — the row is gone, so the
-///   cursor lands on the nearest surviving one, and if that is a checkout
-///   the pane has to be given that checkout's session (the same
-///   `restore_session` an arrow key would have run). Without it the PTY
-///   underneath — deliberately left attached while the cursor is in the PR
-///   group — would keep showing a session that belongs to a different
-///   worktree.
-fn reconcile_open_pr_cursor(
-    app: &mut App,
-    was: Option<crate::pull_request::OpenPr>,
-    out: &mut Vec<ClientRequest>,
-) {
+///   cursor lands on the nearest surviving one.
+fn reconcile_open_pr_cursor(app: &mut App, was: Option<crate::pull_request::OpenPr>) {
     let Some(was) = was else {
         return;
     };
-    let checkouts = app.visible_worktrees().len();
     match app
         .visible_open_prs()
         .iter()
@@ -764,14 +749,11 @@ fn reconcile_open_pr_cursor(
         // `schedule_pr_detail` zeroes `pr_preview_scroll`, and a refresh
         // landing every minute must not yank a reader back to the top of a
         // conversation they're halfway down.
-        Some(i) => app.sel_worktree = checkouts + i,
+        Some(i) => app.sel_pr = i,
         None => {
-            let rows = app.worktree_row_count();
-            if app.sel_worktree >= rows {
-                app.sel_worktree = rows.saturating_sub(1);
-            }
-            if app.selected_worktree().is_some() {
-                restore_session(app, out);
+            let rows = app.visible_open_prs().len();
+            if app.sel_pr >= rows {
+                app.sel_pr = rows.saturating_sub(1);
             }
             // The pane is showing something else now: rewind it and fetch
             // whatever the cursor landed on. Say why, too — a row that
@@ -804,8 +786,8 @@ fn forget_retired_prs(app: &mut App) {
 /// for the row the cursor is resting on — that it is merged or closed.
 /// The list refresh would catch it within the minute anyway; this is for
 /// the case where the user is looking straight at it.
-fn drop_retired_pr(app: &mut App, url: &str, out: &mut Vec<ClientRequest>) {
-    let cursor = app.selected_worktree_pr();
+fn drop_retired_pr(app: &mut App, url: &str) {
+    let cursor = app.selected_pr();
     let mut removed = false;
     for open in app.open_prs.values_mut() {
         let before = open.list.len();
@@ -815,7 +797,7 @@ fn drop_retired_pr(app: &mut App, url: &str, out: &mut Vec<ClientRequest>) {
     if !removed {
         return;
     }
-    reconcile_open_pr_cursor(app, cursor, out);
+    reconcile_open_pr_cursor(app, cursor);
     refresh_palette(app);
     app.dirty = true;
 }
@@ -1002,7 +984,7 @@ fn schedule_pull_request_refresh(app: &mut App) {
 /// the two that show pull requests — is a reason to re-ask GitHub; walking
 /// off them into the pane is not.
 fn note_focus_change(app: &mut App) {
-    if matches!(app.focus, Focus::Worktrees | Focus::Sessions) {
+    if matches!(app.focus, Focus::Prs | Focus::Sessions) {
         schedule_pull_request_refresh(app);
     }
 }
@@ -1118,7 +1100,11 @@ fn restore_ui_state(app: &mut App, json: &str) -> bool {
     // The draw re-fits every size to the actual screen; only cap what a
     // blob from a far wider screen could quote. A blob predating the mosaic
     // carries the classic column widths instead.
-    if let Some(layout) = state.layout.filter(|l| l.is_complete()) {
+    let mut layout = state.layout;
+    if let Some(l) = layout.as_mut().filter(|l| l.lacks_prs()) {
+        l.adopt_prs();
+    }
+    if let Some(layout) = layout.filter(|l| l.is_complete()) {
         app.layout = layout;
         app.layout.clamp_sizes(MAX_RESTORED_WIDTH);
     } else if let Some(w) = state.panel_widths {
@@ -1434,12 +1420,13 @@ fn reset_filtered_selection(app: &mut App, out: &mut Vec<ClientRequest>) {
             }
         }
         Focus::Worktrees => {
-            if app.worktree_row_count() > 0 {
+            if !app.visible_worktrees().is_empty() {
                 select_worktree_row(app, 0, out);
             } else {
                 app.sel_worktree = 0;
             }
         }
+        Focus::Prs => app.sel_pr = 0,
         Focus::Sessions => app.sel_session = 0,
         Focus::Workspaces | Focus::Terminal => {}
     }
@@ -1457,13 +1444,13 @@ fn toggle_pin_at_cursor(app: &mut App, out: &mut Vec<ClientRequest>) {
         Focus::Projects => app
             .selected_project()
             .map(|p| (p.id.to_string(), "project".into())),
-        Focus::Worktrees => match app.selected_worktree() {
-            Some(w) => Some((w.id.to_string(), "worktree".into())),
-            None => {
-                app.flash = Some("open-PR rows can't be pinned".into());
-                None
-            }
-        },
+        Focus::Worktrees => app
+            .selected_worktree()
+            .map(|w| (w.id.to_string(), "worktree".into())),
+        Focus::Prs => {
+            app.flash = Some("open-PR rows can't be pinned".into());
+            None
+        }
         Focus::Sessions => match app.selected_session_row() {
             Some(SessionRow::Agent(a)) => Some((a.id.to_string(), "session".into())),
             Some(SessionRow::Terminal(t)) => Some((t.id.to_string(), "terminal".into())),
@@ -1602,7 +1589,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
     // here too. Page/Home/End only — shift+↑/↓ move the panel itself, and
     // ↑/↓ have to keep walking the PR list itself. From either list that
     // can rest on one; a focused pane keeps its keys for the PTY.
-    if app.previewed_pr().is_some() && matches!(app.focus, Focus::Worktrees | Focus::Sessions) {
+    if app.previewed_pr().is_some() && matches!(app.focus, Focus::Prs | Focus::Sessions) {
         let page = app.term_area.height.max(1);
         let max = app.pr_preview_max_scroll();
         let scrolled = match key.code {
@@ -1753,18 +1740,17 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             set_hide_worktrees(app, !app.hide_worktrees);
             save_panel_visibility(app);
         }
+        Action::TogglePrs => {
+            set_hide_prs(app, !app.hide_prs);
+            save_panel_visibility(app);
+        }
         // Re-tile the body: the focused panel moves beside whatever it
         // touches in that direction, or onto the body's edge. The layout
         // rides along in the UI state blob, like the column widths did.
         Action::MovePanel(side) => {
-            let idx = match app.focus {
-                Focus::Projects => 0,
-                Focus::Worktrees => 1,
-                Focus::Sessions => 2,
-                Focus::Workspaces | Focus::Terminal => {
-                    app.flash = Some("Focus a panel to move it".into());
-                    return;
-                }
+            let Some(idx) = App::panel_index(app.focus) else {
+                app.flash = Some("Focus a panel to move it".into());
+                return;
             };
             app.move_panel(idx, side);
             out.push(ClientRequest::SaveUiState {
@@ -1797,12 +1783,14 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             // The cursor already IS the open workspace; Enter steps into it.
             Focus::Workspaces => app.focus = app.first_sidebar_focus(),
             Focus::Projects => app.focus = app.next_visible_focus(Focus::Projects),
+            Focus::Worktrees => app.focus = Focus::Sessions,
             // An open-PR row leads out of pacer, so Enter hands it to the
-            // browser and stays put; a checkout hands focus one column right.
-            Focus::Worktrees => match app.selected_worktree_pr().map(|pr| pr.url.clone()) {
-                Some(url) => open_link(app, &url, out),
-                None => app.focus = Focus::Sessions,
-            },
+            // browser and stays put.
+            Focus::Prs => {
+                if let Some(url) = app.selected_pr().map(|pr| pr.url) {
+                    open_link(app, &url, out);
+                }
+            }
             Focus::Sessions => attach_selected(app, out),
             // Lock input into an already-focused live pane.
             Focus::Terminal => enter_terminal_pane(app, out),
@@ -1815,13 +1803,12 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             Focus::Workspaces => open_prompt(app, PromptKind::NewWorkspace),
             Focus::Projects => open_prompt(app, PromptKind::AddProject),
             Focus::Worktrees => {
-                if app.selected_worktree_pr().is_some() {
-                    open_pr_agent_picker(app);
-                } else if let Some(p) = app.selected_project() {
+                if let Some(p) = app.selected_project() {
                     let project = p.id.clone();
                     open_new_worktree_prompt(app, project);
                 }
             }
+            Focus::Prs => open_pr_agent_picker(app),
             Focus::Sessions => {
                 if let Some(w) = app.selected_worktree() {
                     let worktree = w.id.clone();
@@ -1909,7 +1896,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
         // Inline list filter over the focused panel. Re-pressed on a panel
         // that already has one, it just re-arms the query for editing.
         Action::FilterList => match app.focus {
-            Focus::Projects | Focus::Worktrees | Focus::Sessions => {
+            Focus::Projects | Focus::Worktrees | Focus::Prs | Focus::Sessions => {
                 match app.list_filter.as_mut() {
                     Some(f) if f.focus == app.focus => f.active = true,
                     _ => {
@@ -2562,7 +2549,7 @@ fn open_delete_confirm(app: &mut App) {
             let id = app.tree.active_workspace.clone();
             open_remove_workspace_confirm(app, id, None);
         }
-        Focus::Terminal => {}
+        Focus::Prs | Focus::Terminal => {}
     }
 }
 
@@ -2723,7 +2710,7 @@ fn open_delete_all_confirm(app: &mut App) {
                 area: ratatui::layout::Rect::default(),
             }));
         }
-        Focus::Workspaces | Focus::Projects | Focus::Terminal => {}
+        Focus::Workspaces | Focus::Projects | Focus::Prs | Focus::Terminal => {}
     }
 }
 
@@ -2919,7 +2906,7 @@ fn pr_agent_menu_item(
 /// An OPEN PRS row creates only a local Claude AGENT, while still reusing
 /// the MODEL/EFFORT and optional naming steps of the NEW SESSION PICKER.
 fn open_pr_agent_picker(app: &mut App) {
-    let Some(pr) = app.selected_worktree_pr() else {
+    let Some(pr) = app.selected_pr() else {
         return;
     };
     if !claude_enabled() {
@@ -3272,8 +3259,8 @@ fn open_context_menu_for_selection(app: &mut App) {
             }
             open_menu(app, items, at);
         }
-        Focus::Worktrees => {
-            if let Some(pr) = app.selected_worktree_pr() {
+        Focus::Prs => {
+            if let Some(pr) = app.selected_pr() {
                 let Some(worktree) = selected_project_main_worktree(app) else {
                     app.flash = Some("the project has no ROOT WORKTREE for this PR session".into());
                     return;
@@ -3287,7 +3274,10 @@ fn open_context_menu_for_selection(app: &mut App) {
                     MenuItem::new("View diff", MenuAction::ViewPrDiff),
                 ]);
                 open_menu(app, items, at);
-            } else if let Some(w) = app.selected_worktree() {
+            }
+        }
+        Focus::Worktrees => {
+            if let Some(w) = app.selected_worktree() {
                 let mut items = vec![
                     MenuItem::new("New agent", MenuAction::NewAgent(w.id.clone())),
                     MenuItem::new("New terminal", MenuAction::NewTerminal(w.id.clone())),
@@ -4229,10 +4219,18 @@ fn set_hide_worktrees(app: &mut App, hidden: bool) {
     }
 }
 
+fn set_hide_prs(app: &mut App, hidden: bool) {
+    app.hide_prs = hidden;
+    if hidden && app.focus == Focus::Prs {
+        app.focus = app.next_visible_focus(Focus::Prs);
+    }
+}
+
 fn save_panel_visibility(app: &mut App) {
     let mut cfg = crate::config::Config::load();
     cfg.hide_projects = app.hide_projects;
     cfg.hide_worktrees = app.hide_worktrees;
+    cfg.hide_prs = app.hide_prs;
     if let Err(err) = cfg.save() {
         app.flash = Some(format!("couldn't save settings: {err}"));
     }
@@ -4843,6 +4841,7 @@ fn restore_workspace_project(app: &mut App) {
 /// main checkout otherwise), then re-show that worktree's session.
 fn restore_context(app: &mut App, out: &mut Vec<ClientRequest>) {
     app.sel_worktree = 0;
+    app.sel_pr = 0;
     schedule_open_prs_lookup(app);
     schedule_pr_detail(app);
     if let Some(pid) = app.selected_project().map(|p| p.id.clone()) {
@@ -5239,7 +5238,8 @@ fn move_selection(app: &mut App, delta: i64, out: &mut Vec<ClientRequest>) {
             app.tree.active_workspace_index().unwrap_or(0),
         ),
         Focus::Projects => (app.project_rows().len(), app.sel_project),
-        Focus::Worktrees => (app.worktree_row_count(), app.sel_worktree),
+        Focus::Worktrees => (app.visible_worktrees().len(), app.sel_worktree),
+        Focus::Prs => (app.visible_open_prs().len(), app.sel_pr),
         Focus::Sessions => (app.visible_session_rows().len(), app.sel_session),
         Focus::Terminal => return,
     };
@@ -5261,6 +5261,10 @@ fn move_selection(app: &mut App, delta: i64, out: &mut Vec<ClientRequest>) {
         }
         Focus::Projects => select_project_row(app, new, out),
         Focus::Worktrees => select_worktree_row(app, new, out),
+        Focus::Prs => {
+            app.sel_pr = new;
+            schedule_pr_detail(app);
+        }
         Focus::Sessions => {
             app.sel_session = new;
             preview_selected(app, out);
@@ -5283,17 +5287,12 @@ fn select_project_row(app: &mut App, i: usize, out: &mut Vec<ClientRequest>) {
 }
 
 /// Move the Worktrees cursor to a *different* row `i` and bring up its
-/// session. Stepping onto an open-PR row is not a worktree switch: it has
-/// no sessions to restore and nothing to attach, so the pane is left
-/// exactly as it was.
+/// session.
 fn select_worktree_row(app: &mut App, i: usize, out: &mut Vec<ClientRequest>) {
     app.select_worktree_when_seen = None;
     remember_context(app);
     app.sel_worktree = i;
-    if app.selected_worktree().is_some() {
-        restore_session(app, out);
-    }
-    schedule_pr_detail(app);
+    restore_session(app, out);
 }
 
 /// Show the selected session in the terminal pane WITHOUT taking focus or
@@ -6545,12 +6544,17 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                         select_worktree_row(app, i, out);
                     }
                     app.focus = Focus::Worktrees;
+                    app.last_session_click = None;
+                }
+                Some(HitTarget::Pr(i)) => {
+                    app.sel_pr = i;
+                    app.focus = Focus::Prs;
                     // A second click on a pull request opens it — the same
                     // double-click-to-activate the Sessions panel's link
                     // rows use, so one stray click never launches a browser.
                     // Landing anywhere else breaks the chain, or a click
                     // away and back would read as a double-click.
-                    match app.selected_worktree_pr().map(|pr| pr.url.clone()) {
+                    match app.selected_pr().map(|pr| pr.url) {
                         Some(url) => {
                             let key = RowKey::Link(url.clone());
                             if is_double_click(&mut app.last_session_click, key) {
@@ -6663,15 +6667,27 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                             | HitTarget::PanelBg(Focus::Sessions)
                     )
                 );
-            // The Worktrees column scrolls the same way: a project with a
-            // long open-PR list outgrows the panel just as readily.
+            // The Worktrees and PRs panels scroll the same way: a long
+            // open-PR list outgrows its tile just as readily.
             let over_worktrees = !app.collapsed
                 && matches!(
                     over,
                     Some(HitTarget::Worktree(_) | HitTarget::PanelBg(Focus::Worktrees))
                 );
+            let over_prs = !app.collapsed
+                && matches!(
+                    over,
+                    Some(HitTarget::Pr(_) | HitTarget::PanelBg(Focus::Prs))
+                );
             let in_term = matches!(over, Some(HitTarget::TerminalPane)) || app.collapsed;
-            if over_worktrees {
+            if over_prs {
+                app.prs_scroll = if up {
+                    app.prs_scroll.saturating_sub(SESSIONS_WHEEL_STEP)
+                } else {
+                    app.prs_scroll.saturating_add(SESSIONS_WHEEL_STEP)
+                };
+                app.dirty = true;
+            } else if over_worktrees {
                 app.worktrees_scroll = if up {
                     app.worktrees_scroll.saturating_sub(SESSIONS_WHEEL_STEP)
                 } else {
@@ -6780,11 +6796,10 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                         open_menu(app, items, at);
                     }
                 }
-                Some(HitTarget::Worktree(i)) => {
-                    app.sel_worktree = i;
-                    app.sel_session = 0;
-                    app.focus = Focus::Worktrees;
-                    if let Some(pr) = app.selected_worktree_pr() {
+                Some(HitTarget::Pr(i)) => {
+                    app.sel_pr = i;
+                    app.focus = Focus::Prs;
+                    if let Some(pr) = app.selected_pr() {
                         let mut items = Vec::new();
                         if let Some(worktree) =
                             selected_project_main_worktree(app).filter(|_| claude_enabled())
@@ -6796,7 +6811,13 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                             MenuItem::new("View diff", MenuAction::ViewPrDiff),
                         ]);
                         open_menu(app, items, at);
-                    } else if let Some(w) = app.selected_worktree() {
+                    }
+                }
+                Some(HitTarget::Worktree(i)) => {
+                    app.sel_worktree = i;
+                    app.sel_session = 0;
+                    app.focus = Focus::Worktrees;
+                    if let Some(w) = app.selected_worktree() {
                         let mut items = vec![
                             MenuItem::new("New agent", MenuAction::NewAgent(w.id.clone())),
                             MenuItem::new("New terminal", MenuAction::NewTerminal(w.id.clone())),
@@ -6851,7 +6872,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                                 ]
                             })
                             .unwrap_or_default(),
-                        Focus::Terminal => vec![],
+                        Focus::Prs | Focus::Terminal => vec![],
                     };
                     open_menu(app, items, at);
                 }
@@ -7385,8 +7406,10 @@ fn reconcile_selection_inner(
 fn clamp_selections(app: &mut App) {
     let project_rows = app.project_rows().len();
     app.sel_project = clamp_selection(app.sel_project as i64, project_rows);
-    let wt_len = app.worktree_row_count();
+    let wt_len = app.visible_worktrees().len();
     app.sel_worktree = clamp_selection(app.sel_worktree as i64, wt_len);
+    let pr_len = app.visible_open_prs().len();
+    app.sel_pr = clamp_selection(app.sel_pr as i64, pr_len);
     let sess_len = app.visible_session_rows().len();
     app.sel_session = clamp_selection(app.sel_session as i64, sess_len);
 }
@@ -7969,17 +7992,16 @@ mod tests {
                 "the cursor follows its session"
             );
 
-            // Worktrees: the cursor is on an open PR, which lives below the
-            // checkouts — so re-sorting the checkouts moves it too.
+            // Worktrees: re-sorting the checkouts leaves the PRs cursor be.
             seed_open_prs(&mut app, &[(7, "Attach links"), (6, "Older")]);
             app.focus = Focus::Worktrees;
-            app.sel_worktree = app.visible_worktrees().len() + 1; // PR #6
-            assert_eq!(app.selected_worktree_pr().map(|pr| pr.number), Some(6));
+            app.sel_pr = 1; // PR #6
+            assert_eq!(app.selected_pr().map(|pr| pr.number), Some(6));
             press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
             press(&mut app, KeyCode::Char('S'), KeyModifiers::SHIFT, &mut out);
             assert_eq!(app.sort.worktrees, crate::app::SortMode::Name);
             assert_eq!(
-                app.selected_worktree_pr().map(|pr| pr.number),
+                app.selected_pr().map(|pr| pr.number),
                 Some(6),
                 "the cursor follows its pull request"
             );
@@ -8045,7 +8067,6 @@ mod tests {
                         checks: Default::default(),
                     }]),
                 },
-                &mut Vec::new(),
             );
             assert!(
                 !app.open_prs.contains_key(&pid),
@@ -8061,7 +8082,6 @@ mod tests {
                     filter: crate::pull_request::ListFilter::Mine,
                     list: Some(vec![]),
                 },
-                &mut Vec::new(),
             );
             assert!(app.open_prs.contains_key(&pid));
             // Editing some other setting leaves a fresh list alone — only
@@ -8418,6 +8438,8 @@ mod tests {
         l(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Worktrees);
         l(&mut app, &mut out);
+        assert_eq!(app.focus, Focus::Prs);
+        l(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Sessions);
         l(&mut app, &mut out);
         assert_eq!(
@@ -8447,6 +8469,8 @@ mod tests {
 
         h(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Sessions);
+        h(&mut app, &mut out);
+        assert_eq!(app.focus, Focus::Prs);
         h(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Worktrees);
         h(&mut app, &mut out);
@@ -8603,6 +8627,7 @@ mod tests {
         // The walk back and h,h remember where they stepped up from too.
         press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE, &mut out);
         press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE, &mut out);
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE, &mut out);
         assert_eq!(app.focus, Focus::Projects);
         press(&mut app, KeyCode::BackTab, KeyModifiers::NONE, &mut out);
         assert_eq!(app.focus, Focus::Workspaces);
@@ -8669,6 +8694,8 @@ mod tests {
         fwd(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Worktrees);
         fwd(&mut app, &mut out);
+        assert_eq!(app.focus, Focus::Prs);
+        fwd(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Sessions);
         fwd(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Terminal);
@@ -8678,6 +8705,8 @@ mod tests {
 
         back(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Sessions);
+        back(&mut app, &mut out);
+        assert_eq!(app.focus, Focus::Prs);
         back(&mut app, &mut out);
         assert_eq!(app.focus, Focus::Worktrees);
         back(&mut app, &mut out);
@@ -8819,25 +8848,23 @@ mod tests {
         );
     }
 
-    /// The open pull requests take the rows *after* the checkouts, which is
-    /// what lets every "index into visible_worktrees()" in the app stay
-    /// correct: a cursor on a PR row simply has no selected worktree.
+    /// The open pull requests are a panel of their own with its own cursor:
+    /// walking it never touches the selected worktree.
     #[test]
-    fn open_prs_take_the_rows_below_the_worktrees() {
+    fn open_prs_have_a_cursor_of_their_own() {
         let mut app = App::new();
         seed_tree(&mut app); // p1 / w1(main) / a1
-        assert_eq!(app.worktree_row_count(), 1, "no list fetched yet");
+        assert!(app.visible_open_prs().is_empty(), "no list fetched yet");
+        assert!(app.selected_pr().is_none());
         seed_open_prs(&mut app, &[(7, "Attach links"), (9, "Number the lines")]);
-        assert_eq!(app.worktree_row_count(), 3);
 
-        assert!(app.selected_worktree().is_some(), "row 0 is the checkout");
-        assert!(app.selected_worktree_pr().is_none());
-
-        app.sel_worktree = 1;
-        assert!(app.selected_worktree().is_none(), "row 1 is a pull request");
-        assert_eq!(app.selected_worktree_pr().map(|p| p.number), Some(7));
-        app.sel_worktree = 2;
-        assert_eq!(app.selected_worktree_pr().map(|p| p.number), Some(9));
+        assert_eq!(app.selected_pr().map(|p| p.number), Some(7));
+        app.sel_pr = 1;
+        assert_eq!(app.selected_pr().map(|p| p.number), Some(9));
+        assert!(
+            app.selected_worktree().is_some(),
+            "the checkout stays selected"
+        );
     }
 
     /// Enter on an open-PR row hands it to the browser and stays put — and
@@ -8850,11 +8877,10 @@ mod tests {
         seed_open_prs(&mut app, &[(7, "Attach links")]);
         let a1 = SessionRef::Agent(AgentId("a1".into()));
         app.term = Some(AttachedTerm::new(a1.clone(), 40, 10));
-        app.focus = Focus::Worktrees;
+        app.focus = Focus::Prs;
         let mut out = Vec::new();
 
         press(&mut app, KeyCode::Down, KeyModifiers::NONE, &mut out);
-        assert_eq!(app.sel_worktree, 1, "walked into the OPEN PRS group");
         assert!(
             !out.iter()
                 .any(|r| matches!(r, ClientRequest::Detach { .. })),
@@ -8864,10 +8890,10 @@ mod tests {
 
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
         assert_eq!(app.flash.as_deref(), Some("opened github.com/o/r/pull/7"));
-        assert_eq!(app.focus, Focus::Worktrees, "Enter stays in the panel");
+        assert_eq!(app.focus, Focus::Prs, "Enter stays in the panel");
 
-        // Back onto the checkout, Enter still hands focus one column right.
-        press(&mut app, KeyCode::Up, KeyModifiers::NONE, &mut out);
+        // On a checkout, Enter still hands focus one column right.
+        app.focus = Focus::Worktrees;
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &mut out);
         assert_eq!(app.focus, Focus::Sessions);
     }
@@ -8881,10 +8907,8 @@ mod tests {
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(7, "Attach links")]);
         let mut out = Vec::new();
-        app.hits.push((
-            ratatui::layout::Rect::new(0, 0, 20, 2),
-            HitTarget::Worktree(1),
-        ));
+        app.hits
+            .push((ratatui::layout::Rect::new(0, 0, 20, 2), HitTarget::Pr(0)));
         let click = |app: &mut App, out: &mut Vec<ClientRequest>| {
             handle_mouse(
                 app,
@@ -8899,8 +8923,8 @@ mod tests {
         };
 
         click(&mut app, &mut out);
-        assert_eq!(app.sel_worktree, 1);
-        assert_eq!(app.focus, Focus::Worktrees);
+        assert_eq!(app.sel_pr, 0);
+        assert_eq!(app.focus, Focus::Prs);
         assert!(app.flash.is_none(), "one click only selects");
 
         click(&mut app, &mut out);
@@ -8941,8 +8965,7 @@ mod tests {
             let mut app = App::new();
             seed_tree(&mut app);
             seed_open_prs(&mut app, &[(7, "Attach links")]);
-            app.focus = Focus::Worktrees;
-            app.sel_worktree = 1;
+            app.focus = Focus::Prs;
             let mut out = Vec::new();
 
             press(&mut app, KeyCode::Char('n'), KeyModifiers::NONE, &mut out);
@@ -9007,8 +9030,7 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(7, "Attach links")]);
-        app.focus = Focus::Worktrees;
-        app.sel_worktree = 1;
+        app.focus = Focus::Prs;
 
         open_context_menu_for_selection(&mut app);
         let Some(Overlay::Menu(menu)) = &app.overlay else {
@@ -9026,10 +9048,8 @@ mod tests {
         }));
 
         app.overlay = None;
-        app.hits.push((
-            ratatui::layout::Rect::new(0, 0, 20, 2),
-            HitTarget::Worktree(1),
-        ));
+        app.hits
+            .push((ratatui::layout::Rect::new(0, 0, 20, 2), HitTarget::Pr(0)));
         handle_mouse(
             &mut app,
             MouseEvent {
@@ -9058,9 +9078,9 @@ mod tests {
         seed_tree(&mut app);
         let pid = app.selected_project().expect("a project").id.clone();
 
-        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]));
         assert_eq!(app.open_prs[&pid].step, OPEN_PRS_RECHECK_MIN);
-        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]));
         assert_eq!(app.open_prs[&pid].step, OPEN_PRS_RECHECK_MIN * 2);
 
         let found = vec![crate::pull_request::OpenPr {
@@ -9071,14 +9091,14 @@ mod tests {
             approval: Default::default(),
             checks: Default::default(),
         }];
-        note_open_prs_answer(&mut app, pid.clone(), Some(found.clone()), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), Some(found.clone()));
         assert_eq!(
             app.open_prs[&pid].step, OPEN_PRS_REFRESH,
             "a repo with pull requests settles onto the steady beat"
         );
         assert_eq!(app.visible_open_prs().len(), 1);
 
-        note_open_prs_answer(&mut app, pid.clone(), None, &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), None);
         assert_eq!(
             app.open_prs[&pid].list, found,
             "a failed call keeps the last good list"
@@ -9094,7 +9114,7 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         let pid = app.selected_project().expect("a project").id.clone();
-        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]));
 
         schedule_open_prs_lookup(&mut app);
         assert!(
@@ -9124,7 +9144,7 @@ mod tests {
         let wid = app.selected_worktree().expect("a worktree").id.clone();
         let stale = std::time::Instant::now() - crate::app::OPEN_PRS_MIN_AGE * 2;
         let settle = |app: &mut App| {
-            note_open_prs_answer(app, pid.clone(), Some(vec![]), &mut Vec::new());
+            note_open_prs_answer(app, pid.clone(), Some(vec![]));
             app.open_prs.get_mut(&pid).unwrap().at = stale;
             note_pr_answer(app, &wid, true);
         };
@@ -9138,9 +9158,9 @@ mod tests {
         );
         assert!(!app.pr_lookup_due(&wid));
 
-        app.focus = Focus::Worktrees;
+        app.focus = Focus::Prs;
         note_focus_change(&mut app);
-        assert!(app.open_prs_lookup_due(&pid), "the Worktrees panel is");
+        assert!(app.open_prs_lookup_due(&pid), "the PRs panel is");
         assert!(app.pr_lookup_due(&wid));
 
         settle(&mut app);
@@ -9151,9 +9171,9 @@ mod tests {
 
         // Seconds-fresh answer: the floor holds the list off, the PR row
         // (one `gh pr view`, no floor of its own) is still re-asked.
-        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]));
         note_pr_answer(&mut app, &wid, true);
-        app.focus = Focus::Worktrees;
+        app.focus = Focus::Prs;
         note_focus_change(&mut app);
         assert!(!app.open_prs_lookup_due(&pid), "floored");
         assert!(app.pr_lookup_due(&wid));
@@ -9167,7 +9187,7 @@ mod tests {
         seed_tree(&mut app);
         let pid = app.selected_project().expect("a project").id.clone();
         let wid = app.selected_worktree().expect("a worktree").id.clone();
-        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid.clone(), Some(vec![]));
         app.open_prs.get_mut(&pid).unwrap().at =
             std::time::Instant::now() - crate::app::OPEN_PRS_MIN_AGE * 2;
         note_pr_answer(&mut app, &wid, true);
@@ -9207,7 +9227,7 @@ mod tests {
         seed_open_prs(&mut app, &many);
         terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
         assert!(
-            buffer_text(&terminal).contains("OPEN PRS · 100+"),
+            buffer_text(&terminal).contains("OPEN PRS+ · 100"),
             "a capped list says so:\n{}",
             buffer_text(&terminal)
         );
@@ -9242,7 +9262,6 @@ mod tests {
                     checks: Default::default(),
                 },
             ]),
-            &mut Vec::new(),
         );
 
         let mut terminal = Terminal::new(TestBackend::new(140, 30)).unwrap();
@@ -9292,7 +9311,6 @@ mod tests {
                 pr(7, Approval::Pending, Checks::Running),
                 pr(6, Approval::Unknown, Checks::Passed),
             ]),
-            &mut Vec::new(),
         );
 
         let mut terminal = Terminal::new(TestBackend::new(140, 30)).unwrap();
@@ -9412,15 +9430,15 @@ mod tests {
                     checks: Default::default(),
                 })
                 .collect();
-            note_open_prs_answer(app, pid.clone(), Some(list), &mut Vec::new());
+            note_open_prs_answer(app, pid.clone(), Some(list));
         };
 
         answer(&mut app, vec![(7, false), (9, true)]);
-        assert_eq!(app.worktree_row_count(), 3, "the checkout, then both PRs");
+        assert_eq!(open_pr_numbers(&app), vec![7, 9]);
         app.pr_detail
             .insert(pr_url(7), a_detail(7, "read on a hover", vec![]));
-        app.sel_worktree = 1;
-        assert_eq!(app.selected_worktree_pr().map(|p| p.number), Some(7));
+        app.sel_pr = 0;
+        assert_eq!(app.selected_pr().map(|p| p.number), Some(7));
 
         // #7 is merged: the next list doesn't mention it.
         answer(&mut app, vec![(9, true)]);
@@ -9430,7 +9448,7 @@ mod tests {
             "the draft is still open and stays; the merged one goes"
         );
         assert_eq!(
-            app.selected_worktree_pr().map(|p| p.number),
+            app.selected_pr().map(|p| p.number),
             Some(9),
             "the cursor lands on the row that survived"
         );
@@ -9439,12 +9457,12 @@ mod tests {
             "and the body cached for the reading pane goes with it"
         );
 
-        // The last one closes too: the cursor falls back to the checkout.
+        // The last one closes too: the cursor has nothing left to rest on.
         answer(&mut app, vec![]);
         assert!(app.visible_open_prs().is_empty());
-        assert!(
-            app.selected_worktree().is_some(),
-            "the cursor lands on the checkout, not past the end of the list"
+        assert_eq!(
+            app.sel_pr, 0,
+            "the cursor comes back to the top, not past the end"
         );
     }
 
@@ -9457,8 +9475,8 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(9, "Number lines"), (7, "Attach links")]);
-        app.sel_worktree = 2;
-        assert_eq!(app.selected_worktree_pr().map(|p| p.number), Some(7));
+        app.sel_pr = 1;
+        assert_eq!(app.selected_pr().map(|p| p.number), Some(7));
 
         let pid = app.selected_project().expect("a project").id.clone();
         let list = vec![
@@ -9489,14 +9507,14 @@ mod tests {
         ];
         // Halfway down #7's conversation when the refresh lands.
         app.pr_preview_scroll = 12;
-        note_open_prs_answer(&mut app, pid, Some(list), &mut Vec::new());
+        note_open_prs_answer(&mut app, pid, Some(list));
         assert_eq!(open_pr_numbers(&app), vec![11, 9, 7]);
         assert_eq!(
-            app.selected_worktree_pr().map(|p| p.number),
+            app.selected_pr().map(|p| p.number),
             Some(7),
-            "still on #7, two rows further down"
+            "still on #7, one row further down"
         );
-        assert_eq!(app.sel_worktree, 3);
+        assert_eq!(app.sel_pr, 2);
         assert_eq!(
             app.pr_preview_scroll, 12,
             "and still where they were reading — a beat this quick must not \
@@ -9513,16 +9531,16 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(7, "Attach links"), (9, "Number lines")]);
-        app.sel_worktree = 1;
+        app.sel_pr = 0;
 
         let mut merged = a_detail(7, "shipped", vec![]);
         merged.state = "MERGED".into();
         assert!(!merged.is_open());
         app.pr_detail.insert(pr_url(7), merged);
-        drop_retired_pr(&mut app, &pr_url(7), &mut Vec::new());
+        drop_retired_pr(&mut app, &pr_url(7));
 
         assert_eq!(open_pr_numbers(&app), vec![9]);
-        assert_eq!(app.selected_worktree_pr().map(|p| p.number), Some(9));
+        assert_eq!(app.selected_pr().map(|p| p.number), Some(9));
         assert_eq!(
             app.flash.as_deref(),
             Some("#7 is no longer open"),
@@ -9577,7 +9595,8 @@ mod tests {
         let mut out = Vec::new();
 
         assert!(app.pending_pr_detail.is_none(), "the checkout arms nothing");
-        press(&mut app, KeyCode::Down, KeyModifiers::NONE, &mut out);
+        app.focus = Focus::Prs;
+        schedule_pr_detail(&mut app);
         let (pending, _) = app.pending_pr_detail.clone().expect("armed on #7");
         assert_eq!(pending.number, 7);
         assert_eq!(pending.url, "https://github.com/o/r/pull/7");
@@ -9603,13 +9622,13 @@ mod tests {
         // One `gh` already said no: don't keep asking on every pass.
         app.pr_detail_failed
             .insert("https://github.com/o/r/pull/7".into());
-        app.sel_worktree = 1;
+        app.sel_pr = 0;
         schedule_pr_detail(&mut app);
         assert!(app.pending_pr_detail.is_none(), "refused: nothing to ask");
 
         // Back on a checkout, the debounce is disarmed entirely.
         app.pr_detail_failed.clear();
-        app.sel_worktree = 0;
+        app.focus = Focus::Worktrees;
         schedule_pr_detail(&mut app);
         assert!(app.pending_pr_detail.is_none());
     }
@@ -9623,8 +9642,7 @@ mod tests {
         seed_open_prs(&mut app, &[(7, "Attach links")]);
         let a1 = SessionRef::Agent(AgentId("a1".into()));
         app.term = Some(AttachedTerm::new(a1.clone(), 40, 10));
-        app.focus = Focus::Worktrees;
-        app.sel_worktree = 1;
+        app.focus = Focus::Prs;
 
         let mut terminal = Terminal::new(TestBackend::new(140, 30)).unwrap();
         terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
@@ -9659,8 +9677,8 @@ mod tests {
         );
 
         // Back on the checkout the pane is a terminal again — the PR row
-        // stays in the Worktrees column, but its body leaves the pane.
-        app.sel_worktree = 0;
+        // stays in its panel, but its body leaves the pane.
+        app.focus = Focus::Worktrees;
         terminal.draw(|f| ui::draw(f, &mut app)).unwrap();
         let text = buffer_text(&terminal);
         assert!(text.contains("TERMINAL · agent-1"), "{text}");
@@ -9675,8 +9693,7 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(7, "Attach links")]);
-        app.focus = Focus::Worktrees;
-        app.sel_worktree = 1;
+        app.focus = Focus::Prs;
         app.pr_detail_failed
             .insert("https://github.com/o/r/pull/7".into());
         let mut terminal = Terminal::new(TestBackend::new(140, 30)).unwrap();
@@ -9842,8 +9859,7 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(7, "Attach links")]);
-        app.focus = Focus::Worktrees;
-        app.sel_worktree = 1;
+        app.focus = Focus::Prs;
         let body = (0..200)
             .map(|i| format!("line {i}"))
             .collect::<Vec<_>>()
@@ -9944,7 +9960,7 @@ diff --git a/src/b.rs b/src/b.rs
         let mut app = App::new();
         seed_tree(&mut app);
         seed_open_prs(&mut app, &[(7, "Attach links")]);
-        app.sel_worktree = 1;
+        app.focus = Focus::Prs;
 
         app.pr_diff_inflight = Some(7);
         open_pr_diff_view(&mut app, 7, "#7 Attach links".into(), None);
@@ -11944,8 +11960,7 @@ diff --git a/src/b.rs b/src/b.rs
             let mut app = App::new();
             seed_tree(&mut app);
             seed_open_prs(&mut app, &[(7, "Attach links")]);
-            app.focus = Focus::Worktrees;
-            app.sel_worktree = 1;
+            app.focus = Focus::Prs;
             let mut out = Vec::new();
 
             press(&mut app, KeyCode::Char('n'), KeyModifiers::NONE, &mut out);
@@ -11961,10 +11976,8 @@ diff --git a/src/b.rs b/src/b.rs
             assert_eq!(labels, ["Open in browser", "View diff"]);
 
             app.overlay = None;
-            app.hits.push((
-                ratatui::layout::Rect::new(0, 0, 20, 2),
-                HitTarget::Worktree(1),
-            ));
+            app.hits
+                .push((ratatui::layout::Rect::new(0, 0, 20, 2), HitTarget::Pr(0)));
             handle_mouse(
                 &mut app,
                 MouseEvent {
@@ -12377,7 +12390,7 @@ diff --git a/src/b.rs b/src/b.rs
         ));
         assert_eq!(
             app.focus,
-            Focus::Sessions,
+            Focus::Prs,
             "a hidden Worktrees panel is skipped after project creation"
         );
     }
@@ -15902,6 +15915,7 @@ diff --git a/src/b.rs b/src/b.rs
 
         app.hide_projects = true;
         app.hide_worktrees = true;
+        app.hide_prs = true;
         app.focus = Focus::Sessions;
         press(&mut app, KeyCode::Char('/'), KeyModifiers::NONE, &mut out);
         for c in "pacer".chars() {
@@ -19358,10 +19372,10 @@ diff --git a/src/b.rs b/src/b.rs
         let mut app = App::new();
         app.body_area = ratatui::layout::Rect::new(0, 0, 160, 40);
         assert!(app.show_workspaces);
-        assert_eq!(app.splitter_indices(), vec![0, 1, 2]);
+        assert_eq!(app.splitter_indices(), vec![0, 1, 2, 3]);
         assert_eq!(app.workspaces_bar_h(), WORKSPACES_BAR_H);
         assert_eq!(app.splitter_x(0), 20);
-        assert_eq!(app.splitter_x(2), 74);
+        assert_eq!(app.splitter_x(3), 74);
 
         // Dragging the projects|worktrees boundary to screen x=45 leaves
         // Projects 45 wide: nothing sits ahead of it any more.
@@ -19375,7 +19389,7 @@ diff --git a/src/b.rs b/src/b.rs
         // Hiding the bar changes nothing horizontal.
         app.show_workspaces = false;
         assert_eq!(app.workspaces_bar_h(), 0);
-        assert_eq!(app.splitter_indices(), vec![0, 1, 2]);
+        assert_eq!(app.splitter_indices(), vec![0, 1, 2, 3]);
         assert_eq!(app.splitter_x(0), 20);
     }
 
@@ -19615,7 +19629,7 @@ diff --git a/src/b.rs b/src/b.rs
             press(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT, &mut out);
             assert!(app.hide_projects);
             assert!(app.hide_worktrees);
-            assert_eq!(app.focus, Focus::Sessions);
+            assert_eq!(app.focus, Focus::Prs);
             let saved = crate::config::Config::load();
             assert!(saved.hide_projects);
             assert!(saved.hide_worktrees);
@@ -19624,16 +19638,16 @@ diff --git a/src/b.rs b/src/b.rs
             apply_config(&mut next, &saved);
             assert!(next.hide_projects);
             assert!(next.hide_worktrees);
-            assert_eq!(next.focus, Focus::Sessions);
+            assert_eq!(next.focus, Focus::Prs);
 
             press(&mut app, KeyCode::Char('P'), KeyModifiers::SHIFT, &mut out);
             assert!(!app.hide_projects);
             assert!(app.hide_worktrees);
-            assert_eq!(app.focus, Focus::Sessions, "showing does not steal focus");
+            assert_eq!(app.focus, Focus::Prs, "showing does not steal focus");
             press(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT, &mut out);
             assert!(!app.hide_projects);
             assert!(!app.hide_worktrees);
-            assert_eq!(app.focus, Focus::Sessions, "showing does not steal focus");
+            assert_eq!(app.focus, Focus::Prs, "showing does not steal focus");
         });
     }
 
@@ -19643,6 +19657,7 @@ diff --git a/src/b.rs b/src/b.rs
         let mut out = Vec::new();
         app.hide_projects = true;
         app.hide_worktrees = true;
+        app.hide_prs = true;
         app.focus = Focus::Workspaces;
 
         press(&mut app, KeyCode::Tab, KeyModifiers::NONE, &mut out);
@@ -19684,7 +19699,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(!projects_hidden.contains("PROJECTS"), "{projects_hidden}");
         assert!(projects_hidden.contains("WORKTREES"), "{projects_hidden}");
         assert_eq!(app.term_area.x, widths[1] + widths[2] + 1);
-        assert_eq!(app.splitter_indices(), vec![1, 2]);
+        assert_eq!(app.splitter_indices(), vec![1, 2, 3]);
         assert_eq!(app.focus, Focus::Worktrees);
 
         set_hide_worktrees(&mut app, true);
@@ -19695,10 +19710,11 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(both_hidden.contains("SESSIONS"), "{both_hidden}");
         assert!(both_hidden.contains("⇧P: show projects"), "{both_hidden}");
         assert!(both_hidden.contains("⇧B: show worktrees"), "{both_hidden}");
-        assert_eq!(app.term_area.x, widths[2] + 1);
-        assert_eq!(app.splitter_indices(), vec![2]);
+        // The PRs panel keeps the Worktrees column open under it.
+        assert_eq!(app.term_area.x, widths[1] + widths[2] + 1);
+        assert_eq!(app.splitter_indices(), vec![1, 3]);
         assert_eq!(app.panel_widths(), widths, "hidden widths stay remembered");
-        assert_eq!(app.focus, Focus::Sessions);
+        assert_eq!(app.focus, Focus::Prs);
 
         set_hide_projects(&mut app, false);
         set_hide_worktrees(&mut app, false);
@@ -19708,7 +19724,7 @@ diff --git a/src/b.rs b/src/b.rs
         assert!(restored.contains("WORKTREES"), "{restored}");
         assert_eq!(app.term_area.x, widths.iter().sum::<u16>() + 1);
         assert_eq!(app.panel_widths(), widths);
-        assert_eq!(app.focus, Focus::Sessions, "restoring does not steal focus");
+        assert_eq!(app.focus, Focus::Prs, "restoring does not steal focus");
     }
 
     #[test]
@@ -19730,7 +19746,7 @@ diff --git a/src/b.rs b/src/b.rs
 
             apply_setting_at(&mut app, tab, worktrees_row, 0);
             assert!(app.hide_worktrees);
-            assert_eq!(app.focus, Focus::Sessions);
+            assert_eq!(app.focus, Focus::Prs);
             assert!(crate::config::Config::load().hide_worktrees);
 
             press(

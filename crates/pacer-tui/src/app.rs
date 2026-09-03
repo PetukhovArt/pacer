@@ -32,6 +32,8 @@ pub enum Focus {
     Workspaces,
     Projects,
     Worktrees,
+    /// The selected project's open pull requests.
+    Prs,
     Sessions,
     Terminal,
 }
@@ -47,6 +49,8 @@ pub enum HitTarget {
     /// Row index into `App::project_rows()`.
     Project(usize),
     Worktree(usize),
+    /// Row index into `App::visible_open_prs()`.
+    Pr(usize),
     Session(usize),
     /// The ARCHIVED group header (either form); a click toggles the group
     /// open/closed, same as the A key.
@@ -1912,17 +1916,7 @@ impl SortModes {
     }
 }
 
-/// What the Worktrees cursor is resting on: the panel lists the project's
-/// checkouts and then its open pull requests, so the row is one or the
-/// other.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorktreeRowKey {
-    Checkout(WorktreeId),
-    /// A pull request's url — the one field a list refresh preserves.
-    Pr(String),
-}
-
-/// What the three sidebar cursors are resting on, named by identity rather
+/// What the sidebar cursors are resting on, named by identity rather
 /// than by index.
 ///
 /// A cursor is an index into a list that gets rebuilt every frame, so
@@ -1933,7 +1927,9 @@ pub enum WorktreeRowKey {
 #[derive(Debug, Default)]
 pub struct CursorAnchors {
     project: Option<ProjectId>,
-    worktree: Option<WorktreeRowKey>,
+    worktree: Option<WorktreeId>,
+    /// A pull request's url — the one field a list refresh preserves.
+    pr: Option<String>,
     session: Option<RowKey>,
 }
 
@@ -2102,6 +2098,8 @@ pub struct App {
     /// open workspace's projects in display order.
     pub sel_project: usize,
     pub sel_worktree: usize,
+    /// Selected row in the PRs panel — indexes `visible_open_prs()`.
+    pub sel_pr: usize,
     pub sel_session: usize,
     /// First visible row of the Sessions panel, in panel rows (not list
     /// indices — group headers and pill pads take rows too). The wheel
@@ -2116,11 +2114,15 @@ pub struct App {
     /// First visible row of the Worktrees panel, in panel rows. Same
     /// contract as `sessions_scroll`: the wheel moves it freely, the draw
     /// clamps it and re-anchors on the cursor when `worktrees_anchor` shows
-    /// the selection moved. A project with a long open-PR list routinely
-    /// outgrows the column.
+    /// the selection moved.
     pub worktrees_scroll: usize,
     /// `(sel_project, sel_worktree)` as of the last draw.
     pub worktrees_anchor: Option<(usize, usize)>,
+    /// First visible row of the PRs panel; same contract as
+    /// `worktrees_scroll`. A long open-PR list routinely outgrows the tile.
+    pub prs_scroll: usize,
+    /// `(sel_project, sel_pr)` as of the last draw.
+    pub prs_anchor: Option<(usize, usize)>,
     pub term: Option<AttachedTerm>,
     /// Input lock: keys forward to the attached PTY. Focusing the terminal
     /// pane alone (Tab / arrows) does NOT lock — Enter, a click, or `z` does.
@@ -2159,6 +2161,8 @@ pub struct App {
     pub hide_projects: bool,
     /// Worktrees panel hidden; mirrors CONFIG.JSON's `hide_worktrees`.
     pub hide_worktrees: bool,
+    /// PRs panel hidden; mirrors CONFIG.JSON's `hide_prs`.
+    pub hide_prs: bool,
     pub next_req_id: u64,
     pub pending: HashMap<u64, PendingIntent>,
     /// `pacer --workspace <name>`: the workspace this instance was asked
@@ -2388,11 +2392,14 @@ impl App {
             focus: Focus::Projects,
             sel_project: 0,
             sel_worktree: 0,
+            sel_pr: 0,
             sel_session: 0,
             sessions_scroll: 0,
             sessions_anchor: None,
             worktrees_scroll: 0,
             worktrees_anchor: None,
+            prs_scroll: 0,
+            prs_anchor: None,
             term: None,
             term_locked: false,
             conn: ConnState::Disconnected,
@@ -2410,6 +2417,7 @@ impl App {
             show_workspaces: true,
             hide_projects: false,
             hide_worktrees: false,
+            hide_prs: false,
             next_req_id: 1,
             pending: HashMap::new(),
             startup_workspace: None,
@@ -2615,20 +2623,35 @@ impl App {
 
     /// Visible sidebar indices, in logical order. Sessions is always present.
     pub fn visible_panel_indices(&self) -> Vec<usize> {
-        (0..3).filter(|idx| self.panel_visible(*idx)).collect()
+        (0..crate::layout::PANELS)
+            .filter(|idx| self.panel_visible(*idx))
+            .collect()
     }
 
     pub fn panel_visible(&self, idx: usize) -> bool {
-        match idx {
-            0 => !self.hide_projects,
-            1 => !self.hide_worktrees,
-            2 => true,
-            _ => false,
-        }
+        self.panels_visible().get(idx).copied().unwrap_or(false)
     }
 
-    pub fn panels_visible(&self) -> [bool; 3] {
-        [!self.hide_projects, !self.hide_worktrees, true]
+    /// Which tiles the mosaic shows, by panel index: Projects, Worktrees,
+    /// Sessions, PRs.
+    pub fn panels_visible(&self) -> crate::layout::Visible {
+        [
+            !self.hide_projects,
+            !self.hide_worktrees,
+            true,
+            !self.hide_prs,
+        ]
+    }
+
+    /// The panel index (`Leaf::Panel`) a focus stands for.
+    pub fn panel_index(focus: Focus) -> Option<usize> {
+        match focus {
+            Focus::Projects => Some(0),
+            Focus::Worktrees => Some(1),
+            Focus::Sessions => Some(2),
+            Focus::Prs => Some(3),
+            Focus::Workspaces | Focus::Terminal => None,
+        }
     }
 
     /// The body under the Workspaces bar: what the mosaic tiles.
@@ -2924,7 +2947,7 @@ impl App {
             .map(|o| o.list.as_slice())
             .unwrap_or_default()
             .iter()
-            .filter(|pr| self.passes_filter(Focus::Worktrees, &pr.label()))
+            .filter(|pr| self.passes_filter(Focus::Prs, &pr.label()))
             .cloned()
             .collect()
     }
@@ -2932,21 +2955,10 @@ impl App {
     /// What each sidebar cursor is resting on right now — see
     /// [`CursorAnchors`]. Costs the same three list rebuilds a draw does.
     pub fn cursor_anchors(&self) -> CursorAnchors {
-        let worktrees = self.visible_worktrees();
-        let worktree = match worktrees.get(self.sel_worktree) {
-            Some(wt) => Some(WorktreeRowKey::Checkout(wt.id.clone())),
-            // Below the checkouts the same cursor indexes the pull
-            // requests, which are identified by url — the one field a
-            // refreshed list carries over.
-            None => self
-                .sel_worktree
-                .checked_sub(worktrees.len())
-                .and_then(|i| self.visible_open_prs().get(i).cloned())
-                .map(|pr| WorktreeRowKey::Pr(pr.url)),
-        };
         CursorAnchors {
             project: self.selected_project().map(|p| p.id.clone()),
-            worktree,
+            worktree: self.selected_worktree().map(|wt| wt.id.clone()),
+            pr: self.selected_pr().map(|pr| pr.url),
             session: self.selected_session_row().map(|r| r.click_key()),
         }
     }
@@ -2969,20 +2981,16 @@ impl App {
                 self.sel_project = i;
             }
         }
-        if let Some(key) = anchors.worktree {
-            let found = {
-                let worktrees = self.visible_worktrees();
-                match &key {
-                    WorktreeRowKey::Checkout(id) => worktrees.iter().position(|w| w.id == *id),
-                    WorktreeRowKey::Pr(url) => self
-                        .visible_open_prs()
-                        .iter()
-                        .position(|pr| pr.url == *url)
-                        .map(|i| i + worktrees.len()),
-                }
-            };
+        if let Some(id) = anchors.worktree {
+            let found = self.visible_worktrees().iter().position(|w| w.id == id);
             if let Some(i) = found {
                 self.sel_worktree = i;
+            }
+        }
+        if let Some(url) = anchors.pr {
+            let found = self.visible_open_prs().iter().position(|pr| pr.url == url);
+            if let Some(i) = found {
+                self.sel_pr = i;
             }
         }
         if let Some(key) = anchors.session {
@@ -2996,38 +3004,22 @@ impl App {
         }
     }
 
-    /// How many rows the Worktrees panel has: the project's checkouts, then
-    /// the pull requests still open on its repo. `sel_worktree` indexes that
-    /// combined list, and because the checkouts come first every existing
-    /// "index into `visible_worktrees()`" stays exactly right — a cursor
-    /// parked on a pull request simply has no selected worktree, which is
-    /// the truth about it.
-    pub fn worktree_row_count(&self) -> usize {
-        self.visible_worktrees().len() + self.visible_open_prs().len()
+    /// The open pull request under the PRs cursor.
+    pub fn selected_pr(&self) -> Option<OpenPr> {
+        self.visible_open_prs().get(self.sel_pr).cloned()
     }
 
-    /// The open pull request under the Worktrees cursor, when it's on one.
-    /// Mutually exclusive with [`App::selected_worktree`] — the checkouts
-    /// occupy the rows below the pull requests.
-    pub fn selected_worktree_pr(&self) -> Option<OpenPr> {
-        let i = self
-            .sel_worktree
-            .checked_sub(self.visible_worktrees().len())?;
-        self.visible_open_prs().get(i).cloned()
-    }
-
-    /// The pull request the pane should be reading: the PROJECT OPEN PRS
-    /// GROUP row under the Worktrees cursor, or — while the SESSIONS PANEL
+    /// The pull request the pane should be reading: the row under the PRs
+    /// cursor while the PRS PANEL has focus, or — while the SESSIONS PANEL
     /// has focus — the PR ROW under its cursor (a saved LINK that *is* the
     /// branch's pull request counts; a bare URL does not).
     ///
-    /// The Sessions half is keyed on focus on purpose: a session is still
-    /// attached behind that pane, and stepping into it (`l`, a click) has
-    /// to bring the terminal back so what you type is what you see. The
-    /// Worktrees half never needs that — a PR row there has no checkout, so
-    /// there is nothing behind the pane to return to.
+    /// Keyed on focus on purpose: a session is still attached behind that
+    /// pane, and stepping out of the list (`l`, a click) has to bring the
+    /// terminal back so what you type is what you see.
     pub fn previewed_pr(&self) -> Option<PreviewedPr> {
-        if let Some(pr) = self.selected_worktree_pr() {
+        if self.focus == Focus::Prs {
+            let pr = self.selected_pr()?;
             return Some(PreviewedPr {
                 number: pr.number,
                 url: pr.url.clone(),
@@ -3226,6 +3218,8 @@ impl App {
             Focus::Projects
         } else if !self.hide_worktrees {
             Focus::Worktrees
+        } else if !self.hide_prs {
+            Focus::Prs
         } else {
             Focus::Sessions
         }
@@ -3236,6 +3230,7 @@ impl App {
             Focus::Workspaces => self.show_workspaces,
             Focus::Projects => !self.hide_projects,
             Focus::Worktrees => !self.hide_worktrees,
+            Focus::Prs => !self.hide_prs,
             Focus::Sessions | Focus::Terminal => true,
         }
     }
@@ -3245,8 +3240,9 @@ impl App {
             Focus::Workspaces => 0,
             Focus::Projects => 1,
             Focus::Worktrees => 2,
-            Focus::Sessions => 3,
-            Focus::Terminal => 4,
+            Focus::Prs => 3,
+            Focus::Sessions => 4,
+            Focus::Terminal => 5,
         }
     }
 
@@ -3256,6 +3252,7 @@ impl App {
             Focus::Workspaces,
             Focus::Projects,
             Focus::Worktrees,
+            Focus::Prs,
             Focus::Sessions,
             Focus::Terminal,
         ]
@@ -3269,6 +3266,7 @@ impl App {
         [
             Focus::Terminal,
             Focus::Sessions,
+            Focus::Prs,
             Focus::Worktrees,
             Focus::Projects,
             Focus::Workspaces,

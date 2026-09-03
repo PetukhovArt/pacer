@@ -141,6 +141,7 @@ pub enum SettingKind {
     ShowWorkspaces,
     HideProjects,
     HideWorktrees,
+    HidePrs,
     ClaudeEnabled,
     ClaudeModel,
     ClaudeEffort,
@@ -246,6 +247,11 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::HideWorktrees,
                 label: "Worktrees panel",
                 hint: "Show or hide the Worktrees panel (Shift+B toggles)",
+            },
+            SettingSpec {
+                kind: SettingKind::HidePrs,
+                label: "PRs panel",
+                hint: "Show or hide the PRs panel (Shift+R toggles)",
             },
         ]),
     },
@@ -486,6 +492,9 @@ pub struct Config {
     /// Hide the Worktrees panel and give its width to the terminal pane.
     /// Independent from `hide_projects`; Sessions always remains visible.
     pub hide_worktrees: bool,
+    /// Hide the PRs panel.
+    #[serde(default)]
+    pub hide_prs: bool,
     /// Default model/effort for new Claude / Codex sessions. "default"
     /// means "don't pass the flag" (the CLI picks); any other value is
     /// passed through verbatim, so hand-edited configs can name models the
@@ -529,6 +538,7 @@ impl Default for Config {
             show_workspaces: true,
             hide_projects: false,
             hide_worktrees: false,
+            hide_prs: false,
             claude_model: DEFAULT_CHOICE.into(),
             claude_effort: DEFAULT_CHOICE.into(),
             codex_model: DEFAULT_CHOICE.into(),
@@ -650,6 +660,7 @@ impl Config {
             "hide_worktrees".into(),
             serde_json::json!(self.hide_worktrees),
         );
+        obj.insert("hide_prs".into(), serde_json::json!(self.hide_prs));
         obj.insert("claude_model".into(), serde_json::json!(self.claude_model));
         obj.insert(
             "claude_effort".into(),
@@ -712,7 +723,9 @@ impl Config {
             crate::app::Focus::Projects => Some(&mut self.sort_projects),
             crate::app::Focus::Worktrees => Some(&mut self.sort_worktrees),
             crate::app::Focus::Sessions => Some(&mut self.sort_sessions),
-            crate::app::Focus::Workspaces | crate::app::Focus::Terminal => None,
+            crate::app::Focus::Prs
+            | crate::app::Focus::Workspaces
+            | crate::app::Focus::Terminal => None,
         }
     }
 
@@ -786,6 +799,7 @@ impl Config {
             SettingKind::ShowWorkspaces => on_off(self.show_workspaces).into(),
             SettingKind::HideProjects => shown_hidden(self.hide_projects).into(),
             SettingKind::HideWorktrees => shown_hidden(self.hide_worktrees).into(),
+            SettingKind::HidePrs => shown_hidden(self.hide_prs).into(),
             SettingKind::ClaudeModel => self.claude_model.clone(),
             SettingKind::ClaudeEffort => self.claude_effort.clone(),
             SettingKind::CodexModel => self.codex_model.clone(),
@@ -854,6 +868,9 @@ impl Config {
             }
             SettingKind::HideWorktrees => {
                 self.hide_worktrees = !self.hide_worktrees;
+            }
+            SettingKind::HidePrs => {
+                self.hide_prs = !self.hide_prs;
             }
             SettingKind::ClaudeModel => {
                 self.claude_model = cycle_choice(&self.claude_model, CLAUDE_MODELS, step).into();

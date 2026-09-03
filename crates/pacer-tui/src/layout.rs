@@ -31,6 +31,11 @@ use crate::app::{MIN_PANEL_W, MIN_TERM_W};
 /// `MIN_PANEL_W`): the header's blank spacer, title row and gap, two list
 /// rows, and the rule under it.
 pub const MIN_PANEL_H: u16 = 6;
+
+/// How many panels the tree can hold: Projects, Worktrees, Sessions, PRs.
+pub const PANELS: usize = 4;
+/// Which panel is on screen, by panel index.
+pub type Visible = [bool; PANELS];
 /// The terminal pane always keeps at least this many rows.
 pub const MIN_TERM_H: u16 = 5;
 /// Height a panel gets when it first lands above or below something after
@@ -189,7 +194,7 @@ impl Node {
     }
 
     /// Any leaf of this subtree is on screen.
-    fn shown(&self, visible: [bool; 3]) -> bool {
+    fn shown(&self, visible: Visible) -> bool {
         match self {
             Node::Leaf(Leaf::Terminal) => true,
             Node::Leaf(Leaf::Panel(p)) => visible.get(*p).copied().unwrap_or(false),
@@ -214,7 +219,7 @@ impl Node {
 
     /// Smallest extent this subtree can be squeezed to along `dir` without
     /// breaking a tile's minimum; a hidden panel costs nothing.
-    fn min_extent(&self, dir: Dir, visible: [bool; 3]) -> u16 {
+    fn min_extent(&self, dir: Dir, visible: Visible) -> u16 {
         match self {
             Node::Leaf(leaf) => {
                 if self.shown(visible) {
@@ -269,6 +274,12 @@ impl Node {
     /// the target's cell — so walking a column past its neighbours swaps
     /// places with them and every column keeps the width it had. Otherwise
     /// the target's cell is what gets divided.
+    ///
+    /// The mosaic is columns of stacks: a `Beside` move treats a stack as
+    /// one column (landing beside a tile stacked in it lands beside the
+    /// whole column, never inside one of its cells), while a `Stacked`
+    /// move sinks into the column under the target — that is how a strip
+    /// gets over the terminal. See `Node::unit_of`.
     fn insert_beside(self, target: Leaf, side: Side, new: Leaf, size: u16, room: u16) -> Node {
         // `new_first`: `new` goes before the target along the axis. Joining
         // a run, it lands past the target (a swap); entering a cell across
@@ -279,7 +290,7 @@ impl Node {
             // Dividing the target's cell: leave it its minimum.
             let keep = match &target {
                 Node::Leaf(leaf) => leaf.min(side.dir()),
-                Node::Split { .. } => target.min_extent(side.dir(), [true; 3]),
+                Node::Split { .. } => target.min_extent(side.dir(), [true; PANELS]),
             };
             let size = size.min(room.saturating_sub(keep)).max(1);
             let (first, second) = if new_first {
@@ -306,10 +317,9 @@ impl Node {
                 first,
                 second,
             } if dir == side.dir()
-                && (matches!(*first, Node::Leaf(l) if l == target)
-                    || matches!(*second, Node::Leaf(l) if l == target)) =>
+                && (first.unit_of(target, dir) || second.unit_of(target, dir)) =>
             {
-                let target_first = matches!(*first, Node::Leaf(l) if l == target);
+                let target_first = first.unit_of(target, dir);
                 match (target_first, side.first()) {
                     // [target | rest] with new before target: new leads
                     // the run, target keeps its split.
@@ -348,6 +358,11 @@ impl Node {
                     (false, false) => Node::split(dir, s, *first, pair(*second, room, false)),
                 }
             }
+            // A stack holding the target, with no `Beside` run above it to
+            // claim it (the root): the column `new` lands beside.
+            node @ Node::Split { .. } if node.unit_of(target, side.dir()) => {
+                pair(node, room, !side.first())
+            }
             Node::Split {
                 dir,
                 size: s,
@@ -359,6 +374,18 @@ impl Node {
                 first.insert_beside(target, side, new, size, room),
                 second.insert_beside(target, side, new, size, room),
             ),
+        }
+    }
+
+    /// Is this subtree the tile a panel moving along `dir` lands beside
+    /// when it aims at `target`? The leaf itself, or — moving `Beside` —
+    /// the whole stack the leaf sits in.
+    fn unit_of(&self, target: Leaf, dir: Dir) -> bool {
+        match self {
+            Node::Leaf(l) => *l == target,
+            Node::Split { dir: d, .. } => {
+                dir == Dir::Beside && *d == Dir::Stacked && self.contains(target)
+            }
         }
     }
 
@@ -574,7 +601,8 @@ impl Default for PanelLayout {
 }
 
 impl PanelLayout {
-    /// The classic layout: three columns left of the terminal, at `widths`.
+    /// The classic layout: three columns left of the terminal, at `widths`,
+    /// with PRs stacked under Worktrees.
     pub fn columns(widths: [u16; 3]) -> Self {
         let root = Node::split(
             Dir::Beside,
@@ -583,7 +611,12 @@ impl PanelLayout {
             Node::split(
                 Dir::Beside,
                 widths[1],
-                Node::Leaf(Leaf::Panel(1)),
+                Node::split(
+                    Dir::Stacked,
+                    DEFAULT_STACK_H,
+                    Node::Leaf(Leaf::Panel(1)),
+                    Node::Leaf(Leaf::Panel(3)),
+                ),
                 Node::split(
                     Dir::Beside,
                     widths[2],
@@ -595,15 +628,42 @@ impl PanelLayout {
         Self { root }
     }
 
-    /// A tree that lost a tile (a hand-edited blob, an older schema) is
-    /// unusable: every panel and the terminal must appear exactly once.
-    pub fn is_complete(&self) -> bool {
-        let mut seen = [0usize; 4];
-        fn walk(n: &Node, seen: &mut [usize; 4]) {
+    /// A tree saved before the PRs panel existed: every other tile present
+    /// exactly once. `adopt_prs` completes it.
+    pub fn lacks_prs(&self) -> bool {
+        self.count() == [1, 1, 1, 0, 1]
+    }
+
+    /// Stack the PRs panel under Worktrees in a tree that predates it.
+    pub fn adopt_prs(&mut self) {
+        fn walk(n: Node) -> Node {
             match n {
-                Node::Leaf(Leaf::Panel(p)) if *p < 3 => seen[*p] += 1,
-                Node::Leaf(Leaf::Panel(_)) => seen[3] += 100,
-                Node::Leaf(Leaf::Terminal) => seen[3] += 1,
+                Node::Leaf(Leaf::Panel(1)) => Node::split(
+                    Dir::Stacked,
+                    DEFAULT_STACK_H,
+                    Node::Leaf(Leaf::Panel(1)),
+                    Node::Leaf(Leaf::Panel(3)),
+                ),
+                Node::Leaf(l) => Node::Leaf(l),
+                Node::Split {
+                    dir,
+                    size,
+                    first,
+                    second,
+                } => Node::split(dir, size, walk(*first), walk(*second)),
+            }
+        }
+        let root = std::mem::replace(&mut self.root, Node::Leaf(Leaf::Terminal));
+        self.root = walk(root);
+    }
+
+    fn count(&self) -> [usize; PANELS + 1] {
+        let mut seen = [0usize; PANELS + 1];
+        fn walk(n: &Node, seen: &mut [usize; PANELS + 1]) {
+            match n {
+                Node::Leaf(Leaf::Panel(p)) if *p < PANELS => seen[*p] += 1,
+                Node::Leaf(Leaf::Panel(_)) => seen[PANELS] += 100,
+                Node::Leaf(Leaf::Terminal) => seen[PANELS] += 1,
                 Node::Split { first, second, .. } => {
                     walk(first, seen);
                     walk(second, seen);
@@ -611,11 +671,17 @@ impl PanelLayout {
             }
         }
         walk(&self.root, &mut seen);
-        seen == [1, 1, 1, 1]
+        seen
+    }
+
+    /// A tree that lost a tile (a hand-edited blob, an older schema) is
+    /// unusable: every panel and the terminal must appear exactly once.
+    pub fn is_complete(&self) -> bool {
+        self.count() == [1; PANELS + 1]
     }
 
     /// Lay the shown tiles out over `area`.
-    pub fn resolve(&self, area: Rect, visible: [bool; 3]) -> Resolved {
+    pub fn resolve(&self, area: Rect, visible: Visible) -> Resolved {
         let mut out = Resolved::default();
         let mut next = 0;
         place(&self.root, area, visible, &mut next, &mut out);
@@ -627,7 +693,7 @@ impl PanelLayout {
     /// `pos` (x for a `Beside` split, y for a `Stacked` one), within the
     /// split's minimums. `area`/`visible` are what the screen currently
     /// shows.
-    pub fn set_boundary(&mut self, id: usize, pos: i32, area: Rect, visible: [bool; 3]) {
+    pub fn set_boundary(&mut self, id: usize, pos: i32, area: Rect, visible: Visible) {
         let resolved = self.resolve(area, visible);
         let Some(b) = resolved.boundary(id) else {
             return;
@@ -653,7 +719,7 @@ impl PanelLayout {
 
     /// Move panel `idx` to `side` of the tile it touches there; at the edge
     /// of the body it becomes a full strip along that edge instead.
-    pub fn move_panel(&mut self, idx: usize, side: Side, area: Rect, visible: [bool; 3]) {
+    pub fn move_panel(&mut self, idx: usize, side: Side, area: Rect, visible: Visible) {
         let leaf = Leaf::Panel(idx);
         if !self.root.contains(leaf) {
             return;
@@ -734,7 +800,7 @@ fn landing_size(dir: Dir, had: u16) -> u16 {
     }
 }
 
-fn place(node: &Node, area: Rect, visible: [bool; 3], next: &mut usize, out: &mut Resolved) {
+fn place(node: &Node, area: Rect, visible: Visible, next: &mut usize, out: &mut Resolved) {
     match node {
         Node::Leaf(leaf) => {
             if node.shown(visible) {
@@ -818,7 +884,7 @@ fn place(node: &Node, area: Rect, visible: [bool; 3], next: &mut usize, out: &mu
 mod tests {
     use super::*;
 
-    const ALL: [bool; 3] = [true; 3];
+    const ALL: Visible = [true; PANELS];
     fn body() -> Rect {
         Rect::new(0, 0, 120, 35)
     }
@@ -828,7 +894,11 @@ mod tests {
         let layout = PanelLayout::default();
         let r = layout.resolve(body(), ALL);
         let pos: Vec<(usize, u16)> = r.boundaries.iter().map(|b| (b.id, b.pos())).collect();
-        assert_eq!(pos, vec![(0, 20), (1, 42), (2, 74)]);
+        // Id 2 is the Worktrees/PRs stack: its boundary is a row.
+        assert_eq!(pos, vec![(0, 20), (1, 42), (2, 12), (3, 74)]);
+        let prs = r.area(Leaf::Panel(3)).unwrap();
+        assert_eq!(prs.y, 12);
+        assert_eq!(prs.x, r.area(Leaf::Panel(1)).unwrap().x);
         assert_eq!(r.area(Leaf::Panel(0)), Some(Rect::new(0, 0, 19, 35)));
         assert_eq!(r.area(Leaf::Terminal), Some(Rect::new(74, 0, 46, 35)));
         assert!(layout.is_complete());
@@ -837,9 +907,9 @@ mod tests {
     #[test]
     fn hidden_panel_collapses_its_split_and_keeps_ids() {
         let layout = PanelLayout::default();
-        let r = layout.resolve(body(), [false, true, true]);
+        let r = layout.resolve(body(), [false, true, true, true]);
         let ids: Vec<usize> = r.boundaries.iter().map(|b| b.id).collect();
-        assert_eq!(ids, vec![1, 2]);
+        assert_eq!(ids, vec![1, 2, 3]);
         assert_eq!(r.area(Leaf::Panel(1)).unwrap().x, 0);
         assert_eq!(r.area(Leaf::Panel(0)), None);
     }
@@ -849,7 +919,7 @@ mod tests {
         let layout = PanelLayout::columns([40, 40, 40]);
         let r = layout.resolve(Rect::new(0, 0, 100, 35), ALL);
         assert!(r.area(Leaf::Terminal).unwrap().width >= MIN_TERM_W);
-        for p in 0..3 {
+        for p in 0..PANELS {
             assert!(r.area(Leaf::Panel(p)).unwrap().width >= MIN_PANEL_W - 1);
         }
     }
@@ -882,6 +952,24 @@ mod tests {
         assert_eq!(sessions.x + sessions.width, 120);
         assert!(term.width >= MIN_TERM_W);
         assert!(layout.is_complete());
+    }
+
+    /// Worktrees and PRs share a column: moving Projects right lands it
+    /// right of that column, not inside one of its cells.
+    #[test]
+    fn moving_beside_a_stack_lands_beside_the_whole_column() {
+        let mut layout = PanelLayout::default();
+        layout.move_panel(0, Side::Right, body(), ALL);
+        let r = layout.resolve(body(), ALL);
+        let (w, prs, p) = (
+            r.area(Leaf::Panel(1)).unwrap(),
+            r.area(Leaf::Panel(3)).unwrap(),
+            r.area(Leaf::Panel(0)).unwrap(),
+        );
+        assert_eq!((w.x, prs.x), (0, 0));
+        assert_eq!(w.width, prs.width);
+        assert_eq!(p.x, w.x + w.width + 1);
+        assert_eq!(p.height, 35);
     }
 
     #[test]
@@ -963,7 +1051,7 @@ mod tests {
     fn moving_a_hidden_panel_is_a_no_op() {
         let mut layout = PanelLayout::default();
         let before = layout.clone();
-        layout.move_panel(0, Side::Right, body(), [false, true, true]);
+        layout.move_panel(0, Side::Right, body(), [false, true, true, true]);
         assert_eq!(layout, before);
     }
 
