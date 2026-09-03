@@ -102,7 +102,6 @@ mod platform {
         // init opens /dev/tty and makes itself the foreground process group,
         // SIGTTIN-stopping whatever TUI owns that terminal.
         unsafe {
-            use std::os::unix::process::CommandExt;
             probe.pre_exec(|| match nix::unistd::setsid() {
                 Ok(_) => Ok(()),
                 Err(errno) => Err(std::io::Error::from_raw_os_error(errno as i32)),
