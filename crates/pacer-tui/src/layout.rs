@@ -2,8 +2,8 @@
 //! terminal pane tile the space under the Workspaces bar.
 //!
 //! The arrangement is a binary split tree whose leaves are the four tiles.
-//! Every split stacks its two children side by side ([`Dir::Row`]) or one
-//! above the other ([`Dir::Col`]) with a one-cell rule between them, and
+//! Every split puts its two children beside each other ([`Dir::Beside`]) or one
+//! above the other ([`Dir::Stacked`]) with a one-cell rule between them, and
 //! remembers one number: the extent of its *fixed* child, rule included —
 //! the side that does not contain the terminal (the first child when
 //! neither does), so a column's "width" is what it always was. The
@@ -45,12 +45,94 @@ pub enum Leaf {
     Terminal,
 }
 
-/// How a split lays its children out: `Row` side by side (a vertical rule
-/// between them), `Col` stacked (a horizontal rule).
+/// How a split lays its children out: `Beside` each other (a vertical rule
+/// between them), or `Stacked` one above the other (a horizontal rule).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Dir {
-    Row,
-    Col,
+    Beside,
+    Stacked,
+}
+
+impl Dir {
+    /// A rect's extent along this axis: width when beside, height when
+    /// stacked.
+    fn extent(self, r: Rect) -> u16 {
+        match self {
+            Dir::Beside => r.width,
+            Dir::Stacked => r.height,
+        }
+    }
+
+    /// A rect's start along this axis.
+    fn start(self, r: Rect) -> u16 {
+        match self {
+            Dir::Beside => r.x,
+            Dir::Stacked => r.y,
+        }
+    }
+
+    /// The mouse coordinate a rule along this axis follows.
+    pub fn of_mouse(self, column: u16, row: u16) -> u16 {
+        match self {
+            Dir::Beside => column,
+            Dir::Stacked => row,
+        }
+    }
+
+    /// Cut `area` along this axis: the first `first` cells, the one-cell
+    /// rule after them, and the rest.
+    fn cut(self, area: Rect, first: u16) -> (Rect, Rect, Rect) {
+        let extent = self.extent(area);
+        let rule_w = (extent > first) as u16;
+        let rest = extent.saturating_sub(first + 1);
+        match self {
+            Dir::Beside => (
+                Rect {
+                    width: first,
+                    ..area
+                },
+                Rect {
+                    x: area.x + first,
+                    width: rule_w,
+                    ..area
+                },
+                Rect {
+                    x: area.x + first + 1,
+                    width: rest,
+                    ..area
+                },
+            ),
+            Dir::Stacked => (
+                Rect {
+                    height: first,
+                    ..area
+                },
+                Rect {
+                    y: area.y + first,
+                    height: rule_w,
+                    ..area
+                },
+                Rect {
+                    y: area.y + first + 1,
+                    height: rest,
+                    ..area
+                },
+            ),
+        }
+    }
+}
+
+impl Leaf {
+    /// Smallest content a shown tile keeps along `dir`. A panel's minimum
+    /// size names its rule, so its content may be one cell less.
+    fn min(self, dir: Dir) -> u16 {
+        match (self, dir) {
+            (Leaf::Terminal, Dir::Beside) => MIN_TERM_W,
+            (Leaf::Terminal, Dir::Stacked) => MIN_TERM_H,
+            (Leaf::Panel(_), Dir::Beside) => MIN_PANEL_W - 1,
+            (Leaf::Panel(_), Dir::Stacked) => MIN_PANEL_H - 1,
+        }
+    }
 }
 
 /// Where a moved panel lands relative to its neighbour.
@@ -65,8 +147,8 @@ pub enum Side {
 impl Side {
     fn dir(self) -> Dir {
         match self {
-            Side::Left | Side::Right => Dir::Row,
-            Side::Above | Side::Below => Dir::Col,
+            Side::Left | Side::Right => Dir::Beside,
+            Side::Above | Side::Below => Dir::Stacked,
         }
     }
 
@@ -131,22 +213,14 @@ impl Node {
     }
 
     /// Smallest extent this subtree can be squeezed to along `dir` without
-    /// breaking a tile's minimum. Rules are not counted: a panel's minimum
-    /// size names the rule, so its content may be one cell less.
+    /// breaking a tile's minimum; a hidden panel costs nothing.
     fn min_extent(&self, dir: Dir, visible: [bool; 3]) -> u16 {
         match self {
-            Node::Leaf(Leaf::Terminal) => match dir {
-                Dir::Row => MIN_TERM_W,
-                Dir::Col => MIN_TERM_H,
-            },
-            Node::Leaf(Leaf::Panel(p)) => {
-                if !visible.get(*p).copied().unwrap_or(false) {
-                    0
+            Node::Leaf(leaf) => {
+                if self.shown(visible) {
+                    leaf.min(dir)
                 } else {
-                    match dir {
-                        Dir::Row => MIN_PANEL_W - 1,
-                        Dir::Col => MIN_PANEL_H - 1,
-                    }
+                    0
                 }
             }
             Node::Split {
@@ -203,11 +277,9 @@ impl Node {
         // walks past.
         let pair = |target: Node, room: u16, new_first: bool| -> Node {
             // Dividing the target's cell: leave it its minimum.
-            let keep = match (side.dir(), target.contains(Leaf::Terminal)) {
-                (Dir::Row, true) => MIN_TERM_W,
-                (Dir::Col, true) => MIN_TERM_H,
-                (Dir::Row, false) => MIN_PANEL_W - 1,
-                (Dir::Col, false) => MIN_PANEL_H - 1,
+            let keep = match &target {
+                Node::Leaf(leaf) => leaf.min(side.dir()),
+                Node::Split { .. } => target.min_extent(side.dir(), [true; 3]),
             };
             let size = size.min(room.saturating_sub(keep)).max(1);
             let (first, second) = if new_first {
@@ -346,8 +418,33 @@ impl Node {
         }
     }
 
-    /// The size cell of the nearest split that fixes `leaf`'s extent along
-    /// `dir`: what "the panel's width" means in a tree.
+    /// The nearest split that fixes `leaf`'s extent along `dir`: what "the
+    /// panel's width" means in a tree. Its size, or `None` when the leaf
+    /// stretches.
+    fn fixing_size(&self, leaf: Leaf, dir: Dir) -> Option<u16> {
+        let Node::Split {
+            dir: d,
+            size,
+            first,
+            second,
+        } = self
+        else {
+            return None;
+        };
+        let fixed_first = !first.contains(Leaf::Terminal);
+        let (child, is_fixed) = if first.contains(leaf) {
+            (first, fixed_first)
+        } else if second.contains(leaf) {
+            (second, !fixed_first)
+        } else {
+            return None;
+        };
+        child
+            .fixing_size(leaf, dir)
+            .or_else(|| (is_fixed && *d == dir).then_some(*size))
+    }
+
+    /// The size cell `fixing_size` reads.
     fn fixing_size_mut(&mut self, leaf: Leaf, dir: Dir) -> Option<&mut u16> {
         let Node::Split {
             dir: d,
@@ -366,8 +463,8 @@ impl Node {
         } else {
             return None;
         };
-        // Borrow dance: probe the child first, fall back to this split.
-        if child.fixing_size_mut(leaf, dir).is_some() {
+        // The read-only probe decides which borrow to hand out.
+        if child.fixing_size(leaf, dir).is_some() {
             return child.fixing_size_mut(leaf, dir);
         }
         (is_fixed && *d == dir).then_some(size)
@@ -387,7 +484,7 @@ pub struct Placed {
 pub struct Boundary {
     pub id: usize,
     pub dir: Dir,
-    /// The rule: one cell wide (`Row`) or one cell tall (`Col`).
+    /// The rule: one cell wide (`Beside`) or one cell tall (`Stacked`).
     pub rule: Rect,
     /// The split's whole area, both children and the rule.
     pub span: Rect,
@@ -397,23 +494,20 @@ pub struct Boundary {
 }
 
 impl Boundary {
-    /// Screen coordinate where the second child starts: x for a `Row`
-    /// split, y for a `Col` split. The rule is the cell just before it.
+    /// Screen coordinate where the second child starts: x for a `Beside`
+    /// split, y for a `Stacked` one. The rule is the cell just before it.
     pub fn pos(&self) -> u16 {
-        match self.dir {
-            Dir::Row => self.rule.x + 1,
-            Dir::Col => self.rule.y + 1,
-        }
+        self.dir.start(self.rule) + 1
     }
 
     /// The two cells straddling the rule, the mouse grab zone.
     pub fn grab(&self) -> Rect {
         match self.dir {
-            Dir::Row => Rect {
+            Dir::Beside => Rect {
                 width: 2,
                 ..self.rule
             },
-            Dir::Col => Rect {
+            Dir::Stacked => Rect {
                 height: 2,
                 ..self.rule
             },
@@ -441,10 +535,12 @@ impl Resolved {
     /// the widest overlap winning.
     fn neighbour(&self, leaf: Leaf, side: Side) -> Option<Leaf> {
         let me = self.area(leaf)?;
-        let (mine_lo, mine_hi) = match side.dir() {
-            Dir::Row => (me.y, me.y + me.height),
-            Dir::Col => (me.x, me.x + me.width),
+        // Overlap is measured across the other axis.
+        let across = match side.dir() {
+            Dir::Beside => Dir::Stacked,
+            Dir::Stacked => Dir::Beside,
         };
+        let (mine_lo, mine_hi) = (across.start(me), across.start(me) + across.extent(me));
         self.leaves
             .iter()
             .filter(|p| p.leaf != leaf)
@@ -457,10 +553,7 @@ impl Resolved {
                     Side::Above if r.y + r.height <= me.y => me.y - (r.y + r.height),
                     _ => return None,
                 };
-                let (lo, hi) = match side.dir() {
-                    Dir::Row => (r.y, r.y + r.height),
-                    Dir::Col => (r.x, r.x + r.width),
-                };
+                let (lo, hi) = (across.start(r), across.start(r) + across.extent(r));
                 let overlap = hi.min(mine_hi).saturating_sub(lo.max(mine_lo));
                 (overlap > 0).then_some((distance, std::cmp::Reverse(overlap), p.leaf))
             })
@@ -484,15 +577,15 @@ impl PanelLayout {
     /// The classic layout: three columns left of the terminal, at `widths`.
     pub fn columns(widths: [u16; 3]) -> Self {
         let root = Node::split(
-            Dir::Row,
+            Dir::Beside,
             widths[0],
             Node::Leaf(Leaf::Panel(0)),
             Node::split(
-                Dir::Row,
+                Dir::Beside,
                 widths[1],
                 Node::Leaf(Leaf::Panel(1)),
                 Node::split(
-                    Dir::Row,
+                    Dir::Beside,
                     widths[2],
                     Node::Leaf(Leaf::Panel(2)),
                     Node::Leaf(Leaf::Terminal),
@@ -531,17 +624,15 @@ impl PanelLayout {
     }
 
     /// Drag boundary `id` so its rule's far edge lands at screen coordinate
-    /// `pos` (x for a `Row` split, y for a `Col`), within the split's
-    /// minimums. `area`/`visible` are what the screen currently shows.
+    /// `pos` (x for a `Beside` split, y for a `Stacked` one), within the
+    /// split's minimums. `area`/`visible` are what the screen currently
+    /// shows.
     pub fn set_boundary(&mut self, id: usize, pos: i32, area: Rect, visible: [bool; 3]) {
         let resolved = self.resolve(area, visible);
         let Some(b) = resolved.boundary(id) else {
             return;
         };
-        let (start, extent) = match b.dir {
-            Dir::Row => (b.span.x, b.span.width),
-            Dir::Col => (b.span.y, b.span.height),
-        };
+        let (start, extent) = (b.dir.start(b.span), b.dir.extent(b.span));
         let pos = pos.clamp(start as i32, (start + extent) as i32) as u16;
         // `pos` is where the second child starts; the first child's extent
         // plus its rule is exactly that far from the split's start.
@@ -571,55 +662,42 @@ impl PanelLayout {
         let Some(mine) = before.area(leaf) else {
             return; // hidden: nowhere to move from
         };
-        let my_size = 1 + match side.dir() {
-            Dir::Row => mine.width,
-            Dir::Col => mine.height,
-        };
-        let size = landing_size(side.dir(), my_size);
+        let dir = side.dir();
+        let my_size = 1 + dir.extent(mine);
+        let size = landing_size(dir, my_size);
         let target = before.neighbour(leaf, side);
+        let room = target
+            .and_then(|t| before.area(t))
+            .map_or(0, |r| dir.extent(r));
         // The neighbour is this panel's own sibling in a split running the
         // same way: a swap, with nothing to take apart.
         if let Some(target) = target {
-            let extent = |r: Rect| match side.dir() {
-                Dir::Row => r.width,
-                Dir::Col => r.height,
-            };
-            let total = my_size + before.area(target).map_or(0, extent);
-            if self.root.swap_siblings(leaf, target, side.dir(), total) {
+            if self.root.swap_siblings(leaf, target, dir, my_size + room) {
                 return;
             }
         }
         let root = std::mem::replace(&mut self.root, Node::Leaf(Leaf::Terminal));
         let root = root.remove(leaf);
         self.root = match target {
-            Some(target) => {
-                let room = before.area(target).map_or(0, |r| match side.dir() {
-                    Dir::Row => r.width,
-                    Dir::Col => r.height,
-                });
-                root.insert_beside(target, side, leaf, size, room)
-            }
+            Some(target) => root.insert_beside(target, side, leaf, size, room),
             None => {
                 if side.first() {
-                    Node::split(side.dir(), size, Node::Leaf(leaf), root)
+                    Node::split(dir, size, Node::Leaf(leaf), root)
                 } else {
-                    Node::split(side.dir(), size, root, Node::Leaf(leaf))
+                    Node::split(dir, size, root, Node::Leaf(leaf))
                 }
             }
         };
     }
 
-    /// The width a `Row` split fixes for panel `idx` — its column width in
-    /// the classic layout. `None` when nothing fixes it (it stretches).
+    /// The width a `Beside` split fixes for panel `idx` — its column width
+    /// in the classic layout. `None` when nothing fixes it (it stretches).
     pub fn panel_width(&self, idx: usize) -> Option<u16> {
-        let mut tree = self.clone();
-        tree.root
-            .fixing_size_mut(Leaf::Panel(idx), Dir::Row)
-            .copied()
+        self.root.fixing_size(Leaf::Panel(idx), Dir::Beside)
     }
 
     pub fn set_panel_width(&mut self, idx: usize, width: u16) {
-        if let Some(size) = self.root.fixing_size_mut(Leaf::Panel(idx), Dir::Row) {
+        if let Some(size) = self.root.fixing_size_mut(Leaf::Panel(idx), Dir::Beside) {
             *size = width;
         }
     }
@@ -648,11 +726,8 @@ impl PanelLayout {
 /// the new axis when that was a real choice. Whatever the screen can't fit,
 /// the draw re-clamps.
 fn landing_size(dir: Dir, had: u16) -> u16 {
-    let min = match dir {
-        Dir::Row => MIN_PANEL_W,
-        Dir::Col => MIN_PANEL_H,
-    };
-    if dir == Dir::Col && had > DEFAULT_STACK_H * 2 {
+    let min = Leaf::Panel(0).min(dir) + 1;
+    if dir == Dir::Stacked && had > DEFAULT_STACK_H * 2 {
         DEFAULT_STACK_H // came from a full-height column
     } else {
         had.max(min)
@@ -687,10 +762,7 @@ fn place(node: &Node, area: Rect, visible: [bool; 3], next: &mut usize, out: &mu
                     *next += first.split_count() + second.split_count();
                 }
                 (true, true) => {
-                    let extent = match dir {
-                        Dir::Row => area.width,
-                        Dir::Col => area.height,
-                    };
+                    let extent = dir.extent(area);
                     let min_first = first.min_extent(*dir, visible);
                     let min_second = second.min_extent(*dir, visible);
                     let fixed_first = node.fixed_first();
@@ -712,63 +784,20 @@ fn place(node: &Node, area: Rect, visible: [bool; 3], next: &mut usize, out: &mu
                     } else {
                         extent.saturating_sub(fixed)
                     };
-                    let (a, rule, b) = match dir {
-                        Dir::Row => (
-                            Rect {
-                                width: first_extent,
-                                ..area
-                            },
-                            Rect {
-                                x: area.x + first_extent,
-                                width: (area.width > first_extent) as u16,
-                                ..area
-                            },
-                            Rect {
-                                x: area.x + first_extent + 1,
-                                width: area.width.saturating_sub(first_extent + 1),
-                                ..area
-                            },
-                        ),
-                        Dir::Col => (
-                            Rect {
-                                height: first_extent,
-                                ..area
-                            },
-                            Rect {
-                                y: area.y + first_extent,
-                                height: (area.height > first_extent) as u16,
-                                ..area
-                            },
-                            Rect {
-                                y: area.y + first_extent + 1,
-                                height: area.height.saturating_sub(first_extent + 1),
-                                ..area
-                            },
-                        ),
-                    };
+                    let (a, rule, b) = dir.cut(area, first_extent);
                     place(first, a, visible, next, out);
                     place(second, b, visible, next, out);
                     // A drag never squeezes another panel: the side holding
                     // the terminal gives up only the terminal's slack, so
                     // its floor is what it shows now minus that.
-                    let term = out.area(Leaf::Terminal).map_or(0, |t| match dir {
-                        Dir::Row => t.width,
-                        Dir::Col => t.height,
-                    });
-                    let floor = |node: &Node, shown: u16, min: u16| {
+                    let term = out.area(Leaf::Terminal).map_or(0, |t| dir.extent(t));
+                    let floor = |node: &Node, shown: Rect, min: u16| {
                         if node.contains(Leaf::Terminal) {
-                            let term_min = match dir {
-                                Dir::Row => MIN_TERM_W,
-                                Dir::Col => MIN_TERM_H,
-                            };
-                            shown.saturating_sub(term.saturating_sub(term_min)).max(min)
+                            let slack = term.saturating_sub(Leaf::Terminal.min(*dir));
+                            dir.extent(shown).saturating_sub(slack).max(min)
                         } else {
                             min
                         }
-                    };
-                    let (a_extent, b_extent) = match dir {
-                        Dir::Row => (a.width, b.width),
-                        Dir::Col => (a.height, b.height),
                     };
                     out.boundaries.push(Boundary {
                         id,
@@ -776,8 +805,8 @@ fn place(node: &Node, area: Rect, visible: [bool; 3], next: &mut usize, out: &mu
                         rule,
                         span: area,
                         fixed_first,
-                        min_first: floor(first, a_extent, min_first),
-                        min_second: floor(second, b_extent, min_second),
+                        min_first: floor(first, a, min_first),
+                        min_second: floor(second, b, min_second),
                     });
                 }
             }
@@ -865,7 +894,7 @@ mod tests {
         assert_eq!(w.height, DEFAULT_STACK_H - 1);
         let term = r.area(Leaf::Terminal).unwrap();
         assert_eq!(term.y, DEFAULT_STACK_H);
-        let top = r.boundaries.iter().find(|b| b.dir == Dir::Col).unwrap();
+        let top = r.boundaries.iter().find(|b| b.dir == Dir::Stacked).unwrap();
         assert_eq!(top.pos(), DEFAULT_STACK_H);
         // Dragging the horizontal rule resizes the strip.
         layout.set_boundary(top.id, 20, body(), ALL);

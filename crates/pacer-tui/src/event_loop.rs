@@ -5970,11 +5970,11 @@ fn update_pointer(app: &mut App, mouse: &MouseEvent) {
         // other draggable boundary (the modals' file lists) is a column.
         let horizontal = app.overlay.is_none()
             && match (app.splitter_drag, app.hit_at(mouse.column, mouse.row)) {
-                (Some(drag), _) => drag.dir == crate::layout::Dir::Col,
+                (Some(drag), _) => drag.dir == crate::layout::Dir::Stacked,
                 (None, Some(HitTarget::Splitter(i))) => app
                     .resolved_layout()
                     .boundary(i)
-                    .is_some_and(|b| b.dir == crate::layout::Dir::Col),
+                    .is_some_and(|b| b.dir == crate::layout::Dir::Stacked),
                 _ => false,
             };
         if horizontal {
@@ -6517,11 +6517,8 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                     let dir = app
                         .resolved_layout()
                         .boundary(i)
-                        .map_or(crate::layout::Dir::Row, |b| b.dir);
-                    let grabbed = match dir {
-                        crate::layout::Dir::Row => mouse.column,
-                        crate::layout::Dir::Col => mouse.row,
-                    };
+                        .map_or(crate::layout::Dir::Beside, |b| b.dir);
+                    let grabbed = dir.of_mouse(mouse.column, mouse.row);
                     app.splitter_drag = Some(SplitterDrag {
                         idx: i,
                         dir,
@@ -6628,10 +6625,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
         }
         MouseEventKind::Drag(MouseButton::Left) => {
             if let Some(drag) = app.splitter_drag {
-                let at = match drag.dir {
-                    crate::layout::Dir::Row => mouse.column,
-                    crate::layout::Dir::Col => mouse.row,
-                };
+                let at = drag.dir.of_mouse(mouse.column, mouse.row);
                 app.set_splitter(drag.idx, at as i32 + drag.grab_offset);
                 app.dirty = true;
             } else if let Some(sel) = &mut app.term_selection {

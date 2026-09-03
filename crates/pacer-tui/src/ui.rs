@@ -1836,14 +1836,14 @@ fn draw_splitter_grips(
         let fg = if active { th.accent } else { th.muted };
         // Three cells centred on the rule, with breathing space either side.
         let (glyph, cells): (&str, Vec<(u16, u16)>) = match b.dir {
-            Dir::Row => {
+            Dir::Beside => {
                 if b.rule.height < 7 {
                     continue;
                 }
                 let mid = b.rule.y + b.rule.height / 2;
                 ("┃", (mid - 1..=mid + 1).map(|y| (b.rule.x, y)).collect())
             }
-            Dir::Col => {
+            Dir::Stacked => {
                 if b.rule.width < 7 {
                     continue;
                 }
@@ -1865,8 +1865,8 @@ fn draw_splitter_grips(
 fn draw_rules(buf: &mut ratatui::buffer::Buffer, resolved: &crate::layout::Resolved, th: Theme) {
     for b in &resolved.boundaries {
         let glyph = match b.dir {
-            Dir::Row => "│",
-            Dir::Col => "─",
+            Dir::Beside => "│",
+            Dir::Stacked => "─",
         };
         for y in b.rule.y..b.rule.y + b.rule.height {
             for x in b.rule.x..b.rule.x + b.rule.width {
@@ -4705,7 +4705,7 @@ mod tests {
         let top = resolved
             .boundaries
             .iter()
-            .find(|b| b.dir == Dir::Col)
+            .find(|b| b.dir == Dir::Stacked)
             .unwrap();
         let cx = body.width / 2;
         for x in cx - 1..=cx + 1 {
