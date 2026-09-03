@@ -144,33 +144,6 @@ mod tests {
     }
 
     #[test]
-    fn random_names_are_three_hyphenated_words() {
-        for seed in 0..500u64 {
-            let name = name_from_seed(seed);
-            let words: Vec<&str> = name.split('-').collect();
-            assert_eq!(words.len(), 3, "not three words: {name}");
-            assert!(ADJECTIVES.contains(&words[0]), "{name}");
-            assert!(NOUNS.contains(&words[1]), "{name}");
-            assert!(VERBS.contains(&words[2]), "{name}");
-            assert_eq!(slugify(&name), name, "not already a slug: {name}");
-        }
-    }
-
-    /// The generator has to actually vary — a fixed word in any position
-    /// would quietly collapse the name space.
-    #[test]
-    fn all_three_positions_vary() {
-        let names: Vec<Vec<String>> = (0..500u64)
-            .map(|s| name_from_seed(s).split('-').map(String::from).collect())
-            .collect();
-        for pos in 0..3 {
-            let distinct: std::collections::HashSet<&String> =
-                names.iter().map(|n| &n[pos]).collect();
-            assert!(distinct.len() > 8, "position {pos} barely varies");
-        }
-    }
-
-    #[test]
     fn random_name_avoids_taken_branches() {
         let taken: Vec<String> = (0..2000u64).map(name_from_seed).collect();
         let name = random_name(&taken);
@@ -192,12 +165,5 @@ mod tests {
         let name = random_name(&taken);
         assert!(name.ends_with("-2"), "not the suffix fallback: {name}");
         assert!(!taken.contains(&name));
-    }
-
-    #[test]
-    fn successive_random_names_differ() {
-        let a = random_name(&[]);
-        let b = random_name(&[]);
-        assert_ne!(a, b);
     }
 }

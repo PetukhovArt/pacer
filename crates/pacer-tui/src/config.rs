@@ -1377,85 +1377,39 @@ mod tests {
         assert_eq!(cfg.theme(), crate::theme::Theme::default());
     }
 
+    /// Every appearance bool travels the same road: a default the empty
+    /// config agrees with, a toggle off the settings row, and a value that
+    /// survives the file. The labels differ per row, so they are the table.
     #[test]
-    fn animations_default_on_toggle_and_persist() {
-        let mut cfg = Config::default();
-        assert!(cfg.animations);
-        let (tab, row) = locate(SettingKind::Animations).unwrap();
-        cfg.cycle(tab, row, 0);
-        assert!(!cfg.animations);
-
+    fn appearance_bools_default_toggle_and_persist() {
+        let rows = [
+            (SettingKind::Animations, "on", "off"),
+            (SettingKind::ShowWorkspaces, "on", "off"),
+            (SettingKind::FocusTint, "off", "on"),
+            (SettingKind::HideProjects, "shown", "hidden"),
+            (SettingKind::HideWorktrees, "shown", "hidden"),
+            (SettingKind::HidePrs, "shown", "hidden"),
+        ];
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        cfg.save_to(&path).unwrap();
-        assert!(!load_from(&path).animations);
-        // A config predating the key keeps animations on.
-        let cfg: Config = serde_json::from_str("{}").unwrap();
-        assert!(cfg.animations);
-    }
+        for (kind, default, toggled) in rows {
+            let mut cfg = Config::default();
+            assert_eq!(cfg.value_label(kind), default, "{kind:?} default");
+            // A config predating the key reads as the default, not as false.
+            let legacy: Config = serde_json::from_str("{}").unwrap();
+            assert_eq!(legacy.value_label(kind), default, "{kind:?} legacy");
 
-    #[test]
-    fn show_workspaces_default_on_toggle_and_persist() {
-        let mut cfg = Config::default();
-        assert!(cfg.show_workspaces);
-        let (tab, row) = locate(SettingKind::ShowWorkspaces).unwrap();
-        cfg.cycle(tab, row, 0);
-        assert!(!cfg.show_workspaces);
+            let (tab, row) = locate(kind).unwrap();
+            cfg.cycle(tab, row, 0);
+            assert_eq!(cfg.value_label(kind), toggled, "{kind:?} toggled");
 
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        cfg.save_to(&path).unwrap();
-        assert!(!load_from(&path).show_workspaces);
-        // A config predating the key leaves the column shown.
-        let cfg: Config = serde_json::from_str("{}").unwrap();
-        assert!(cfg.show_workspaces);
-    }
-
-    #[test]
-    fn project_and_worktree_panels_default_shown_toggle_and_persist() {
-        let mut cfg = Config::default();
-        assert!(!cfg.hide_projects);
-        assert!(!cfg.hide_worktrees);
-        assert_eq!(cfg.value_label(SettingKind::HideProjects), "shown");
-        assert_eq!(cfg.value_label(SettingKind::HideWorktrees), "shown");
-
-        let (projects_tab, projects_row) = locate(SettingKind::HideProjects).unwrap();
-        cfg.cycle(projects_tab, projects_row, 0);
-        let (worktrees_tab, worktrees_row) = locate(SettingKind::HideWorktrees).unwrap();
-        cfg.cycle(worktrees_tab, worktrees_row, 0);
-        assert!(cfg.hide_projects);
-        assert!(cfg.hide_worktrees);
-        assert_eq!(cfg.value_label(SettingKind::HideProjects), "hidden");
-        assert_eq!(cfg.value_label(SettingKind::HideWorktrees), "hidden");
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        cfg.save_to(&path).unwrap();
-        let loaded = load_from(&path);
-        assert!(loaded.hide_projects);
-        assert!(loaded.hide_worktrees);
-
-        // A CONFIG.JSON predating these keys keeps both panels shown.
-        let legacy: Config = serde_json::from_str("{}").unwrap();
-        assert!(!legacy.hide_projects);
-        assert!(!legacy.hide_worktrees);
-    }
-
-    #[test]
-    fn focus_tint_default_off_toggle_and_persist() {
-        let mut cfg = Config::default();
-        assert!(!cfg.focus_tint);
-        let (tab, row) = locate(SettingKind::FocusTint).unwrap();
-        cfg.cycle(tab, row, 0);
-        assert!(cfg.focus_tint);
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        cfg.save_to(&path).unwrap();
-        assert!(load_from(&path).focus_tint);
-        // A config predating the key keeps the tint off.
-        let cfg: Config = serde_json::from_str("{}").unwrap();
-        assert!(!cfg.focus_tint);
+            let path = dir.path().join(format!("{kind:?}.json"));
+            cfg.save_to(&path).unwrap();
+            assert_eq!(
+                load_from(&path).value_label(kind),
+                toggled,
+                "{kind:?} saved"
+            );
+        }
     }
 
     #[test]

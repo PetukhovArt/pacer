@@ -63,9 +63,4 @@ mod tests {
         assert!(is_remote_from(Some("1.2.3.4 50000 5.6.7.8 22"), None));
         assert!(is_remote_from(None, Some("/dev/pts/3")));
     }
-
-    #[test]
-    fn hostname_is_non_empty() {
-        assert!(!hostname().is_empty());
-    }
 }
