@@ -115,9 +115,6 @@ Then read [docs/getting-started.md](docs/getting-started.md).
 | [Configuration](docs/configuration.md) | `config.json`, paths, environment variables |
 | [Windows](docs/windows.md) | install, requirements, platform differences |
 | [Remote access](docs/remote-access-tailscale.md) | reaching the TUI from a phone over Tailscale |
-| [Development](docs/development.md) | build, test, isolated dev instances, crate layout |
-| [Releasing](docs/releasing.md) | tagging, CI builds, npm packaging |
-| [Architecture](ARCHITECTURE.md) · [Glossary](GLOSSARY.md) | how it works inside, and the words for it |
 | [Changelog](CHANGELOG.md) | what changed |
 
 ## License
