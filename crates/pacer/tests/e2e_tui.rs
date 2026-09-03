@@ -49,6 +49,8 @@ const CTRL_RBRACKET: &[u8] = &[0x1d];
 const FOOTER_WORKSPACES: &str = "1-9: switch";
 const FOOTER_PROJECTS: &str = "n/o: add";
 const FOOTER_WORKTREES: &str = "n: new worktree";
+/// Stacked under Worktrees, so it is a stop in the walk between the two.
+const FOOTER_PRS: &str = "n: claude session";
 const FOOTER_SESSIONS: &str = "n: agent";
 /// Terminal pane focused but NOT input-locked (attached session).
 const FOOTER_TERMINAL_FOCUSED: &str = "Enter: type into terminal";
@@ -387,6 +389,8 @@ fn create_worktree(tui: &mut TuiHarness, branch: &str) {
     // agent); hop back to Worktrees so callers stay panel-stable.
     tui.wait_for_text(FOOTER_SESSIONS);
     tui.send(LEFT); // (h is the hosts picker)
+    tui.wait_for_text(FOOTER_PRS);
+    tui.send(LEFT);
     tui.wait_for_text(FOOTER_WORKTREES);
 }
 
@@ -440,6 +444,8 @@ fn tui_projects_worktrees_agents_navigation() {
     tui.send(TAB);
     tui.wait_for_text(FOOTER_WORKTREES);
     tui.send(TAB);
+    tui.wait_for_text(FOOTER_PRS);
+    tui.send(TAB);
     tui.wait_for_text(FOOTER_SESSIONS);
     tui.send(TAB);
     // Terminal pane focused with nothing attached: no panel footer, no lock.
@@ -451,6 +457,8 @@ fn tui_projects_worktrees_agents_navigation() {
     tui.wait_for_text(FOOTER_SESSIONS);
 
     // ---- ⇧Tab walks back and stops dead on the workspaces bar ----
+    tui.send(SHIFT_TAB);
+    tui.wait_for_text(FOOTER_PRS);
     tui.send(SHIFT_TAB);
     tui.wait_for_text(FOOTER_WORKTREES);
     tui.send(SHIFT_TAB);
@@ -532,7 +540,9 @@ fn tui_projects_worktrees_agents_navigation() {
     // ---- sessions are per-worktree: main has no agent-1 ----
     // feat-a is the only stamped worktree now, so RECENCY ORDER has it on
     // top: [feat-a, main, feat-b]. j from it lands on the root checkout.
-    tui.send(LEFT); // back to Worktrees (feat-a still selected)
+    tui.send(LEFT); // Sessions -> PRs
+    tui.wait_for_text(FOOTER_PRS);
+    tui.send(LEFT); // -> Worktrees (feat-a still selected)
     tui.wait_for_text(FOOTER_WORKTREES);
     tui.send(b"j"); // main
     tui.wait_for_selected("main ⌂ root");
@@ -632,7 +642,9 @@ fn tui_hides_projects_and_worktrees_independently() {
 
     tui.send(b"B");
     tui.wait_for_text("WORKTREES");
-    tui.wait_for_text(FOOTER_SESSIONS);
+    // Hiding Worktrees dropped focus to the panel below it, and showing it
+    // again does not take focus back.
+    tui.wait_for_text(FOOTER_PRS);
 }
 
 /// Renaming a project is a label change, and an empty name undoes it.
