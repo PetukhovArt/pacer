@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::{arr_at, bool_at, http_url_at, run, str_at};
+use super::{arr_at, bool_at, http_url_at, run, str_at, u64_at};
 use super::{Approval, Checks, OpenPr, PrComment, PrDetail, PullRequest};
 use super::{DIFF_TIMEOUT, LIST_LIMIT, STATE_OPEN, TIMEOUT};
 
@@ -367,6 +367,12 @@ pub(super) async fn detail(dir: &Path, number: u64) -> Option<PrDetail> {
     )
     .await?;
     let mut detail = parse_detail(&out)?;
+    if let Some(full_path) = full_path(&format!("[{out}]")) {
+        if let Some((add, del)) = line_counts(dir, &full_path, &number).await {
+            detail.additions = add;
+            detail.deletions = del;
+        }
+    }
     let path = format!("projects/:id/merge_requests/{number}/discussions?per_page=100");
     if let Some(threads) = glab(Some(dir), &["api", &path], TIMEOUT)
         .await
@@ -467,15 +473,49 @@ fn parse_detail(json: &str) -> Option<PrDetail> {
         author: username(&v),
         base: str_at(&v, "target_branch"),
         head: str_at(&v, "source_branch"),
-        // GitLab's MR object reports how many files changed but not the
-        // line counts; zeros here make the preview show the file count
-        // alone rather than a made-up "+0 -0".
+        // The REST MR object has no line counts; [`line_counts`] fills
+        // them from GraphQL, and zeros make the preview show the file
+        // count alone when that call couldn't answer.
         additions: 0,
         deletions: 0,
         changed_files: changes_count(&v),
         body: str_at(&v, "description"),
         comments: conversation(&v),
     })
+}
+
+/// Added and deleted lines of one merge request, from GraphQL's
+/// `diffStatsSummary` — REST reports files but not lines. `None` on any
+/// failure, which leaves the zeros [`parse_detail`] starts with.
+async fn line_counts(dir: &Path, full_path: &str, iid: &str) -> Option<(u64, u64)> {
+    let query = "query($fullPath: ID!, $iid: String!) { project(fullPath: $fullPath) { \
+                 mergeRequest(iid: $iid) { diffStatsSummary { additions deletions } } } }";
+    let out = glab(
+        Some(dir),
+        &[
+            "api",
+            "graphql",
+            "-f",
+            &format!("fullPath={full_path}"),
+            "-f",
+            &format!("iid={iid}"),
+            "-f",
+            &format!("query={query}"),
+        ],
+        TIMEOUT,
+    )
+    .await?;
+    parse_line_counts(&out)
+}
+
+fn parse_line_counts(json: &str) -> Option<(u64, u64)> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let stats = v
+        .get("data")?
+        .get("project")?
+        .get("mergeRequest")?
+        .get("diffStatsSummary")?;
+    Some((u64_at(stats, "additions"), u64_at(stats, "deletions")))
 }
 
 /// `changes_count` is a *string*, and a capped one: a big MR says `"999+"`.
@@ -739,6 +779,20 @@ mod tests {
         assert_eq!(path.as_deref(), Some("domination/web/web-client"));
         assert_eq!(full_path("[]"), None, "nothing listed, nothing to enrich");
         assert_eq!(full_path(r#"[{"iid":1}]"#), None);
+    }
+
+    /// The GraphQL diff stats land as line counts; an `errors` payload or
+    /// an old server without the field leaves the zeros alone.
+    #[test]
+    fn line_counts_come_out_of_diff_stats_summary() {
+        assert_eq!(
+            parse_line_counts(
+                r#"{"data":{"project":{"mergeRequest":{"diffStatsSummary":{"additions":12,"deletions":3}}}}}"#
+            ),
+            Some((12, 3))
+        );
+        assert_eq!(parse_line_counts(r#"{"errors":[{"message":"x"}]}"#), None);
+        assert_eq!(parse_line_counts(r#"{"data":{"project":null}}"#), None);
         assert_eq!(full_path("nonsense"), None);
     }
 

@@ -148,9 +148,9 @@ pub fn lines(detail: &PrDetail, width: usize, th: Theme) -> Vec<Line<'static>> {
     }
     out.push(fit(meta, width));
     let mut stats = vec![Span::styled(INDENT.to_string(), dim)];
-    // GitLab reports files without line counts; a real "+0 -0" next to
-    // changed files would be a lie, so the counts only show when they
-    // carry information.
+    // A forge that couldn't report line counts leaves zeros; a real "+0 -0"
+    // next to changed files would be a lie, so the counts only show when
+    // they carry information.
     let has_line_counts = detail.additions > 0 || detail.deletions > 0 || detail.changed_files == 0;
     if has_line_counts {
         stats.push(Span::styled(

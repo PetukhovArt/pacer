@@ -928,7 +928,7 @@ fn open_pr_diff_view(app: &mut App, number: u64, title: String, diff: Option<Str
     }
     let Some(diff) = diff else {
         app.flash = Some(format!(
-            "couldn't read the diff for #{number} — is `gh` set up?"
+            "couldn't read the diff for #{number} — is `gh` (or `glab`) set up?"
         ));
         return;
     };

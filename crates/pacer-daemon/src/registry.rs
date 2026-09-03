@@ -2806,7 +2806,7 @@ fn claude_pr_system_prompt(pr_url: &str) -> String {
          session must be scoped to that pull request. Inspect the PR before acting, and do not \
          modify or report on unrelated work. Before editing, make sure changes are made on the \
          PR's head branch (using a dedicated worktree if necessary), never in an unrelated \
-         checkout. Keep reviews, tests, commits, pushes, and GitHub actions limited to this PR."
+         checkout. Keep reviews, tests, commits, pushes, and CI actions limited to this PR."
     )
 }
 
@@ -2964,7 +2964,8 @@ fn validate_pr_url(raw: &str) -> Result<String> {
     if url.len() > MAX_PR_URL_BYTES {
         bail!("pull request URL is too long (max 4 KiB)");
     }
-    if !url.contains("/pull/") {
+    // GitHub's `/pull/N` or GitLab's `/-/merge_requests/N`.
+    if !url.contains("/pull/") && !url.contains("/merge_requests/") {
         bail!("not a pull request URL: {url}");
     }
     Ok(url)
@@ -4407,6 +4408,10 @@ mod tests {
         assert_eq!(
             validate_pr_url("github.com/o/r/pull/7").unwrap(),
             "https://github.com/o/r/pull/7"
+        );
+        assert_eq!(
+            validate_pr_url("http://git.vipaks.local/g/web/-/merge_requests/1697").unwrap(),
+            "http://git.vipaks.local/g/web/-/merge_requests/1697"
         );
         assert!(validate_pr_url("https://github.com/o/r/issues/7").is_err());
     }

@@ -559,7 +559,7 @@ fn draw_overlay(f: &mut Frame, app: &mut App) {
                     &[
                         (Act(&[New]), "new worktree (PR row: Claude)"),
                         (Act(&[GitDiff]), "git diff (^r: mark reviewed ✓)"),
-                        (Act(&[OpenRepo]), "open the repo on GitHub"),
+                        (Act(&[OpenRepo]), "open the repo in the browser"),
                         (Act(&[Delete, DeleteAll]), "delete one / delete all"),
                     ],
                 ),
@@ -3397,7 +3397,7 @@ fn draw_pr_preview(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let lines: Vec<Line> = match (&detail, failed) {
         (Some(detail), _) => crate::pr_preview::lines(detail, inner.width as usize, th),
         (None, true) => placeholder(&format!(
-                "couldn't read this pull request — is `gh` installed and logged in?                  {} still opens it in the browser.",
+                "couldn't read this pull request — is `gh` (or `glab`) installed and logged in?                  {} still opens it in the browser.",
             key_hint(app, Action::Activate)
         )),
         (None, false) => placeholder("reading it…"),
