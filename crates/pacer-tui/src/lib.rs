@@ -1,5 +1,6 @@
 pub mod agent_presets;
 pub mod app;
+pub mod base64;
 pub mod branch_name;
 pub mod completion;
 pub mod config;
