@@ -23,7 +23,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const COLS: u16 = 120;
+// Wide enough that the footer hints survive a full breadcrumb. At 120 the
+// left half — nameplate, workspace, `project > worktree > session`, dirty
+// count — plus the stats on the right left nine columns for the hints, so
+// the Sessions footer arrived as "Enter: fo". The sidebars are fixed
+// columns; only the terminal pane takes the extra width.
+const COLS: u16 = 160;
 const ROWS: u16 = 36;
 const WAIT: Duration = Duration::from_secs(20);
 /// How long the daemon gets to answer a one-shot CLI call.
