@@ -7,6 +7,8 @@ applies everywhere.
 
 - Session rows drop the trailing CLI badge when every session in the tree runs the same CLI — the
   badge is back as soon as a second kind appears.
+- **(Windows)** The Hotkeys tab no longer warns about `^⇧`, `^→` and `^⌫` chords, which the
+  console delivers fine; it now warns about `^Esc` (Start menu) and Windows Terminal's own defaults.
 
 ## 0.18.0 — 2026-09-03
 

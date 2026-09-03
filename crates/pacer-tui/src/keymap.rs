@@ -850,6 +850,9 @@ const CTRL_COLLISIONS: &[(char, &str)] = &[
 /// — so the honest answer here is a probability, not a fact. Nothing is
 /// rejected on the strength of it; the settings overlay just says so.
 pub fn host_warning(chord: &KeyChord) -> (Reach, Option<&'static str>) {
+    if cfg!(windows) {
+        return host_warning_windows(chord);
+    }
     let m = chord.mods;
     let ctrl = m.contains(KeyModifiers::CONTROL);
     let shift = m.contains(KeyModifiers::SHIFT);
@@ -913,6 +916,53 @@ pub fn host_warning(chord: &KeyChord) -> (Reach, Option<&'static str>) {
     if let KeyCode::F(n) = chord.code {
         if n >= 13 {
             return (Reach::Risky, Some("few terminals emit F13 and above"));
+        }
+    }
+    (Reach::Fine, None)
+}
+
+/// Windows reads keys through the console API with the full modifier
+/// state, so nothing here needs the kitty protocol: `^⇧`, `^→`, `^⌫` and
+/// `^h` all arrive distinct. What eats chords instead is the OS (`^Esc` is
+/// the Start menu) and Windows Terminal's own default bindings.
+fn host_warning_windows(chord: &KeyChord) -> (Reach, Option<&'static str>) {
+    let m = chord.mods;
+    let ctrl = m.contains(KeyModifiers::CONTROL);
+    let shift = m.contains(KeyModifiers::SHIFT);
+    if m.contains(KeyModifiers::SUPER) {
+        return (
+            Reach::Blocked,
+            Some("⊞ chords belong to Windows and never reach a console"),
+        );
+    }
+    if ctrl && !shift && chord.code == KeyCode::Esc {
+        return (Reach::Blocked, Some("^Esc opens the Start menu on Windows"));
+    }
+    if ctrl && chord.code == KeyCode::Tab {
+        return (
+            Reach::Risky,
+            Some("Windows Terminal switches tabs on ^Tab / ^⇧Tab"),
+        );
+    }
+    if ctrl && shift {
+        let taken = match chord.code {
+            KeyCode::Char(c) => matches!(
+                c,
+                'f' | 'c' | 'v' | 't' | 'w' | 'd' | 'n' | 'p' | 'a' | 'm' | ' ' | '1'..='9'
+            ),
+            KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => true,
+            _ => false,
+        };
+        if taken {
+            return (
+                Reach::Risky,
+                Some("Windows Terminal binds this ^⇧ chord by default"),
+            );
+        }
+    }
+    if let KeyCode::F(n) = chord.code {
+        if n >= 13 {
+            return (Reach::Risky, Some("few keyboards have F13 and above"));
         }
     }
     (Reach::Fine, None)
@@ -1306,12 +1356,17 @@ mod tests {
     fn cmd_chords_are_reported_unreachable() {
         let (reach, why) = host_warning(&KeyChord::parse("cmd+]").unwrap());
         assert_eq!(reach, Reach::Blocked);
-        assert!(why.unwrap().contains('⌘'));
+        assert!(why.unwrap().contains(if cfg!(windows) { '⊞' } else { '⌘' }));
     }
 
     #[test]
     fn risky_chords_are_flagged_but_allowed() {
-        for spec in ["ctrl+shift+f", "ctrl+left", "alt+p", "ctrl+m", "f13"] {
+        let risky: &[&str] = if cfg!(windows) {
+            &["ctrl+shift+f", "ctrl+tab", "ctrl+shift+up", "f13"]
+        } else {
+            &["ctrl+shift+f", "ctrl+left", "alt+p", "ctrl+m", "f13"]
+        };
+        for spec in risky {
             let chord = KeyChord::parse(spec).unwrap();
             let (reach, why) = host_warning(&chord);
             assert_eq!(reach, Reach::Risky, "{spec}");
@@ -1325,6 +1380,27 @@ mod tests {
             let chord = KeyChord::parse(spec).unwrap();
             assert!(host_warning(&chord).0.is_fine(), "{spec} should be fine");
         }
+    }
+
+    /// The console API delivers these with their modifiers intact, so the
+    /// unix kitty/Mission Control warnings must not leak onto Windows.
+    #[test]
+    #[cfg(windows)]
+    fn windows_delivers_ctrl_shift_and_ctrl_arrows() {
+        for spec in [
+            "ctrl+shift+l",
+            "ctrl+shift+h",
+            "ctrl+right",
+            "ctrl+backspace",
+            "ctrl+h",
+        ] {
+            let chord = KeyChord::parse(spec).unwrap();
+            assert!(host_warning(&chord).0.is_fine(), "{spec} should be fine");
+        }
+        assert_eq!(
+            host_warning(&KeyChord::parse("ctrl+esc").unwrap()).0,
+            Reach::Blocked
+        );
     }
 
     #[test]
