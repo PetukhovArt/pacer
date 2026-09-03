@@ -5,6 +5,9 @@ applies everywhere.
 
 ## Unreleased
 
+- Session rows drop the trailing CLI badge when every session in the tree runs the same CLI — the
+  badge is back as soon as a second kind appears.
+
 ## 0.18.0 — 2026-09-03
 
 ### Windows support

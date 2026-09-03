@@ -7420,6 +7420,36 @@ mod tests {
         );
     }
 
+    /// A codex session parked on a worktree of its own: off-screen, so no
+    /// layout moves, but the tree now mixes CLIs — which is what turns the
+    /// session rows' harness badge on.
+    fn seed_other_kind(app: &mut App) {
+        use pacer_core::{Agent, AgentStatus, Entity, WorktreeId};
+        hse(
+            app,
+            ServerEvent::EntityUpserted {
+                entity: Entity::Agent(Agent {
+                    id: AgentId("a-codex".into()),
+                    worktree_id: WorktreeId("w2".into()),
+                    name: "codex-1".into(),
+                    status: AgentStatus::Fresh,
+                    archived: false,
+                    archived_at: 0,
+                    unseen: false,
+                    kind: pacer_core::AgentKind::Codex,
+                    model: None,
+                    effort: None,
+                    session_id: None,
+                    cloud_session_id: None,
+                    sort_order: 0,
+                    status_changed_at: 0,
+                    alive: true,
+                    cloud_mirroring: false,
+                }),
+            },
+        );
+    }
+
     /// Row index of an agent in the Sessions panel.
     fn row_of(app: &App, id: &str) -> usize {
         let sref = SessionRef::Agent(AgentId(id.into()));
@@ -7578,6 +7608,7 @@ mod tests {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_second_agent(&mut app, AgentStatus::Running);
+        seed_other_kind(&mut app);
         let a2 = AgentId("a2".into());
         hse(
             &mut app,
@@ -10856,6 +10887,16 @@ diff --git a/src/b.rs b/src/b.rs
                 .unwrap_or_default()
         };
 
+        // One CLI in the tree: the harness badge would say "claude" on
+        // every row and distinguish nothing, so it stays off.
+        let row = row_with(&mut app, "alpha");
+        assert!(
+            !row.contains("claude"),
+            "single-CLI tree, no badge:
+{row}"
+        );
+
+        seed_other_kind(&mut app);
         let row = row_with(&mut app, "alpha");
         let name = row.find("alpha").expect("the session name");
         let ago = row

@@ -3137,11 +3137,13 @@ fn draw_session_row(
             };
             // The CLI behind the session, as a dim trailing badge (same
             // idiom as the worktree root row) — every kind, so the column
-            // reads as one consistent "name · when · harness" list. A turn
-            // that finished with nobody looking takes the slot over and
-            // goes loud (as a link row's unread count does): these rows
-            // are what the parent rows' counts are counting, so each one
-            // says so until the cursor lands on it.
+            // reads as one consistent "name · when · harness" list, but
+            // only while the tree mixes CLIs: one repeated word down the
+            // whole column is noise, not a distinction. A turn that
+            // finished with nobody looking takes the slot over and goes
+            // loud (as a link row's unread count does): these rows are what
+            // the parent rows' counts are counting, so each one says so
+            // until the cursor lands on it.
             let (badge, badge_style) = if a.unseen && !a.archived {
                 (" done".to_string(), Style::default().fg(th.done))
             } else if a.cloud_mirroring && !a.archived {
@@ -3155,8 +3157,10 @@ fn draw_session_row(
                 // sandbox, and the badge is how the user tells this row
                 // re-enters that session rather than booting a local CLI.
                 (" cloud".to_string(), Style::default().fg(th.dim))
-            } else {
+            } else if app.agent_kinds_mixed() {
                 (format!(" {}", a.kind.as_str()), Style::default().fg(th.dim))
+            } else {
+                (String::new(), Style::default())
             };
             // How long since this session last did anything, sat between
             // the name and the harness. The list is sorted on this stamp,

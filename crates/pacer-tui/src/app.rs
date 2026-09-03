@@ -2483,6 +2483,19 @@ impl App {
         }
     }
 
+    /// Does this tree hold sessions from more than one CLI? The session
+    /// rows' harness badge only tells the user something when it does, so a
+    /// single-CLI user gets the column back. Read across the whole tree, not
+    /// the visible rows, so filtering or hiding archived cannot make the
+    /// badge appear and disappear between frames.
+    pub fn agent_kinds_mixed(&self) -> bool {
+        let mut kinds = self.tree.agents.iter().map(|a| a.kind);
+        let Some(first) = kinds.next() else {
+            return false;
+        };
+        kinds.any(|k| k != first)
+    }
+
     /// Is this entity id pinned? Takes anything id-shaped, so call sites
     /// pass `id.as_str()` whatever the newtype.
     pub fn is_pinned(&self, id: &str) -> bool {
