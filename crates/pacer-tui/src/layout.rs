@@ -728,6 +728,13 @@ impl PanelLayout {
         let Some(mine) = before.area(leaf) else {
             return; // hidden: nowhere to move from
         };
+        if mine.width == 0 || mine.height == 0 {
+            // Undrawn body: every tile resolves to the same empty rect, so
+            // `neighbour` answers `None` for every side — the same answer a
+            // real edge gives. Taken at face value it strips the panel out
+            // to an edge, and that layout is what gets saved.
+            return;
+        }
         let dir = side.dir();
         let my_size = 1 + dir.extent(mine);
         let size = landing_size(dir, my_size);
@@ -922,6 +929,20 @@ mod tests {
         for p in 0..PANELS {
             assert!(r.area(Leaf::Panel(p)).unwrap().width >= MIN_PANEL_W - 1);
         }
+    }
+
+    /// The body is empty until `ui::draw` sets it, and the splash screen
+    /// returns before it does — so on a first run `⇧←` reaches `move_panel`
+    /// with no geometry. Every tile resolves to the same empty rect there,
+    /// which `neighbour` reads as "no neighbour on any side", exactly what a
+    /// real edge looks like: without the guard the panel is stripped out to
+    /// an edge and `SaveUiState` persists the wreck.
+    #[test]
+    fn moving_a_panel_before_the_first_draw_leaves_the_layout_alone() {
+        let mut layout = PanelLayout::default();
+        let before = layout.resolve(body(), ALL);
+        layout.move_panel(1, Side::Left, Rect::default(), ALL);
+        assert_eq!(layout.resolve(body(), ALL), before);
     }
 
     #[test]

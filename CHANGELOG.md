@@ -5,6 +5,10 @@ applies everywhere.
 
 ## Unreleased
 
+- `⇧←`/`⇧→`/`⇧↑`/`⇧↓` on the splash screen no longer wrecks the saved layout: with no projects yet
+  there is no body to move a panel across, so the keys did not swap the panel with its neighbour but
+  tore it out into a minimum-width strip — and saved that. They now do nothing until the panels are
+  on screen.
 - `h`/`l` and `←`/`→` now follow the panels' places on screen, so a panel moved with
   `⇧←`/`⇧→`/`⇧↑`/`⇧↓` is reached from where it sits: they used to walk the fixed
   Projects/Worktrees/PRs/Sessions order regardless of the layout, skipping past the panel actually
