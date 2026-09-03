@@ -20,7 +20,7 @@ vt100 = "0.16"
 portable-pty = "0.9"
 futures = "0.3"
 
-# `TerminateProcess` for the NEBULA KILL fallback, when a version-skewed
+# `TerminateProcess` for the PACER KILL fallback, when a version-skewed
 # daemon cannot be reached over the DAEMON SOCKET. Already in the tree
 # under tokio; Unix uses a two-line extern shim instead.
 [target.'cfg(windows)'.dependencies]

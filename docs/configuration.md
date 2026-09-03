@@ -14,11 +14,6 @@ without a restart — and `s` in the TUI is an overlay over the same file.
 That directory holds `config.json`, `agent_presets.json`, `pacer.db`, and a `state/` subdirectory with
 `daemon.log` and `tui.log`.
 
-An install from before the project was renamed from `nebula` keeps its data where it left it — the old
-directory is adopted in place, nothing is copied or moved, so sessions, pins and settings survive the
-upgrade. To tidy it up by hand: `pacer kill`, rename the directory to the name above and `nebula.db`
-inside it to `pacer.db`, then start pacer again.
-
 ## Settings
 
 Everything below is both a key in `config.json` and a row in the `s` overlay.

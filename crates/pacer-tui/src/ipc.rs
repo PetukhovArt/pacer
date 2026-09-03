@@ -792,7 +792,7 @@ fn request_termination(pid: i32) -> bool {
 /// teardown; the Job Objects in `pty::kill` are what keeps that from
 /// stranding agent CLIs (they die when the daemon's handles close).
 ///
-/// This is the fallback path only: an ordinary NEBULA KILL reaches the daemon
+/// This is the fallback path only: an ordinary PACER KILL reaches the daemon
 /// over the DAEMON SOCKET and gets the clean shutdown.
 #[cfg(windows)]
 fn request_termination(pid: i32) -> bool {

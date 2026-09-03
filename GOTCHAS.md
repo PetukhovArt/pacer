@@ -16,8 +16,8 @@ Two things to know before trusting a line. **It describes what was true when it 
 one names a file, flag or symbol, grep for it before relying on it. **All of it predates the rename
 to pacer**, which finished before the first release: env vars are `PACER_*`, the data dir is
 `dev.pacer.pacer` / `~/.local/share/pacer`, the database is `pacer.db` and the hook tag is
-`_pacerManaged`. Lines below have been respelled, but where one still says `nebula` it is talking
-about the pre-rename state on purpose — `paths::adopt_legacy` still reads it.
+`_pacerManaged`. Lines below have been respelled; the `⟵` slugs have not, because they are
+filenames in git history and only resolve spelled the way they were written.
 
 The ALL-CAPS lead-in is the old memory log's index key, not the project vocabulary; `GLOSSARY.md`
 holds the terms. Nothing enforces this file any more — the caps and the `make memory-check` that
@@ -46,7 +46,7 @@ history.
 - **ATTACH** — Input is dropped for a session the daemon hasn't spawned, so a pending attach must land before the first keystroke (`handle_terminal_event` fires it when `term_locked`; `Action::Activate` and `Action::Zoom` fire it too). ⟵ 2026-08-26-a-workspace-switch-cold-booted-a-fleet-of-claude-clis
 - **DAEMON LOG** — DAEMON LOG records no hook traffic at `info` (`hook received` is `debug`; `hookEvent=` never appears), so the SQLITE STORE row (`claude_session_id` on `agents`) is the only cheap live oracle for status timing. ⟵ 2026-08-28-background-subagents-turned-the-session-green-idle-prompt-no
 - **DAEMON SETSID** — Garbage tokens in the TUI were a shell job-control fight over the controlling terminal, not vt100: a new process group is not enough — a new session makes zsh's `/dev/tty` open fail so it skips job-control init. ⟵ 2026-08-20-the-daemon-needs-its-own-session-not-just-a-process-group
-- **DATA DIR** — The real DATA DIR is `~/Library/Application Support/dev.pacer.pacer/` on macOS (`ProjectDirs::from("dev","pacer","pacer")`), `$XDG_DATA_HOME/pacer` on Linux; nothing prints it, and a pre-rename install is still under `nebula` (`paths::adopt_legacy`). ⟵ 2026-08-25-make-dev-showed-v0-4-0-and-no-projects
+- **DATA DIR** — The real DATA DIR is `~/Library/Application Support/dev.pacer.pacer/` on macOS (`ProjectDirs::from("dev","pacer","pacer")`), `$XDG_DATA_HOME/pacer` on Linux; nothing prints it. ⟵ 2026-08-25-make-dev-showed-v0-4-0-and-no-projects
 - **MIGRATION** — Migrations 2, 3, 7 and the migration-14 rebuild still spell out the divider columns and must — they already ran on every DB; only migration 18 drops them, so don't "tidy" old SQL. ⟵ 2026-08-25-project-dividers-removed-from-the-projects-column
 - **PROTOCOL VERSION** — A PROTOCOL VERSION bump means the daemon still running from before the build refuses the new client until PACER KILL (or MAKE CYCLE) restarts it — expected; the client offers the kill-and-restart. ⟵ 2026-08-28-r-renames-a-project-row-without-touching-its-folder; 2026-08-28-released-v0-15-0-by-cherry-picking-only-the-post-v0-14-0-del
 - **PTY SESSION** — Agent PTYs get `TERM=xterm-256color` (`pty/mod.rs`) but inherit the daemon's `TERM_PROGRAM`, so `/terminal-setup` inside pacer detects the terminal the daemon was first spawned from, not the one attached. ⟵ 2026-08-18-cmd-p-never-reaches-the-agent-in-terminal-app
@@ -57,7 +57,7 @@ history.
 - **VENDORED VT100** — Codex is a ratatui inline-viewport app scrolling inside a top-anchored DECSTBM region (`ESC[1;{viewport_top}r`); stock vt100 0.15.2 `grid.rs` `scroll_up` discards lines scrolled out of a region, so codex scrollback stayed empty. ⟵ 2026-08-14-vendored-vt100-so-codex-scrollback-works
 - **VENDORED VT100** — `vendor/vt100` is a patched fork — do not upgrade or re-vendor it without re-applying the scroll-region patch. ⟵ 2026-08-14-vendored-vt100-so-codex-scrollback-works
 - **VENDORED VT100** — Full-screen (alternate screen) apps are unaffected: that grid is created with zero scrollback capacity. ⟵ 2026-08-14-vendored-vt100-so-codex-scrollback-works
-- **VERSION SKEW** — `pacer kill` is wrong advice when the *client* is older: the TUI respawns an identical daemon from `current_exe()`; `buildstamp_path()` is a content hash, not a path — pidfile + `ps` names the binary. ⟵ 2026-08-26-nebula-rename-broke-on-a-protocol-skew-the-error-message-mis · re-hit ×2 2026-08-28 · retire: `nebula rename` over the HOOK RECEIVER instead of the versioned socket
+- **VERSION SKEW** — `pacer kill` is wrong advice when the *client* is older: the TUI respawns an identical daemon from `current_exe()`; `buildstamp_path()` is a content hash, not a path — pidfile + `ps` names the binary. ⟵ 2026-08-26-nebula-rename-broke-on-a-protocol-skew-the-error-message-mis · re-hit ×2 2026-08-28 · retire: `pacer rename` over the HOOK RECEIVER instead of the versioned socket
 - **VERSION SKEW** — Do not add a field to `ServerEvent::Incompatible`: a newer daemon sends it to an older client and rmp is positional, so those clients fail to decode it ("unexpected handshake reply"). ⟵ 2026-08-26-nebula-rename-broke-on-a-protocol-skew-the-error-message-mis
 
 ## Layout — what is on screen
@@ -228,7 +228,7 @@ history.
 - **E2E TUI** — A green e2e is not evidence after a focus change — `wait_for_text` can be satisfied by the frame *before* the keypress landed; check every test that follows the changed step. ⟵ 2026-08-25-a-freshly-added-project-selects-itself
 - **E2E TUI** — A failure that passes alone can still be real: read the panic's `--- screen ---` dump (the rendered FOOTER line) instead of rerunning blind. ⟵ 2026-08-24-the-version-nameplate-in-the-footer-s-left-edge
 - **E2E TUI** — A test that passes on HEAD and fails after a layout shift may be a harness false positive over a wrong expectation (`row_is_selected` once matched a selected pill in the *next* panel on the same screen line; it now checks the needle's own `│` band) — `git archive HEAD | tar -x` into the scratchpad and dump the screen before/after the key there; never `git stash` the SHARED CHECKOUT. ⟵ 2026-08-28-pin-and-the-recent-group-are-gone-one-flat-list-in-recency
-- **INSTALL.SH** — The repo slug is `PetukhovArt/pacer`, hardcoded in `install.sh` (`REPO=`) and spelled out again in `README.md` and `docs/windows.md` — changing the remote means changing all three. The working copy on disk may still sit in a directory named `nebula`; that is the old name of the checkout, not of the repo. ⟵ 2026-08-05-install-script-and-the-org-slug
+- **INSTALL.SH** — The repo slug is `PetukhovArt/pacer`, hardcoded in `install.sh` (`REPO=`) and spelled out again in `README.md` and `docs/windows.md` — changing the remote means changing all three. The working copy on disk may still sit in a directory carrying the project's pre-rename name; that is the name of the checkout, not of the repo. ⟵ 2026-08-05-install-script-and-the-org-slug
 - **MAKE CI** — `cargo clippy … | tail -40` hides earlier crates' warnings — grep `^warning:` over the full output. ⟵ 2026-08-28-finishing-the-codex-session-s-open-prs-claude-session-launch
 - **MAKE CI** — `cargo test --workspace --tests --bins --doc` prints nothing and runs nothing; plain `cargo test --workspace` covers all seven binaries plus doc-tests. ⟵ 2026-08-28-fixing-a-fork-pr-s-conflicts-from-the-shared-tree-then-a-sec
 - **MAKE CI** — `cargo test --workspace` fail-fast makes one flaky e2e look like a truncated suite (the other binaries never start) — use `--no-fail-fast` for the gate. ⟵ 2026-08-27-released-v0-12-0-from-a-checkout-that-was-behind-its-own-wor

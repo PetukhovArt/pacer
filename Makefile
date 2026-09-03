@@ -94,22 +94,20 @@ dev-prep:
 # the real daemon owns, and the dev daemon must not resume them. `.backup`
 # reads the WAL, so the copy is consistent even with the real daemon running.
 # The real dir is where `directories::ProjectDirs::from("dev","pacer","pacer")`
-# puts it (pacer-core/src/paths.rs); an install predating the rename is still
-# under the old `nebula` name, which `paths::adopt_legacy` keeps reading, so
-# look there too. Keep the two in step.
+# puts it (pacer-core/src/paths.rs). Keep the two in step.
 dev-seed: ## Copy real projects/workspaces/settings into the dev instance (only if it has no DB yet)
 	@[ ! -e $(DEV_DATA)/pacer.db ] || exit 0; \
 	case "$$(uname -s)" in \
-		Darwin) base="$$HOME/Library/Application Support"; new="$$base/dev.pacer.pacer"; old="$$base/dev.nebula.nebula";; \
-		*)      base="$${XDG_DATA_HOME:-$$HOME/.local/share}"; new="$$base/pacer"; old="$$base/nebula";; \
+		Darwin) real="$$HOME/Library/Application Support/dev.pacer.pacer";; \
+		*)      real="$${XDG_DATA_HOME:-$$HOME/.local/share}/pacer";; \
 	esac; \
-	if   [ -f "$$new/pacer.db" ];  then real="$$new"; db=pacer.db; \
-	elif [ -f "$$old/nebula.db" ]; then real="$$old"; db=nebula.db; \
+	if [ ! -f "$$real/pacer.db" ]; then \
+		echo "no real pacer data at $$real - dev instance starts empty"; exit 0; fi; \
 	else echo "no real pacer data at $$new - dev instance starts empty"; exit 0; fi; \
 	if ! command -v sqlite3 >/dev/null 2>&1; then \
 		echo "sqlite3 not on PATH - dev instance starts empty"; exit 0; fi; \
 	mkdir -p $(DEV_DATA); \
-	sqlite3 "$$real/$$db" ".backup '$(DEV_DATA)/pacer.db'"; \
+	sqlite3 "$$real/pacer.db" ".backup '$(DEV_DATA)/pacer.db'"; \
 	sqlite3 $(DEV_DATA)/pacer.db "DELETE FROM agents; DELETE FROM terminals;"; \
 	for f in config.json reviewed.json; do \
 		if [ -f "$$real/$$f" ]; then cp "$$real/$$f" $(DEV_DATA)/; fi; \

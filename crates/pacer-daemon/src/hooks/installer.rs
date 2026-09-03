@@ -445,10 +445,6 @@ fn merge_managed_hooks(
 /// the daemon accepts at most one auto-title per session.
 pub fn install_cursor_title_rule(cwd: &Path) -> Result<()> {
     let dir = cwd.join(CURSOR_DIR).join("rules");
-    // The rule shipped under the project's old name until the rename. Two
-    // copies of an always-on rule would both fire, so drop the old one —
-    // it is ours to delete, nobody else writes that filename.
-    let _ = std::fs::remove_file(dir.join("nebula-title.mdc"));
     write_text_atomic(&dir, "pacer-title.mdc", &cursor_title_rule())
 }
 
@@ -742,21 +738,6 @@ mod tests {
         install_cursor_title_rule(tmp.path()).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("pacer rename"));
-    }
-
-    /// Both rules are `alwaysApply`, so leaving the pre-rename file behind
-    /// would fire the auto-title instruction twice in every cursor session.
-    #[test]
-    fn cursor_title_rule_removes_the_pre_rename_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join(".cursor/rules");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("nebula-title.mdc"), "old rule").unwrap();
-
-        install_cursor_title_rule(tmp.path()).unwrap();
-
-        assert!(!dir.join("nebula-title.mdc").exists());
-        assert!(dir.join("pacer-title.mdc").exists());
     }
 
     #[test]

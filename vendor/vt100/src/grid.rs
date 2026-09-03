@@ -563,7 +563,7 @@ impl Grid {
             self.rows
                 .insert(usize::from(self.scroll_bottom) + 1, self.new_row());
             let removed = self.rows.remove(usize::from(self.scroll_top));
-            // NEBULA PATCH: upstream only saves scrolled-out rows when no
+            // PACER PATCH: upstream only saves scrolled-out rows when no
             // DECSTBM region is active. Real terminals also keep rows that
             // scroll out of a TOP-ANCHORED region (top == row 0) — ratatui
             // inline-viewport apps (codex) insert chat history exactly that
@@ -610,7 +610,7 @@ impl Grid {
         self.pos.row >= self.scroll_top && self.pos.row <= self.scroll_bottom
     }
 
-    // NEBULA PATCH: no longer used by scroll_up; kept to minimize the diff
+    // PACER PATCH: no longer used by scroll_up; kept to minimize the diff
     // from upstream 0.16.2.
     #[allow(dead_code)]
     fn scroll_region_active(&self) -> bool {
