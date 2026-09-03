@@ -572,7 +572,10 @@ mod tests {
         )
         .unwrap();
         let mut rx = session.events.subscribe();
-        let exited = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        // Generous on purpose: this is a hang guard, not a speed assertion.
+        // A cold `powershell.exe` on a GitHub windows runner took longer than
+        // 10s to print one line, and locally the whole test is sub-second.
+        let exited = tokio::time::timeout(std::time::Duration::from_secs(60), async {
             loop {
                 match rx.recv().await {
                     Ok(PtyEvent::Exited { .. }) => break,
@@ -586,7 +589,7 @@ mod tests {
         let text = String::from_utf8_lossy(&replay);
         assert!(
             exited.is_ok(),
-            "no Exited within 10s; ring so far: {text:?}"
+            "no Exited within 60s; ring so far: {text:?}"
         );
         assert!(
             text.contains("PTY_RING_MARKER"),
