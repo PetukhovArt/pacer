@@ -66,9 +66,15 @@ pub fn buildstamp_path() -> PathBuf {
 }
 
 /// The platform's per-user dirs for this app (`~/Library/Application
-/// Support/dev.pacer.pacer` on macOS, `~/.local/share/pacer` on Linux).
+/// Support/dev.pacer` on macOS, `~/.local/share/pacer` on Linux,
+/// `%APPDATA%\pacer` on Windows).
+///
+/// The organization is deliberately empty. `directories` builds the Windows
+/// path as `organization\application` and the macOS bundle id by joining the
+/// non-empty parts with dots, so naming both after the project would spell
+/// `pacer\pacer` and `dev.pacer.pacer`. Linux ignores both fields anyway.
 fn project_dirs() -> Option<directories::ProjectDirs> {
-    directories::ProjectDirs::from("dev", "pacer", "pacer")
+    directories::ProjectDirs::from("dev", "", "pacer")
 }
 
 pub fn data_dir() -> PathBuf {

@@ -98,7 +98,7 @@ dev-prep:
 dev-seed: ## Copy real projects/workspaces/settings into the dev instance (only if it has no DB yet)
 	@[ ! -e $(DEV_DATA)/pacer.db ] || exit 0; \
 	case "$$(uname -s)" in \
-		Darwin) real="$$HOME/Library/Application Support/dev.pacer.pacer";; \
+		Darwin) real="$$HOME/Library/Application Support/dev.pacer";; \
 		*)      real="$${XDG_DATA_HOME:-$$HOME/.local/share}/pacer";; \
 	esac; \
 	if [ ! -f "$$real/pacer.db" ]; then \

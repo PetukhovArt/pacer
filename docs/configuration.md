@@ -7,9 +7,9 @@ without a restart — and `s` in the TUI is an overlay over the same file.
 
 | | Path |
 |---|---|
-| macOS | `~/Library/Application Support/dev.pacer.pacer/` |
+| macOS | `~/Library/Application Support/dev.pacer/` |
 | Linux | `~/.local/share/pacer/` (data), `~/.local/state/pacer/` (logs) |
-| Windows | `%APPDATA%\pacer\pacer\data\` |
+| Windows | `%APPDATA%\pacer\data\` |
 
 That directory holds `config.json`, `agent_presets.json`, `pacer.db`, and a `state/` subdirectory with
 `daemon.log` and `tui.log`.
