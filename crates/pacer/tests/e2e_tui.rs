@@ -543,16 +543,17 @@ fn tui_projects_worktrees_agents_navigation() {
     tui.wait_for_text(FOOTER_SESSIONS);
 
     // ---- sessions are per-worktree: main has no agent-1 ----
-    // feat-a is the only stamped worktree now, so RECENCY ORDER has it on
-    // top: [feat-a, main, feat-b]. j from it lands on the root checkout.
+    // The checkouts stand in CREATION ORDER — [main, feat-a, feat-b] — since
+    // `SortMode::Created` is the default and recency is opted into. The
+    // cursor is on feat-a, so the root checkout is one row up.
     tui.send(LEFT); // Sessions -> PRs
     tui.wait_for_text(FOOTER_PRS);
     tui.send(LEFT); // -> Worktrees (feat-a still selected)
     tui.wait_for_text(FOOTER_WORKTREES);
-    tui.send(b"j"); // main
+    tui.send(b"k"); // main
     tui.wait_for_selected("main ⌂ root");
     tui.wait_for_sessions_row_gone("agent-1");
-    tui.send(b"k"); // back to feat-a
+    tui.send(b"j"); // back to feat-a
     tui.wait_for_selected("feat-a");
     tui.wait_for_text("agent-1");
 
