@@ -7,6 +7,13 @@ behind one API in `crates/pacer-core/src/transport.rs`. Code is the source of tr
 `ARCHITECTURE.md` for the map and `GLOSSARY.md` for the vocabulary before touching IPC, hooks or the
 daemon.
 
+`GOTCHAS.md` is the standing traps — the platform quirks, required orderings and settled decisions
+this project has already paid for, grouped by area. Read the sections your task touches before you
+start, and add a line when a task turns up a trap that will outlive it. In Claude Code the matching
+lines arrive on their own: `.claude/hooks/gotchas.mjs` is a `UserPromptSubmit` hook that scores the
+file against the prompt and injects what fits. It is best-effort, not a substitute for reading the
+file — nothing arrives for a prompt that names nothing it recognizes.
+
 ## Invariants
 
 - `vendor/vt100` is a patched fork — don't bump or replace it.

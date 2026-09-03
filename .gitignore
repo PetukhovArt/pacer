@@ -2,15 +2,20 @@
 
 # pacer-managed agent hook files installed at agent spawn
 /.codex/
-.claude
+/.cursor/
 
-# Mission Control Recall (project memory) — private, do not commit
+# Everything under .claude is local — pacer's generated settings, the
+# worktrees it makes for sessions, scratch files. The exceptions are the
+# project's own prompt hook and the settings file that registers it.
+/.claude/*
+!/.claude/hooks/
+!/.claude/settings.json
+
+# Personal, machine-local instructions — never committed
 CLAUDE.local.md
 design-screenshots/
 .DS_Store
 
-# pacer-managed git worktrees for agent sessions
-/.claude/worktrees/
 .idea
 
 # generated npm release packages (npm/build-packages.mjs)
