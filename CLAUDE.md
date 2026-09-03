@@ -64,7 +64,11 @@ of growing the README.
 
 ## Publishing
 
-Releases and npm publishing are described in `docs/releasing.md`. Both are triggered by a human: never
-push a tag, publish a package or change repository visibility on your own.
+Releasing is automatic and described in `docs/releasing.md`: a `version` bump in the root
+`Cargo.toml` landing on `main` builds the five targets, tags the commit, publishes the GitHub release
+and publishes to npm — one workflow, no button. The deliberate act is therefore the version bump, so
+never bump `version` unless releasing is what was asked for; every other change leaves it alone.
+
+Repository visibility stays a human decision: never change it on your own.
 
 </important>

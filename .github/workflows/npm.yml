@@ -1,14 +1,28 @@
 name: Publish to npm
 
-# Manual on purpose. The tag build publishes a GitHub release on its own; this
-# is the separate, irreversible step (npm unpublish is a 72-hour window and the
-# name is held forever after), so it waits to be asked. Flip it to
-# `release: { types: [published] }` once the process is boring.
+# Two ways in. `Release` calls this as its last job, so a version bump that
+# lands on main reaches npm without anyone pressing anything. Running it by
+# hand is the way to re-publish a release, or to read the file lists first
+# with the dry run left on.
+#
+# Not a `release: { types: [published] }` trigger: the GitHub release is cut
+# by GITHUB_TOKEN, and a release created that way starts no workflow.
 on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      scope:
+        type: string
+        default: "@petukhovart"
+      dry_run:
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish (e.g. v0.17.0)
+        description: Release tag to publish (e.g. v0.18.0)
         required: true
       scope:
         description: 'npm scope (empty = unscoped)'
