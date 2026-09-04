@@ -17,6 +17,11 @@ file — nothing arrives for a prompt that names nothing it recognizes.
 ## Invariants
 
 - `vendor/vt100` is a patched fork — don't bump or replace it.
+- `event_loop.rs`, `ui.rs` and `registry.rs` grew huge by accretion. Adding to one of the three: put
+  the new code in a new module beside it and call it from there, rather than growing the file.
+
+<important if="you are writing text a user reads: the changelog, the README, docs, release notes or a PR body">
+
 - `CHANGELOG.md` is for users, not for us. A change gets an entry under `## Unreleased` only if
   someone who runs `pacer` would notice it — a feature, a fix, a changed key, a new install route.
   Refactors, tests, CI, docs, tooling and anything under `scripts/` get no entry.
@@ -24,8 +29,11 @@ file — nothing arrives for a prompt that names nothing it recognizes.
   flat bullet per change on a single line, each starting with `Added` / `Fixed` / `Changed` /
   `Removed`, sorted by that verb. No `###` sections, no bold lead-ins, no em dashes. Platform-specific
   entries carry a `Windows:` prefix before the verb. Backticks for keys, settings and commands.
-- `event_loop.rs`, `ui.rs` and `registry.rs` grew huge by accretion. Adding to one of the three: put
-  the new code in a new module beside it and call it from there, rather than growing the file.
+- Every text a user reads (`README.md`, `CHANGELOG.md`, `docs/`, release notes, PR bodies) is
+  written without em dashes, bold lead-ins, forced groups of three, or sales language. The
+  `humanizer` skill applies these rules when it is installed; the rules hold either way.
+
+</important>
 
 ## Dev workflow
 
@@ -48,12 +56,11 @@ Paths, env vars and the hook tag are load-bearing on data that already exists on
 tag and the Cursor rule file). Changing any of them needs a migration, not a find-and-replace — the
 tests pass either way, and existing installations lose their sessions, pins and settings.
 
-A rename has been done once, and its shape is the one to copy: `paths::adopt_legacy` reads the old
-data dir when the new one does not exist yet — adoption in place, nothing copied, so there is no
-half-migrated state to recover from — the Cursor rule installer deletes the file under the old name
-before writing the new one, and the runtime dir needs nothing because it holds no state. The
-Makefile's `dev-seed` target and `docs/configuration.md` quote the same paths, so keep the three in
-step.
+There is no precedent to copy. The one rename that happened carried a fallback for a while, and
+`7e53751` deleted it on the grounds that the fork had never been published, so `data_dir`, `db_path`
+and `log_dir` each resolve one place today. That reasoning has expired: 0.18.0 ships on npm and
+GitHub releases, so the next rename does need the migration. The Makefile's `dev-seed` target and
+`docs/configuration.md` quote the same paths, so keep the three in step.
 
 </important>
 
