@@ -20,6 +20,10 @@ file — nothing arrives for a prompt that names nothing it recognizes.
 - `CHANGELOG.md` is for users, not for us. A change gets an entry under `## Unreleased` only if
   someone who runs `pacer` would notice it — a feature, a fix, a changed key, a new install route.
   Refactors, tests, CI, docs, tooling and anything under `scripts/` get no entry.
+- `CHANGELOG.md` follows the Claude Code changelog shape: `## <version>` and nothing below it, one
+  flat bullet per change on a single line, each starting with `Added` / `Fixed` / `Changed` /
+  `Removed`, sorted by that verb. No `###` sections, no bold lead-ins, no em dashes. Platform-specific
+  entries carry a `Windows:` prefix before the verb. Backticks for keys, settings and commands.
 - `event_loop.rs`, `ui.rs` and `registry.rs` grew huge by accretion. Adding to one of the three: put
   the new code in a new module beside it and call it from there, rather than growing the file.
 
