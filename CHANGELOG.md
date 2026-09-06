@@ -4,6 +4,7 @@
 
 - Fixed `⇧←`/`⇧→`/`⇧↑`/`⇧↓` on the splash screen wrecking the saved layout: with no projects yet there is no body to move a panel across, so instead of swapping the panel with its neighbour the keys tore it out into a minimum-width strip and saved that. They now do nothing until the panels are on screen.
 - Fixed `h`/`l` and `←`/`→` walking the fixed Projects/Worktrees/PRs/Sessions order regardless of the layout, which skipped past the panel actually next door. They now follow the panels' places on screen, so a panel moved with `⇧←`/`⇧→`/`⇧↑`/`⇧↓` is reached from where it sits, and `h` steps over the terminal pane to a panel moved past it.
+- Fixed the Projects panel wearing the open workspace's name as its header while the Workspaces bar is off. The header reads `PROJECTS` either way, and the footer nameplate still names the workspace.
 - Changed session rows to drop the trailing CLI badge when every session in the tree runs the same CLI. The badge is back as soon as a second kind appears.
 - Windows: Fixed the Hotkeys tab warning about `^⇧`, `^→` and `^⌫` chords, which the console delivers fine. It now warns about `^Esc` (the Start menu) and Windows Terminal's own defaults.
 

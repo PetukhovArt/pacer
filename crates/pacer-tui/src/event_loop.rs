@@ -19067,20 +19067,19 @@ diff --git a/src/b.rs b/src/b.rs
             let text = buffer_text(&terminal);
             let lines: Vec<&str> = text.lines().collect();
             assert!(
-                lines[1].starts_with("   DEFAULT"),
-                "hidden: the projects column takes the top row, under the \
-                 open workspace's name:\n{text}"
+                lines[1].starts_with("   PROJECTS"),
+                "hidden: the projects column takes the top row:\n{text}"
             );
             assert!(!text.contains("WORKSPACES"), "{text}");
         });
     }
 
-    /// Hiding the bar leaves nothing on screen naming the open workspace,
-    /// so the Projects header takes the job: `PROJECTS` becomes the
-    /// workspace's own name, it retitles on a switch, and showing the bar
-    /// again hands the header back.
+    /// The Projects header names its own panel whatever the Workspaces bar
+    /// is doing. The footer nameplate carries the open workspace either
+    /// way, so a hidden bar is no reason to retitle the column: the header
+    /// flipped between the two names three times before this test.
     #[test]
-    fn a_hidden_bar_moves_the_workspace_name_onto_the_projects_header() {
+    fn a_hidden_bar_leaves_the_projects_header_alone() {
         let mut app = App::new();
         seed_tree(&mut app);
         seed_default_workspace(&mut app);
@@ -19095,18 +19094,23 @@ diff --git a/src/b.rs b/src/b.rs
         app.show_workspaces = false;
         let text = draw(&mut app, &mut terminal);
         assert!(
-            text.contains("DEFAULT \u{b7} 1"),
-            "the header names the open workspace, count intact:\n{text}"
+            text.contains("PROJECTS \u{b7} 1"),
+            "the header names the panel, count intact:\n{text}"
         );
-        assert!(!text.contains("PROJECTS"), "{text}");
+        assert!(
+            text.contains("\u{25c7} default"),
+            "the footer names the open workspace:\n{text}"
+        );
+        assert!(!text.contains("DEFAULT"), "{text}");
 
         switch_workspace(&mut app, pacer_core::WorkspaceId("ws2".into()), &mut out);
         let text = draw(&mut app, &mut terminal);
-        assert!(text.contains("CLIENT"), "a switch retitles it:\n{text}");
-        assert!(!text.contains("DEFAULT"), "{text}");
+        assert!(text.contains("PROJECTS"), "a switch leaves it:\n{text}");
+        assert!(text.contains("\u{25c7} client"), "{text}");
+        assert!(!text.contains("CLIENT"), "{text}");
 
-        // Shown again, the bar names the workspace and the column goes back
-        // to naming itself.
+        // Shown again, the bar names the workspaces and the column still
+        // names itself.
         app.show_workspaces = true;
         let text = draw(&mut app, &mut terminal);
         assert!(text.contains("PROJECTS"), "{text}");
