@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added a `Bold headers` setting under Appearance: off draws the sidebar column titles and project names at normal weight, for terminals whose bold face is a heavier font.
+- Added a `Bold names` setting under Appearance: off draws the panel headers and project names at normal weight, for terminals whose bold face is a heavier font.
 - Added a `Row timestamps` setting under Appearance: turn it off and the dim `2h ago` label leaves the project, worktree and session rows, which gives the columns back to the names.
 - Fixed a session that had already answered sweeping yellow for another half hour, because a background subagent cancelled earlier in the turn never reported that it had stopped.
 - Fixed `⇧←`/`⇧→`/`⇧↑`/`⇧↓` on the splash screen wrecking the saved layout: with no projects yet there is no body to move a panel across, so instead of swapping the panel with its neighbour the keys tore it out into a minimum-width strip and saved that. They now do nothing until the panels are on screen.

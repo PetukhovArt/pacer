@@ -2365,7 +2365,7 @@ pub struct App {
     /// "2h ago" label after the name. Mirrors the config, refreshed at
     /// startup and when the settings overlay applies a change.
     pub show_ago: bool,
-    /// The `bold_names` setting: whether the sidebar column titles and the
+    /// The `bold_names` setting: whether every panel header and the
     /// project row names are drawn BOLD.
     pub bold_names: bool,
     /// Pinned rows by entity id — workspaces, worktrees and sessions in one

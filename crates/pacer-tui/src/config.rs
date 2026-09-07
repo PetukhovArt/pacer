@@ -238,12 +238,12 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
             SettingSpec {
                 kind: SettingKind::ShowAgo,
                 label: "Row timestamps",
-                hint: "Show the dim \"2h ago\" label on project, worktree and session rows (off gives the space to the name)",
+                hint: "Dim \"2h ago\" after a row name; off gives those columns to the name",
             },
             SettingSpec {
                 kind: SettingKind::BoldNames,
-                label: "Bold headers",
-                hint: "Bold the sidebar column titles and project names (off draws them at normal weight)",
+                label: "Bold names",
+                hint: "Draw the panel headers and project names bold; off is normal weight",
             },
             SettingSpec {
                 kind: SettingKind::ShowWorkspaces,
@@ -495,8 +495,8 @@ pub struct Config {
     /// On by default — the columns sort on that stamp. Off spends the
     /// columns on the name instead, which is what a narrow panel wants.
     pub show_ago: bool,
-    /// Whether the sidebar column titles and the project row names are
-    /// drawn BOLD. On by default — the weight is what makes the tree's top
+    /// Whether every panel header and the project row names are drawn
+    /// BOLD. On by default — the weight is what makes the tree's top
     /// read as its top. Off is for terminals whose bold face is a heavier
     /// font, where the weight costs legibility rather than buying it.
     pub bold_names: bool,
@@ -1422,6 +1422,8 @@ mod tests {
             (SettingKind::HideProjects, "shown", "hidden"),
             (SettingKind::HideWorktrees, "shown", "hidden"),
             (SettingKind::HidePrs, "shown", "hidden"),
+            (SettingKind::ShowAgo, "on", "off"),
+            (SettingKind::BoldNames, "on", "off"),
         ];
         let dir = tempfile::tempdir().unwrap();
         for (kind, default, toggled) in rows {

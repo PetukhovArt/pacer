@@ -14,6 +14,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
+mod chrome;
 mod prs_panel;
 use prs_panel::draw_prs;
 
@@ -2062,15 +2063,6 @@ fn status_name_spans(
     }
 }
 
-/// BOLD or nothing, for the text the `bold_names` setting covers.
-fn weight(bold: bool) -> Modifier {
-    if bold {
-        Modifier::BOLD
-    } else {
-        Modifier::empty()
-    }
-}
-
 /// Columns a row's name must keep before the "23m ago" label is worth
 /// the space it costs. Below this the label drops and the name gets it all.
 const MIN_NAME_W: usize = 8;
@@ -2246,14 +2238,11 @@ fn draw_column(
     area: Rect,
     title: &str,
     count: Option<usize>,
-    focused: bool,
-    bold: bool,
-    th: Theme,
+    chrome: chrome::Chrome,
 ) -> Rect {
     let inner = area;
-    let header_style = Style::default()
-        .fg(if focused { th.accent } else { th.muted })
-        .add_modifier(weight(bold));
+    let th = chrome.th;
+    let header_style = chrome.header_style();
     // Row 0 is a blank spacer so the title never sits flush against the
     // very top of the screen; row 1 carries it. `ROW_GUTTER` is the same
     // 3-column indent a list row gets from its 1-column selection marker
@@ -2413,11 +2402,7 @@ fn draw_workspaces_bar(f: &mut Frame, app: &mut App, area: Rect) {
     );
 
     // The header carries the focus signal, exactly as a column title does.
-    let header_style = if focused {
-        Style::default().fg(th.accent).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(th.muted).add_modifier(Modifier::BOLD)
-    };
+    let header_style = chrome::Chrome::new(focused, app.bold_names, th).header_style();
     let mut label = vec![Span::styled(
         format!("{ROW_GUTTER}WORKSPACES"),
         header_style,
@@ -2658,7 +2643,13 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
     // the footer nameplate carries the open workspace either way, so a
     // hidden bar is no reason to put the workspace name here instead.
     let title = panel_title(app, Focus::Projects, "PROJECTS");
-    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
+    let inner = draw_column(
+        f,
+        area,
+        &title,
+        count,
+        chrome::Chrome::new(focused, app.bold_names, th),
+    );
 
     if !app.tree.has_visible_projects() {
         f.render_widget(
@@ -2707,14 +2698,14 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
         let star = if *pinned { 2 } else { 0 };
         let free = (inner.width as usize).saturating_sub(3 + badge_len + star);
         let (ago, name_max) = fit_ago(ago_badge(*stamped, app.show_ago), free);
-        // Bold name: the top of the tree reads "biggest".
+        // The name carries the tree's top weight, unless `bold_names` is off.
         let mut spans = vec![status_dot(*roll, *unseen > 0, th)];
         if *pinned {
             spans.push(Span::styled("\u{2605} ", Style::default().fg(th.accent)));
         }
         spans.extend(status_name_spans(
             truncate(text, name_max),
-            Style::default().add_modifier(weight(app.bold_names)),
+            Style::default().add_modifier(chrome::weight(app.bold_names)),
             sweep_ramp(*roll, th, app.animations),
             app.sweep_phase(),
         ));
@@ -2730,7 +2721,8 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
         // size (Kitty's OSC 66 can render half-size text, but neither
         // WezTerm nor Ghostty implements it), so "smaller" is spelled with
         // the three signals that do work everywhere: the name above is
-        // BOLD at full strength, this line is the dimmest color the theme
+        // heavier (BOLD unless `bold_names` is off), this line is the
+        // dimmest color the theme
         // has *plus* DIM (SGR 2, faint, which blends fg toward bg), and a
         // `└ ` hangs it off the name — the same tree glyph the metrics
         // modal uses. The glyph lands under the name's first letter, so
@@ -2784,7 +2776,13 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
     let wt_count = app.visible_worktrees().len();
     let count = Some(wt_count).filter(|n| *n > 0);
     let title = panel_title(app, Focus::Worktrees, "WORKTREES");
-    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
+    let inner = draw_column(
+        f,
+        area,
+        &title,
+        count,
+        chrome::Chrome::new(focused, app.bold_names, th),
+    );
 
     let worktrees: Vec<WorktreeRowData> = app
         .visible_worktrees()
@@ -2963,7 +2961,13 @@ fn draw_sessions(f: &mut Frame, app: &mut App, area: Rect) {
         .count();
     let count = Some(visible).filter(|n| *n > 0);
     let title = panel_title(app, Focus::Sessions, "SESSIONS");
-    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
+    let inner = draw_column(
+        f,
+        area,
+        &title,
+        count,
+        chrome::Chrome::new(focused, app.bold_names, th),
+    );
 
     let rows = app.visible_session_rows();
     if rows.is_empty() && app.selected_worktree().is_some() {
@@ -3290,7 +3294,14 @@ fn draw_pr_preview(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             Style::default().fg(th.dim),
         )),
     };
-    let inner = titled_frame(f, area, "PULL REQUEST", left, right, focused, th);
+    let inner = titled_frame(
+        f,
+        area,
+        "PULL REQUEST",
+        left,
+        right,
+        chrome::Chrome::new(focused, app.bold_names, th),
+    );
     let inner = Rect {
         x: inner.x + 1,
         width: inner.width.saturating_sub(1),
@@ -3350,10 +3361,9 @@ fn terminal_frame(
     area: Rect,
     left: Vec<Span<'static>>,
     right: Option<Span<'static>>,
-    focused: bool,
-    th: Theme,
+    chrome: chrome::Chrome,
 ) -> Rect {
-    titled_frame(f, area, "TERMINAL", left, right, focused, th)
+    titled_frame(f, area, "TERMINAL", left, right, chrome)
 }
 
 /// The same frame under another name, for the pane's other tenants — the
@@ -3365,14 +3375,10 @@ fn titled_frame(
     title: &str,
     left: Vec<Span<'static>>,
     right: Option<Span<'static>>,
-    focused: bool,
-    th: Theme,
+    chrome: chrome::Chrome,
 ) -> Rect {
-    let header_style = if focused {
-        Style::default().fg(th.accent).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(th.muted).add_modifier(Modifier::BOLD)
-    };
+    let (focused, th) = (chrome.focused, chrome.th);
+    let header_style = chrome.header_style();
     // Row 0 is a blank spacer so the header sits on the same screen row
     // as the sidebar column titles (`draw_column` does the same).
     if let Some(r) = row_rect(area, 1) {
@@ -3447,7 +3453,13 @@ fn draw_terminal(f: &mut Frame, app: &mut App, area: Rect) {
         )),
         _ => None,
     };
-    let inner = terminal_frame(f, area, left, right, focused, th);
+    let inner = terminal_frame(
+        f,
+        area,
+        left,
+        right,
+        chrome::Chrome::new(focused, app.bold_names, th),
+    );
     // One cell of inset so PTY content doesn't hug the sessions rule.
     let inner = Rect {
         x: inner.x + 1,
