@@ -11,6 +11,7 @@ pub mod server;
 pub mod sibling;
 pub mod status;
 pub mod store;
+pub mod subagents;
 
 use anyhow::{bail, Context, Result};
 use pacer_core::{env, paths, transport};
@@ -90,9 +91,13 @@ async fn serve() -> Result<()> {
                 event,
                 session_id,
                 cwd,
+                transcript_path,
             }) = hook_rx.recv().await
             {
                 let captures_session = event.captures_session();
+                if let Some(path) = &transcript_path {
+                    daemon.note_transcript_path(&agent_id, path);
+                }
                 daemon.apply_hook_event(&agent_id, event.clone(), session_id.clone());
                 if let Some(cwd) = &cwd {
                     daemon.reparent_agent_by_cwd(

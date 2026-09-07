@@ -87,6 +87,10 @@ pub struct HookDelivery {
     /// sends it on every event); drives cwd-based agent re-homing. Absent
     /// when the CLI doesn't report it — re-homing simply never triggers.
     pub cwd: Option<String>,
+    /// Where Claude Code keeps this session's conversation on disk. Only
+    /// Claude sends it; it locates the subagent meta files the STOP GATE
+    /// reads (see `crate::subagents`).
+    pub transcript_path: Option<String>,
 }
 
 /// Permissive payload: every field optional, unknown fields ignored. Hook
@@ -110,6 +114,7 @@ pub struct HookPayload {
     pub cwd: Option<String>,
     /// Cursor sends no `cwd`; its first workspace root plays the role.
     pub workspace_roots: Option<Vec<String>>,
+    pub transcript_path: Option<String>,
 }
 
 impl HookPayload {
@@ -272,7 +277,11 @@ async fn receive_hook(
     // the Task's position, not the session's — an isolated subagent working
     // in a scratch checkout must never drag the row out from under the
     // conversation. Only foreground payloads carry a cwd onward.
-    let cwd = payload.cwd().filter(|_| payload.subagent_id().is_none());
+    let foreground = payload.subagent_id().is_none();
+    let cwd = payload.cwd().filter(|_| foreground);
+    // Same rule as `cwd`, and for the same reason: a subagent's payload
+    // names the subagent's own transcript, not the session's.
+    let transcript_path = payload.transcript_path.clone().filter(|_| foreground);
     let _ = state
         .tx
         .send(HookDelivery {
@@ -280,6 +289,7 @@ async fn receive_hook(
             event,
             session_id: payload.session_id(),
             cwd,
+            transcript_path,
         })
         .await;
 

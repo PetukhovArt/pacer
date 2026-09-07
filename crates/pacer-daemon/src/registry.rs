@@ -118,6 +118,9 @@ fn epoch_ms() -> i64 {
 pub struct Daemon {
     sessions: Mutex<HashMap<SessionRef, Arc<PtySession>>>,
     status_machines: Mutex<HashMap<AgentId, AgentStatusMachine>>,
+    /// The STOP GATE's escape hatch for subagents Claude killed without a
+    /// `SubagentStop`. See `crate::subagents`.
+    killed_subagents: crate::subagents::KilledSubagents,
     pub hook_env: HookEnv,
     /// Shared with the hook HTTP server, which reads agent rows to decide
     /// auto-title injection.
@@ -180,6 +183,7 @@ impl Daemon {
         Arc::new(Self {
             sessions: Mutex::new(HashMap::new()),
             status_machines: Mutex::new(HashMap::new()),
+            killed_subagents: Default::default(),
             hook_env,
             store,
             events,
@@ -256,9 +260,18 @@ impl Daemon {
         }
     }
 
-    /// Deferred-finish recheck across all machines (runs on a timer).
+    /// Where a session's conversation lives on disk, as the CLI reports it
+    /// on every hook. Only Claude sends one.
+    pub fn note_transcript_path(&self, agent_id: &AgentId, path: &str) {
+        self.killed_subagents.note_transcript(agent_id, path);
+    }
+
+    /// Deferred-finish recheck across all machines (runs on a timer). A held
+    /// Stop first drops the subagents Claude killed without a `SubagentStop`,
+    /// so the hold drains instead of waiting out `SUBAGENT_QUIET_GRACE`.
     pub fn tick_status_machines(&self) {
         let now = Instant::now();
+        self.drop_killed_subagents();
         let ticked: Vec<(AgentId, Vec<Effect>)> = {
             let mut machines = self.status_machines.lock().unwrap();
             machines
@@ -268,6 +281,33 @@ impl Daemon {
         };
         for (id, effects) in ticked {
             self.apply_status_effects(&id, effects);
+        }
+    }
+
+    /// Read the meta files for every held Stop and forget the workers the
+    /// user killed. The disk is touched only for agents actually holding —
+    /// `held_subagents` is `None` for everyone else.
+    fn drop_killed_subagents(&self) {
+        let held: Vec<(AgentId, Vec<String>)> = {
+            let machines = self.status_machines.lock().unwrap();
+            machines
+                .iter()
+                .filter_map(|(id, m)| Some((id.clone(), m.held_subagents()?)))
+                .collect()
+        };
+        for (agent_id, tracked) in held {
+            let killed = self.killed_subagents.killed(&agent_id, &tracked);
+            if killed.is_empty() {
+                continue;
+            }
+            let mut machines = self.status_machines.lock().unwrap();
+            let Some(machine) = machines.get_mut(&agent_id) else {
+                continue;
+            };
+            for id in killed {
+                tracing::debug!(agent = %agent_id, subagent = %id, "subagent killed by user");
+                machine.forget_subagent(&id);
+            }
         }
     }
 
@@ -4430,6 +4470,67 @@ mod tests {
             assert!(msg.contains("try again"), "{msg}");
             assert!(!msg.contains("restart"), "{msg}");
         }
+    }
+
+    /// The three-way wiring behind a killed subagent: the machine reports
+    /// which ids a hold waits on, `subagents` reads the kill off disk, and
+    /// the tick drops it. Fails if `held_subagents` stops reporting a hold,
+    /// if the sweep moves after the tick instead of before it, or if the
+    /// meta path stops matching the `transcript_path` the hook reported.
+    #[test]
+    fn a_killed_subagent_drops_out_of_a_held_stop() {
+        let daemon = test_daemon();
+        let id = AgentId("a1".into());
+        daemon.status_machines.lock().unwrap().insert(
+            id.clone(),
+            AgentStatusMachine::new(AgentStatus::Fresh, Some("s1".into())),
+        );
+
+        let tmp = tempfile::tempdir().unwrap();
+        let transcript = tmp.path().join("s1.jsonl");
+        let dir = transcript.with_extension("").join("subagents");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("agent-dead.meta.json"),
+            r#"{"stoppedByUser":true}"#,
+        )
+        .unwrap();
+        daemon.note_transcript_path(&id, transcript.to_str().unwrap());
+
+        let sid = Some("s1".to_string());
+        daemon.apply_hook_event(&id, HookEvent::UserPromptSubmit, sid.clone());
+        daemon.apply_hook_event(
+            &id,
+            HookEvent::SubagentStart {
+                subagent_id: Some("dead".into()),
+            },
+            sid.clone(),
+        );
+        daemon.apply_hook_event(&id, HookEvent::Stop, sid);
+
+        // The Stop is gated: as far as the hooks went, the subagent is
+        // still working.
+        {
+            let machines = daemon.status_machines.lock().unwrap();
+            let machine = machines.get(&id).unwrap();
+            assert_eq!(machine.status(), AgentStatus::Running);
+            assert_eq!(machine.held_subagents(), Some(vec!["dead".to_string()]));
+        }
+
+        daemon.tick_status_machines();
+
+        // The kill is off the books, so the hold now drains on DRAIN_GRACE
+        // instead of waiting out SUBAGENT_QUIET_GRACE.
+        assert_eq!(
+            daemon
+                .status_machines
+                .lock()
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .held_subagents(),
+            None
+        );
     }
 
     #[test]

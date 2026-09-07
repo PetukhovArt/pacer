@@ -139,8 +139,9 @@ impl SubagentSet {
     fn prune_expired(&mut self, now: Instant) {
         self.keyed
             .retain(|_, started| now.duration_since(*started) < SUBAGENT_TTL);
-        // Anon starts can't be aged individually; they are cleared wholesale on
-        // session change / clear / prompt.
+        // Anon starts can't be aged individually; they are cleared wholesale
+        // on session change, `/clear` and session end. Deliberately not on
+        // `UserPromptSubmit`: background workers outlive a prompt.
     }
 
     fn is_empty(&self) -> bool {
@@ -385,6 +386,26 @@ impl AgentStatusMachine {
             }
         }
         effects
+    }
+
+    /// Ids of the subagents a held Stop is still waiting on, or `None`
+    /// when nothing is being held. The caller reads this before touching
+    /// the disk, so an agent that is simply running costs no I/O.
+    pub fn held_subagents(&self) -> Option<Vec<String>> {
+        if !self.stop_held || self.status != AgentStatus::Running {
+            return None;
+        }
+        let ids: Vec<String> = self.subagents.keyed.keys().cloned().collect();
+        (!ids.is_empty()).then_some(ids)
+    }
+
+    /// Drop a subagent whose `SubagentStop` is never coming because the
+    /// user killed it (see `crate::subagents`). Exact keyed match only: an
+    /// id this machine does not know is ignored rather than cancelling an
+    /// anonymous start, so a mismatch degrades to the quiet grace instead
+    /// of finishing a turn whose workers are still alive.
+    pub fn forget_subagent(&mut self, id: &str) {
+        self.subagents.keyed.remove(id);
     }
 
     /// A tracked subagent just proved it is alive (its own hook traffic):
