@@ -2361,6 +2361,13 @@ pub struct App {
     /// with a faint accent tint. Off by default; mirrors the config,
     /// refreshed at startup and when the settings overlay applies a change.
     pub focus_tint: bool,
+    /// The `show_ago` setting: whether sidebar rows carry the dim
+    /// "2h ago" label after the name. Mirrors the config, refreshed at
+    /// startup and when the settings overlay applies a change.
+    pub show_ago: bool,
+    /// The `bold_names` setting: whether the sidebar column titles and the
+    /// project row names are drawn BOLD.
+    pub bold_names: bool,
     /// Pinned rows by entity id — workspaces, worktrees and sessions in one
     /// flat set (ULIDs never collide across kinds). Pinned worktrees and
     /// sessions sort to the top of their lists; a pinned workspace keeps its
@@ -2476,6 +2483,8 @@ impl App {
             splash_preview: false,
             animations: true,
             focus_tint: false,
+            show_ago: true,
+            bold_names: true,
             pinned: std::collections::BTreeSet::new(),
             sort: SortModes::default(),
             pr_filter: crate::pull_request::ListFilter::default(),

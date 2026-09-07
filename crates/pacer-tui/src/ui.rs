@@ -2062,6 +2062,15 @@ fn status_name_spans(
     }
 }
 
+/// BOLD or nothing, for the text the `bold_names` setting covers.
+fn weight(bold: bool) -> Modifier {
+    if bold {
+        Modifier::BOLD
+    } else {
+        Modifier::empty()
+    }
+}
+
 /// Columns a row's name must keep before the "23m ago" label is worth
 /// the space it costs. Below this the label drops and the name gets it all.
 const MIN_NAME_W: usize = 8;
@@ -2071,8 +2080,9 @@ const MIN_NAME_W: usize = 8;
 /// been working for an hour says "1h ago" — when you last spoke to it —
 /// instead of a permanent "just now". Worktree and project rows pass the
 /// newest stamp under them and read the same way.
-fn ago_badge(status_changed_at: i64) -> String {
-    if status_changed_at <= 0 {
+/// The `show_ago` setting turns the label off wholesale.
+fn ago_badge(status_changed_at: i64, show: bool) -> String {
+    if !show || status_changed_at <= 0 {
         return String::new();
     }
     match crate::hosts::ago_label(crate::app::now_ms() - status_changed_at) {
@@ -2237,14 +2247,13 @@ fn draw_column(
     title: &str,
     count: Option<usize>,
     focused: bool,
+    bold: bool,
     th: Theme,
 ) -> Rect {
     let inner = area;
-    let header_style = if focused {
-        Style::default().fg(th.accent).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(th.muted).add_modifier(Modifier::BOLD)
-    };
+    let header_style = Style::default()
+        .fg(if focused { th.accent } else { th.muted })
+        .add_modifier(weight(bold));
     // Row 0 is a blank spacer so the title never sits flush against the
     // very top of the screen; row 1 carries it. `ROW_GUTTER` is the same
     // 3-column indent a list row gets from its 1-column selection marker
@@ -2649,7 +2658,7 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
     // the footer nameplate carries the open workspace either way, so a
     // hidden bar is no reason to put the workspace name here instead.
     let title = panel_title(app, Focus::Projects, "PROJECTS");
-    let inner = draw_column(f, area, &title, count, focused, th);
+    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
 
     if !app.tree.has_visible_projects() {
         f.render_widget(
@@ -2697,7 +2706,7 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
         // label is what makes the order legible.
         let star = if *pinned { 2 } else { 0 };
         let free = (inner.width as usize).saturating_sub(3 + badge_len + star);
-        let (ago, name_max) = fit_ago(ago_badge(*stamped), free);
+        let (ago, name_max) = fit_ago(ago_badge(*stamped, app.show_ago), free);
         // Bold name: the top of the tree reads "biggest".
         let mut spans = vec![status_dot(*roll, *unseen > 0, th)];
         if *pinned {
@@ -2705,7 +2714,7 @@ fn draw_projects(f: &mut Frame, app: &mut App, area: Rect) {
         }
         spans.extend(status_name_spans(
             truncate(text, name_max),
-            Style::default().add_modifier(Modifier::BOLD),
+            Style::default().add_modifier(weight(app.bold_names)),
             sweep_ramp(*roll, th, app.animations),
             app.sweep_phase(),
         ));
@@ -2775,7 +2784,7 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
     let wt_count = app.visible_worktrees().len();
     let count = Some(wt_count).filter(|n| *n > 0);
     let title = panel_title(app, Focus::Worktrees, "WORKTREES");
-    let inner = draw_column(f, area, &title, count, focused, th);
+    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
 
     let worktrees: Vec<WorktreeRowData> = app
         .visible_worktrees()
@@ -2870,7 +2879,7 @@ fn draw_worktrees(f: &mut Frame, app: &mut App, area: Rect) {
                 // something — the stamp the group is sorted on, so the
                 // label is what makes the order legible. It yields to the
                 // branch name first (same rule as the session rows)...
-                let (ago, free) = fit_ago(ago_badge(*stamped), free);
+                let (ago, free) = fit_ago(ago_badge(*stamped, app.show_ago), free);
                 // ...and the root badge then yields to a branch it would push
                 // into an ellipsis: in a narrow column `main 1 done` beats
                 // `ma… ⌂ root 1 done` — the ⌂ is the least load-bearing
@@ -2954,7 +2963,7 @@ fn draw_sessions(f: &mut Frame, app: &mut App, area: Rect) {
         .count();
     let count = Some(visible).filter(|n| *n > 0);
     let title = panel_title(app, Focus::Sessions, "SESSIONS");
-    let inner = draw_column(f, area, &title, count, focused, th);
+    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
 
     let rows = app.visible_session_rows();
     if rows.is_empty() && app.selected_worktree().is_some() {
@@ -3156,7 +3165,7 @@ fn draw_session_row(
             // How long since this session last did anything, sat between
             // the name and the harness. The list is sorted on this stamp,
             // so the label is what makes the order legible.
-            let ago = ago_badge(a.status_changed_at);
+            let ago = ago_badge(a.status_changed_at, app.show_ago);
             let pinned = app.is_pinned(a.id.as_str());
             // 3 = the pill's selection marker plus the status dot, both of
             // which render ahead of the name.

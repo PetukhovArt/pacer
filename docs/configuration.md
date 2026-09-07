@@ -31,6 +31,8 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 | `git_init_on_create` | — | `git init` a non-repo directory when it is added |
 | `pr_list_filter` | `all` | which open pull requests the group lists: `all`, `mine`, `involved` |
 | `sort_projects` / `sort_worktrees` / `sort_sessions` | `created` | per-column order: `created`, `recent` or `name` (pins float first) |
+| `show_ago` | `true` | show the dim `2h ago` label on project, worktree and session rows |
+| `bold_names` | `true` | bold the sidebar column titles and project names |
 | `show_workspaces` | | show the Workspaces bar |
 | `hide_projects` / `hide_worktrees` / `hide_prs` | `false` | start with that sidebar hidden; the Sessions panel always stays visible |
 | `claude_enabled` / `codex_enabled` / `cursor_enabled` | `true` | which harnesses the new-session menu offers |

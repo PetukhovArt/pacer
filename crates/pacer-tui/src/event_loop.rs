@@ -4141,6 +4141,8 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     app.theme = cfg.theme();
     app.animations = cfg.animations;
     app.focus_tint = cfg.focus_tint;
+    app.show_ago = cfg.show_ago;
+    app.bold_names = cfg.bold_names;
     apply_sort(app, cfg.sort_modes());
     set_pr_filter(app, cfg.pr_list_filter());
     set_show_workspaces(app, cfg.show_workspaces);

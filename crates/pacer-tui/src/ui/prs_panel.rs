@@ -27,7 +27,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
     };
     let title = panel_title(app, Focus::Prs, base);
     let count = Some(prs.len()).filter(|n| *n > 0);
-    let inner = draw_column(f, area, &title, count, focused, th);
+    let inner = draw_column(f, area, &title, count, focused, app.bold_names, th);
     if prs.is_empty() {
         if app.selected_project().is_some() {
             f.render_widget(

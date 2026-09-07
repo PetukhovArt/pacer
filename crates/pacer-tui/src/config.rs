@@ -138,6 +138,8 @@ pub enum SettingKind {
     Theme,
     Animations,
     FocusTint,
+    ShowAgo,
+    BoldNames,
     ShowWorkspaces,
     HideProjects,
     HideWorktrees,
@@ -232,6 +234,16 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::FocusTint,
                 label: "Focused panel tint",
                 hint: "Faint accent-colored background on the focused panel",
+            },
+            SettingSpec {
+                kind: SettingKind::ShowAgo,
+                label: "Row timestamps",
+                hint: "Show the dim \"2h ago\" label on project, worktree and session rows (off gives the space to the name)",
+            },
+            SettingSpec {
+                kind: SettingKind::BoldNames,
+                label: "Bold headers",
+                hint: "Bold the sidebar column titles and project names (off draws them at normal weight)",
             },
             SettingSpec {
                 kind: SettingKind::ShowWorkspaces,
@@ -479,6 +491,15 @@ pub struct Config {
     /// Faint accent-tinted background fill on the focused panel. Off by
     /// default — it's a taste call, not everyone wants the extra color.
     pub focus_tint: bool,
+    /// Whether sidebar rows carry the dim "2h ago" label after the name.
+    /// On by default — the columns sort on that stamp. Off spends the
+    /// columns on the name instead, which is what a narrow panel wants.
+    pub show_ago: bool,
+    /// Whether the sidebar column titles and the project row names are
+    /// drawn BOLD. On by default — the weight is what makes the tree's top
+    /// read as its top. Off is for terminals whose bold face is a heavier
+    /// font, where the weight costs legibility rather than buying it.
+    pub bold_names: bool,
     /// Whether the Workspaces bar is drawn across the top. This is the
     /// bar's only home: `Shift+W` writes it here as it toggles, so a hidden
     /// bar stays hidden across restarts, and a crash or a
@@ -535,6 +556,8 @@ impl Default for Config {
             theme: "default".into(),
             animations: true,
             focus_tint: false,
+            show_ago: true,
+            bold_names: true,
             show_workspaces: true,
             hide_projects: false,
             hide_worktrees: false,
@@ -648,6 +671,8 @@ impl Config {
         obj.insert("theme".into(), serde_json::json!(self.theme));
         obj.insert("animations".into(), serde_json::json!(self.animations));
         obj.insert("focus_tint".into(), serde_json::json!(self.focus_tint));
+        obj.insert("show_ago".into(), serde_json::json!(self.show_ago));
+        obj.insert("bold_names".into(), serde_json::json!(self.bold_names));
         obj.insert(
             "show_workspaces".into(),
             serde_json::json!(self.show_workspaces),
@@ -796,6 +821,8 @@ impl Config {
             SettingKind::Theme => self.theme.clone(),
             SettingKind::Animations => on_off(self.animations).into(),
             SettingKind::FocusTint => on_off(self.focus_tint).into(),
+            SettingKind::ShowAgo => on_off(self.show_ago).into(),
+            SettingKind::BoldNames => on_off(self.bold_names).into(),
             SettingKind::ShowWorkspaces => on_off(self.show_workspaces).into(),
             SettingKind::HideProjects => shown_hidden(self.hide_projects).into(),
             SettingKind::HideWorktrees => shown_hidden(self.hide_worktrees).into(),
@@ -859,6 +886,12 @@ impl Config {
             }
             SettingKind::FocusTint => {
                 self.focus_tint = !self.focus_tint;
+            }
+            SettingKind::ShowAgo => {
+                self.show_ago = !self.show_ago;
+            }
+            SettingKind::BoldNames => {
+                self.bold_names = !self.bold_names;
             }
             SettingKind::ShowWorkspaces => {
                 self.show_workspaces = !self.show_workspaces;
