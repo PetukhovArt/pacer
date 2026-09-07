@@ -269,14 +269,29 @@ impl Daemon {
     /// Deferred-finish recheck across all machines (runs on a timer). A held
     /// Stop first drops the subagents Claude killed without a `SubagentStop`,
     /// so the hold drains instead of waiting out `SUBAGENT_QUIET_GRACE`.
+    /// Each machine also gets its CLI's current progress level, which is how
+    /// a turn ended by an Esc cancel stops wedging the row — see
+    /// `AgentStatusMachine::tick`.
     pub fn tick_status_machines(&self) {
         let now = Instant::now();
         self.drop_killed_subagents();
+        // Gathered before the machines are locked: a session's progress lock
+        // is a leaf, and nothing here should hold two of the daemon's own.
+        let levels: HashMap<AgentId, bool> = {
+            let sessions = self.sessions.lock().unwrap();
+            sessions
+                .iter()
+                .filter_map(|(sref, session)| match sref {
+                    SessionRef::Agent(id) => Some((id.clone(), session.progress_busy()?)),
+                    SessionRef::Terminal(_) => None,
+                })
+                .collect()
+        };
         let ticked: Vec<(AgentId, Vec<Effect>)> = {
             let mut machines = self.status_machines.lock().unwrap();
             machines
                 .iter_mut()
-                .map(|(id, m)| (id.clone(), m.tick(now)))
+                .map(|(id, m)| (id.clone(), m.tick(now, levels.get(id).copied())))
                 .collect()
         };
         for (id, effects) in ticked {
@@ -834,6 +849,9 @@ impl Daemon {
             .get_project(project_id)?
             .context("project not found")?;
         let path = git::add_worktree(&project.repo_path, branch, base).await?;
+        // Before the row exists, so the agent that `pacer worktree` moves in
+        // finds its `.env` and skills already there rather than seconds later.
+        crate::worktree_seed::seed(&project.repo_path, &path).await;
         let worktree = Worktree {
             id: WorktreeId::generate(),
             project_id: project_id.clone(),

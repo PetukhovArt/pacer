@@ -24,6 +24,11 @@
 //!   (OSC 9;4, see `pty::progress`). It is the only signal that survives a
 //!   user cancel — no hook fires at all there, and Claude suppresses
 //!   `idle_prompt` precisely because the user just touched the keyboard.
+//! - That event is an *edge*, though, so a turn whose status moved after the
+//!   CLI had already parked has no second edge coming and wedges — red
+//!   especially, since every other exit from `needs_feedback` is an event
+//!   that may never arrive. `tick` therefore also reads the CLI's current
+//!   progress *level* and closes such a turn out.
 
 use pacer_core::AgentStatus;
 use std::collections::HashMap;
@@ -168,6 +173,11 @@ pub struct AgentStatusMachine {
     /// the hold began. `tick` gives up on the hold once this is
     /// `SUBAGENT_QUIET_GRACE` old.
     subagent_alive_at: Option<Instant>,
+    /// Set by a `tick` that found the CLI parked while the status still said
+    /// otherwise. Acting on it takes a second sighting, so a prompt whose
+    /// `UserPromptSubmit` arrived ahead of the CLI's own busy byte cannot
+    /// read as a finished turn for the width of one tick.
+    idle_level_seen: bool,
 }
 
 impl AgentStatusMachine {
@@ -180,6 +190,7 @@ impl AgentStatusMachine {
             stop_held: false,
             drain_idle_since: None,
             subagent_alive_at: None,
+            idle_level_seen: false,
         }
     }
 
@@ -348,14 +359,43 @@ impl AgentStatusMachine {
         effects
     }
 
-    /// Periodic tick (the deferred-finish recheck): while a Stop is held open,
-    /// promote to finished once the subagent set has drained and stayed empty
-    /// for the grace period — or once the set has gone quiet for
+    /// Periodic tick, two jobs.
+    ///
+    /// First, `progress_busy` is the CLI's *current* advertised busy state
+    /// (`None` when it advertises none: codex, cursor, a session with no live
+    /// PTY). `Progress` events report edges only, so an end-of-turn that
+    /// landed while the status said something else leaves no second edge to
+    /// wait for and the agent wedges — `needs_feedback` especially, since
+    /// every other way out of it is an event that may never come after an
+    /// Esc cancel. Reading the level closes that turn out. It cannot green
+    /// out an agent that genuinely waits on the user: an open permission
+    /// prompt holds the progress state at busy (see `pty::progress`).
+    ///
+    /// Second, the deferred finish: while a Stop is held open, promote to
+    /// finished once the subagent set has drained and stayed empty for the
+    /// grace period — or once the set has gone quiet for
     /// `SUBAGENT_QUIET_GRACE`, which means its SubagentStops are never coming
     /// (killed tasks, a crashed worker) and holding longer only wedges the
     /// agent on yellow.
-    pub fn tick(&mut self, now: Instant) -> Vec<Effect> {
+    pub fn tick(&mut self, now: Instant, progress_busy: Option<bool>) -> Vec<Effect> {
         let mut effects = Vec::new();
+        // A held Stop is exempt: the turn is already over and the drain owns
+        // the status, so re-running `end_turn` here would reset its clock
+        // every tick and the hold would never drain.
+        if !self.stop_held
+            && progress_busy == Some(false)
+            && matches!(
+                self.status,
+                AgentStatus::Running | AgentStatus::NeedsFeedback
+            )
+        {
+            if std::mem::replace(&mut self.idle_level_seen, true) {
+                self.idle_level_seen = false;
+                self.end_turn(now, &mut effects);
+            }
+            return effects;
+        }
+        self.idle_level_seen = false;
         if !self.stop_held || self.status != AgentStatus::Running {
             return effects;
         }
@@ -612,7 +652,7 @@ mod tests {
         let fx = idle(&mut m, now + Duration::from_secs(60));
         assert!(fx.is_empty(), "idle with live subagents is a hold: {fx:?}");
         assert_eq!(m.status(), AgentStatus::Running);
-        assert!(m.tick(now + Duration::from_secs(90)).is_empty());
+        assert!(m.tick(now + Duration::from_secs(90), None).is_empty());
 
         // The worker finishes and its completion re-invokes the foreground
         // turn (progress busy, then a real Stop): finished outright.
@@ -637,9 +677,11 @@ mod tests {
         idle(&mut m, now + Duration::from_secs(60));
         subagent(&mut m, false, "sub1", now + Duration::from_secs(120));
         let t = now + Duration::from_secs(121);
-        assert!(m.tick(t).is_empty(), "drain grace starts");
-        assert!(m.tick(t + DRAIN_GRACE - Duration::from_secs(1)).is_empty());
-        let fx = m.tick(t + DRAIN_GRACE);
+        assert!(m.tick(t, None).is_empty(), "drain grace starts");
+        assert!(m
+            .tick(t + DRAIN_GRACE - Duration::from_secs(1), None)
+            .is_empty());
+        let fx = m.tick(t + DRAIN_GRACE, None);
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
     }
 
@@ -671,9 +713,9 @@ mod tests {
         // The quiet clock runs from the last sign of life — the
         // SubagentStart at `now` — not from the Stop or the idle_prompt.
         assert!(m
-            .tick(now + SUBAGENT_QUIET_GRACE - Duration::from_secs(1))
+            .tick(now + SUBAGENT_QUIET_GRACE - Duration::from_secs(1), None)
             .is_empty());
-        let fx = m.tick(now + SUBAGENT_QUIET_GRACE);
+        let fx = m.tick(now + SUBAGENT_QUIET_GRACE, None);
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
         // A helper subagent afterwards must not heal it back to running.
         let fx = subagent(
@@ -706,7 +748,7 @@ mod tests {
             t1,
         );
         assert!(m
-            .tick(now + SUBAGENT_QUIET_GRACE + Duration::from_secs(1))
+            .tick(now + SUBAGENT_QUIET_GRACE + Duration::from_secs(1), None)
             .is_empty());
         // A sibling starting resets it again; the main agent's own tool
         // traffic (no agent_id) does not count.
@@ -721,9 +763,9 @@ mod tests {
             t2 + Duration::from_secs(25 * 60),
         );
         assert!(m
-            .tick(t1 + SUBAGENT_QUIET_GRACE + Duration::from_secs(1))
+            .tick(t1 + SUBAGENT_QUIET_GRACE + Duration::from_secs(1), None)
             .is_empty());
-        let fx = m.tick(t2 + SUBAGENT_QUIET_GRACE);
+        let fx = m.tick(t2 + SUBAGENT_QUIET_GRACE, None);
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
     }
 
@@ -804,9 +846,9 @@ mod tests {
             Some("s1"),
             now + Duration::from_secs(60),
         );
-        let fx = m.tick(now + Duration::from_secs(61));
+        let fx = m.tick(now + Duration::from_secs(61), None);
         assert!(fx.is_empty(), "grace not elapsed yet");
-        let fx = m.tick(now + Duration::from_secs(61) + DRAIN_GRACE);
+        let fx = m.tick(now + Duration::from_secs(61) + DRAIN_GRACE, None);
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
     }
 
@@ -877,6 +919,75 @@ mod tests {
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
     }
 
+    /// The wedge the level check exists for. `Progress` reports edges, so a
+    /// status that moved to red *after* the CLI already parked has no second
+    /// edge coming, and an Esc cancel fires no hook and no idle notification.
+    /// Observed in the wild: a row sat on `needs_feedback` for a quarter of an
+    /// hour with the CLI idle behind it.
+    #[test]
+    fn tick_finishes_a_turn_the_progress_edge_missed() {
+        let mut m = AgentStatusMachine::new(AgentStatus::Fresh, None);
+        let now = t0();
+        m.handle(HookEvent::UserPromptSubmit, Some("s1"), now);
+        // The CLI parks, then the permission prompt's hook lands: the edge is
+        // spent and the status ends up red with nothing left to move it.
+        progress(&mut m, false, now);
+        m.handle(HookEvent::PermissionRequest, Some("s1"), now);
+        assert_eq!(m.status(), AgentStatus::NeedsFeedback);
+
+        let t = now + Duration::from_secs(30);
+        assert!(
+            m.tick(t, Some(false)).is_empty(),
+            "one sighting is not proof"
+        );
+        let fx = m.tick(t + Duration::from_secs(30), Some(false));
+        assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
+    }
+
+    /// The level must not talk over a CLI that is still working, and must not
+    /// speak at all for one that never advertises a level (codex, cursor, a
+    /// session with no live PTY).
+    #[test]
+    fn tick_leaves_a_busy_or_silent_cli_alone() {
+        for level in [Some(true), None] {
+            let mut m = AgentStatusMachine::new(AgentStatus::Fresh, None);
+            let now = t0();
+            m.handle(HookEvent::UserPromptSubmit, Some("s1"), now);
+            assert_eq!(m.status(), AgentStatus::Running);
+            for i in 1..4 {
+                let fx = m.tick(now + Duration::from_secs(30 * i), level);
+                assert!(fx.is_empty(), "level {level:?} must not finish a turn");
+            }
+            assert_eq!(m.status(), AgentStatus::Running);
+        }
+    }
+
+    /// A held Stop is the drain's business. Ticking the level through it must
+    /// not restart the drain clock, or the hold never promotes.
+    #[test]
+    fn tick_level_does_not_disturb_a_held_stop() {
+        let mut m = AgentStatusMachine::new(AgentStatus::Fresh, None);
+        let now = t0();
+        m.handle(HookEvent::UserPromptSubmit, Some("s1"), now);
+        m.handle(
+            HookEvent::SubagentStart { subagent_id: None },
+            Some("s1"),
+            now,
+        );
+        m.handle(HookEvent::Stop, Some("s1"), now);
+        assert_eq!(m.status(), AgentStatus::Running, "held for the subagent");
+        m.handle(
+            HookEvent::SubagentStop { subagent_id: None },
+            Some("s1"),
+            now,
+        );
+
+        // The CLI is parked the whole way; the drain still owns the promotion.
+        assert!(m.tick(now, Some(false)).is_empty(), "drain grace starts");
+        let fx = m.tick(now + DRAIN_GRACE, Some(false));
+        assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
+    }
+
     #[test]
     fn progress_idle_leaves_fresh_and_dead_agents_alone() {
         // Every CLI clears its progress bar at startup and again on exit;
@@ -944,9 +1055,9 @@ mod tests {
             Some("s1"),
             now + Duration::from_secs(6),
         );
-        let fx = m.tick(now + Duration::from_secs(7));
+        let fx = m.tick(now + Duration::from_secs(7), None);
         assert!(fx.is_empty(), "grace not elapsed yet");
-        let fx = m.tick(now + Duration::from_secs(7) + DRAIN_GRACE);
+        let fx = m.tick(now + Duration::from_secs(7) + DRAIN_GRACE, None);
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
     }
 
