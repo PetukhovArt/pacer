@@ -2132,6 +2132,10 @@ pub struct App {
     /// Inner rect of the terminal pane from the last draw.
     pub term_area: Rect,
     pub dirty: bool,
+    /// Next draw starts from a cleared terminal instead of the frame diff —
+    /// set by `Action::Redraw` and on focus-gain, when the outer terminal's
+    /// contents can no longer be trusted to match the diff's last frame.
+    pub force_clear: bool,
     pub should_quit: bool,
     /// Set with `should_quit` when the hosts picker chose a destination:
     /// after teardown the binary execs `pacer ssh` at it, replacing this
@@ -2413,6 +2417,7 @@ impl App {
             hits: Vec::new(),
             term_area: Rect::default(),
             dirty: true,
+            force_clear: false,
             should_quit: false,
             pending_ssh: None,
             flash: None,

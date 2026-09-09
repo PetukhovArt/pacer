@@ -50,6 +50,7 @@ can't trap yourself.
 | `f` / `F` / `b` | find file / find in files (`git grep`) / file tree browser, all scoped to the selected worktree — `Enter` opens the file in an editor modal (at the matched line, for `F`); in `f` and `b`, `Ctrl+y` copies the path |
 | `z` | full-screen terminal: collapse the sidebars and lock input into the attached session |
 | `Shift+M` | memory usage: RAM per agent/terminal process tree, pacer itself, and the machine-wide share; `↑`/`↓` + `Enter` opens the selected session |
+| `Ctrl+Shift+R` | repaint the whole screen from scratch, clearing any stale glyphs the emulator left behind; works inside a locked terminal pane too |
 
 ## Workspaces & panels
 

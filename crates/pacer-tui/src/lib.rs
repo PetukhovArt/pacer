@@ -8,6 +8,7 @@ pub mod config;
 #[cfg(test)]
 pub mod editor_stub;
 pub mod event_loop;
+pub mod frame_tap;
 pub mod fuzzy;
 pub mod git_diff;
 pub mod grep_search;

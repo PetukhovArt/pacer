@@ -23,7 +23,7 @@ use pacer_core::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use std::io::{BufWriter, Stdout};
+use std::io::BufWriter;
 use std::time::Duration;
 
 mod focus_walk;
@@ -209,7 +209,7 @@ pub async fn run_app(workspace: Option<String>) -> Result<Option<crate::hosts::H
 /// including the panic hook — knows to pop them).
 static KITTY_PUSHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-fn setup_terminal() -> Result<Terminal<CrosstermBackend<BufWriter<Stdout>>>> {
+fn setup_terminal() -> Result<Terminal<CrosstermBackend<crate::frame_tap::FrameTap>>> {
     use crossterm::{execute, terminal::*};
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -242,7 +242,8 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<BufWriter<Stdout>>>> {
     }));
     // Buffered so a full-frame redraw reaches the terminal in a few large
     // writes instead of one syscall per line (Stdout is line-buffered).
-    let writer = BufWriter::with_capacity(64 * 1024, std::io::stdout());
+    let writer =
+        crate::frame_tap::FrameTap::new(BufWriter::with_capacity(64 * 1024, std::io::stdout()));
     Ok(Terminal::new(CrosstermBackend::new(writer))?)
 }
 
@@ -270,7 +271,7 @@ pub fn restore_terminal() {
 }
 
 async fn main_loop(
-    terminal: &mut Terminal<CrosstermBackend<BufWriter<Stdout>>>,
+    terminal: &mut Terminal<CrosstermBackend<crate::frame_tap::FrameTap>>,
     channels: &mut ipc::IpcChannels,
     startup_workspace: Option<String>,
 ) -> Result<Option<crate::hosts::HostEntry>> {
@@ -316,6 +317,9 @@ async fn main_loop(
             // between selections the slow poll keeps the count fresh.
             if app.git_changes_stale() {
                 refresh_git_changes(&mut app);
+            }
+            if std::mem::take(&mut app.force_clear) {
+                terminal.clear()?;
             }
             terminal.draw(|f| ui::draw(f, &mut app))?;
             app.dirty = false;
@@ -1283,8 +1287,14 @@ fn handle_terminal_event(app: &mut App, event: Event, out: &mut Vec<ClientReques
         }
         Event::Resize(_, _) => app.dirty = true,
         // The terminal window took focus again — most often back from a
-        // browser tab where a pull request was just merged or closed.
-        Event::FocusGained => schedule_pull_request_refresh(app),
+        // browser tab where a pull request was just merged or closed. Also
+        // the moment the emulator may have repainted behind our back
+        // (ConPTY resize, scrollback trim), so start the next frame clean.
+        Event::FocusGained => {
+            app.force_clear = true;
+            app.dirty = true;
+            schedule_pull_request_refresh(app);
+        }
         _ => {}
     }
 }
@@ -1549,6 +1559,15 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
                 == Some(crate::keymap::Action::UnlockTerminal);
         if is_hatch {
             leave_terminal_lock(app);
+            return;
+        }
+        // Repaint works even locked: a stale screen is exactly when the
+        // pane is attached, and no child binds ctrl+shift+r.
+        if app.keymap.lookup(crate::keymap::Scope::Global, &chord)
+            == Some(crate::keymap::Action::Redraw)
+        {
+            app.force_clear = true;
+            app.dirty = true;
             return;
         }
         let exited = app.term.as_ref().is_some_and(|t| t.exited);
@@ -1949,6 +1968,10 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             } else {
                 app.flash = Some("attach a session first".into());
             }
+        }
+        Action::Redraw => {
+            app.force_clear = true;
+            app.dirty = true;
         }
         // Terminal-scope only; never resolved here.
         Action::UnlockTerminal => {}
@@ -12706,6 +12729,35 @@ diff --git a/src/b.rs b/src/b.rs
         app.term_locked = false;
         handle_terminal_event(&mut app, Event::Paste("x".into()), &mut out);
         assert!(out.is_empty(), "an unlocked pane takes no paste: {out:?}");
+    }
+
+    /// Ctrl+Shift+R inside a locked pane repaints instead of reaching the
+    /// child — the stale-screen escape hatch is needed exactly there, and a
+    /// reorder of the locked branch would silently forward the chord.
+    #[test]
+    fn redraw_works_inside_a_locked_pane() {
+        let mut app = App::new();
+        seed_tree(&mut app);
+        let mut out = Vec::new();
+        let sref = SessionRef::Agent(AgentId("a1".into()));
+        app.term = Some(AttachedTerm::new(sref, 80, 24));
+        app.focus = Focus::Terminal;
+        app.term_locked = true;
+
+        handle_key(
+            &mut app,
+            KeyEvent::new(
+                KeyCode::Char('r'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+            &mut out,
+        );
+        assert!(
+            app.force_clear,
+            "the next frame starts from a cleared screen"
+        );
+        assert!(app.term_locked, "repaint does not unlock the pane");
+        assert!(out.is_empty(), "the chord must not reach the pty: {out:?}");
     }
 
     #[test]

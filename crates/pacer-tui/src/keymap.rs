@@ -91,6 +91,9 @@ pub enum Action {
     // terminal
     Zoom,
     UnlockTerminal,
+    /// Repaint the whole screen from scratch, discarding the frame diff —
+    /// the escape hatch for stale cells left by an outer-terminal desync.
+    Redraw,
     // general
     Workspaces,
     ToggleWorkspaces,
@@ -425,6 +428,15 @@ pub const ACTIONS: &[ActionSpec] = &[
         group: "TERMINAL",
         scope: Scope::Terminal,
         defaults: &["ctrl+q", "ctrl+shift+h", "ctrl+]", "ctrl+esc", "ctrl+left"],
+    },
+    ActionSpec {
+        action: Action::Redraw,
+        id: "redraw",
+        label: "Repaint screen",
+        hint: "Redraw everything from scratch (clears stale glyphs)",
+        group: "TERMINAL",
+        scope: Scope::Global,
+        defaults: &["ctrl+shift+r"],
     },
     // ---- GENERAL ----
     ActionSpec {
