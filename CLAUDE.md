@@ -71,6 +71,14 @@ GitHub releases, so the next rename does need the migration. The Makefile's `dev
 `releasing.md`, `remote-access-tailscale.md`. Put new user-facing writing in the right one instead
 of growing the README.
 
+## Plans
+
+`.claude/plans/` is the backlog. Read the ones covering your area before designing anything — the
+design may already be settled, with the reason each alternative lost. `<date>-<name>.prd.md` is a
+spec, ready to implement; `<date>-<name>.decisions.md` records what was settled, what was rejected
+and what nobody has answered yet, so don't build from one without asking. Delete a plan once it
+ships, or say at the top that it didn't.
+
 <important if="you are cutting a release, publishing a package or changing repository settings">
 
 ## Publishing
