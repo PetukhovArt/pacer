@@ -73,9 +73,22 @@ cargo fmt --all -- --check               # make ci, first step
 cargo test --workspace                   # make test
 ```
 
-**Never run a fresh build against your real daemon.** `make dev` does that isolation with a wrapper;
-here you set the two environment variables yourself, and `cargo run` then gets its own daemon, port,
-token and database:
+**Never run a fresh build against your real daemon.** `scripts\dev.ps1` is the Windows counterpart
+of `make dev`: it builds, keys a runtime dir and a database to this checkout, stops the dev daemon
+left over from the previous run, and starts the TUI on the fresh binary.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 -Agent cmd.exe   # stub agents out
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 -Reset           # wipe the dev database
+```
+
+Run it in a window of its own, outside pacer, and keep your real pacer in another. The loop is
+edit, quit the TUI with `q`, run the script again. Stopping the old daemon is the load-bearing part:
+it detaches and outlives its TUI, so a rebuild that only relaunches the TUI leaves daemon-side
+changes running the previous code.
+
+The script sets what you would otherwise export by hand:
 
 ```powershell
 $env:PACER_RUNTIME_DIR = "$env:TEMP\pacer-dev"
