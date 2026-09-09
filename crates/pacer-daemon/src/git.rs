@@ -162,6 +162,31 @@ fn detached_label(head: Option<&str>) -> String {
     }
 }
 
+/// Gitignored paths in `repo`, relative and NUL-separated by git itself, so
+/// a name holding a space or a quote survives the round trip.
+///
+/// `--directory` is what makes this cheap: a directory ignored in full comes
+/// back as a single `node_modules/` entry instead of every file under it.
+pub async fn ignored_entries(repo: &Path) -> Result<Vec<String>> {
+    let out = git(
+        repo,
+        &[
+            "ls-files",
+            "-z",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+        ],
+    )
+    .await?;
+    Ok(out
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect())
+}
+
 /// Directory a new worktree for `branch` should live in:
 /// `<repo>/../<repo-name>-worktrees/<branch>` (slashes in branch → dashes).
 pub fn worktree_dir(repo: &Path, branch: &str) -> PathBuf {

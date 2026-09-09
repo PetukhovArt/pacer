@@ -42,6 +42,12 @@ worktrees edit two directories and never collide. The branch name you type is sl
 Or skip the column and just ask: tell a Claude session "do this in a worktree" and it creates one
 through pacer and moves itself into it.
 
+A new worktree also gets what git leaves behind: the gitignored files sitting in the main checkout
+(`.env`, `.claude/settings.local.json`) are copied in, and gitignored symlinks (a linked skill, a
+shared config) are recreated pointing where they pointed. Ignored directories are not: `node_modules`,
+`target` and the like are yours to build, and a link into one is followed only if you linked it
+yourself. A file the branch tracks is never overwritten by the main checkout's ignored copy.
+
 ## 4. Start the agent
 
 With a worktree selected, press `n` in the Sessions column. A menu asks what to run — **Claude**,

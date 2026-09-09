@@ -12,6 +12,7 @@ pub mod sibling;
 pub mod status;
 pub mod store;
 pub mod subagents;
+pub mod worktree_seed;
 
 use anyhow::{bail, Context, Result};
 use pacer_core::{env, paths, transport};
