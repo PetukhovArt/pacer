@@ -18,6 +18,7 @@ pub mod keymap;
 pub mod keys;
 pub mod layout;
 pub mod links;
+pub mod mermaid;
 pub mod orphan_overlay;
 pub mod paste_burst;
 pub mod pr_preview;

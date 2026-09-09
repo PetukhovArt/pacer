@@ -128,6 +128,7 @@ pub enum SettingKind {
     PaletteEnterAttaches,
     GitInitOnCreate,
     Editor,
+    MermaidRenderer,
     SkipSessionNaming,
     SessionIdleTimeout,
     DoneSound,
@@ -174,6 +175,11 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::Editor,
                 label: "File editor",
                 hint: "Editor f/b/F and ⌥click launch (PACER_EDITOR overrides)",
+            },
+            SettingSpec {
+                kind: SettingKind::MermaidRenderer,
+                label: "Mermaid renderer",
+                hint: "Command the b preview pipes mermaid blocks through; off leaves the source",
             },
             SettingSpec {
                 kind: SettingKind::PrListFilter,
@@ -446,6 +452,11 @@ pub struct Config {
     /// `PACER_EDITOR` env var overrides it for the process; see
     /// [`Config::editor_command`].
     pub editor: String,
+    /// Command the tree browser (`b`) preview renders mermaid diagrams
+    /// with: the program plus arguments, the block's source on stdin and
+    /// the text art on stdout. Empty turns rendering off; see
+    /// [`Config::mermaid_renderer_command`].
+    pub mermaid_renderer: String,
     /// Create new agent sessions straight from the kind picker, with no
     /// name prompt: the session takes the generated default name and is
     /// opted into agent-driven auto-titling, exactly as accepting an empty
@@ -546,6 +557,7 @@ impl Default for Config {
             palette_enter_attaches: true,
             git_init_on_create: true,
             editor: "vim".into(),
+            mermaid_renderer: crate::mermaid::DEFAULT_RENDERER.into(),
             skip_session_naming: false,
             session_idle_timeout: "5m".into(),
             done_sound: "Glass".into(),
@@ -644,6 +656,10 @@ impl Config {
         );
         obj.insert("editor".into(), serde_json::json!(self.editor));
         obj.insert(
+            "mermaid_renderer".into(),
+            serde_json::json!(self.mermaid_renderer),
+        );
+        obj.insert(
             "skip_session_naming".into(),
             serde_json::json!(self.skip_session_naming),
         );
@@ -731,6 +747,12 @@ impl Config {
         )
     }
 
+    /// The mermaid renderer command for the `b` preview, trimmed; empty
+    /// means off.
+    pub fn mermaid_renderer_command(&self) -> String {
+        self.mermaid_renderer.trim().to_string()
+    }
+
     /// The `sort_*` SETTINGS resolved for the sidebar lists.
     pub fn sort_modes(&self) -> crate::app::SortModes {
         crate::app::SortModes {
@@ -811,6 +833,14 @@ impl Config {
             SettingKind::PaletteEnterAttaches => on_off(self.palette_enter_attaches).into(),
             SettingKind::GitInitOnCreate => on_off(self.git_init_on_create).into(),
             SettingKind::Editor => self.editor.clone(),
+            SettingKind::MermaidRenderer => {
+                let cmd = self.mermaid_renderer_command();
+                if cmd.is_empty() {
+                    "off".into()
+                } else {
+                    cmd
+                }
+            }
             SettingKind::SkipSessionNaming => on_off(self.skip_session_naming).into(),
             SettingKind::SessionIdleTimeout => self.session_idle_timeout.clone(),
             SettingKind::DoneSound => self.done_sound.clone(),
@@ -854,6 +884,13 @@ impl Config {
             }
             SettingKind::Editor => {
                 self.editor = cycle_choice(&self.editor, EDITORS, step).into();
+            }
+            SettingKind::MermaidRenderer => {
+                self.mermaid_renderer = if self.mermaid_renderer_command().is_empty() {
+                    crate::mermaid::DEFAULT_RENDERER.into()
+                } else {
+                    String::new()
+                };
             }
             SettingKind::SkipSessionNaming => {
                 self.skip_session_naming = !self.skip_session_naming;

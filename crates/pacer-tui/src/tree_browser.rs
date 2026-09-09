@@ -6,6 +6,7 @@ use crate::app::{
     clamp_files_width, clamp_selection, max_scroll, scrolled_by, window_start, DEFAULT_DIFF_FILES_W,
 };
 use crate::git_diff::cap_lines;
+use crate::mermaid;
 use crate::syntax::{Highlighter, TokenKind};
 use crate::text_input::TextInput;
 use ratatui::layout::Rect;
@@ -49,6 +50,8 @@ pub struct TreeBrowser {
     /// Editor command Enter launches (PACER_EDITOR, then the `editor`
     /// setting, default vim), captured at open time.
     pub editor: String,
+    /// Mermaid renderer command for the preview; empty means off.
+    pub mermaid_renderer: String,
     pub nodes: Vec<TreeNode>,
     /// Top-level node indices (children of the implicit root).
     pub top: Vec<usize>,
@@ -102,13 +105,20 @@ pub struct TreeBrowser {
 }
 
 impl TreeBrowser {
-    pub fn new(root: PathBuf, branch: String, editor: String, files: Vec<String>) -> Self {
+    pub fn new(
+        root: PathBuf,
+        branch: String,
+        editor: String,
+        mermaid_renderer: String,
+        files: Vec<String>,
+    ) -> Self {
         let (nodes, top, file_count) = build_nodes(&files);
         let expanded = vec![false; nodes.len()];
         let mut browser = Self {
             root,
             branch,
             editor,
+            mermaid_renderer,
             nodes,
             top,
             expanded,
@@ -348,8 +358,8 @@ impl TreeBrowser {
 
     /// Reload the preview for the current selection and reset the scroll.
     /// Never fails: errors become the displayed text (the `diff_for` rule).
-    /// Real file contents get syntax-highlighted; directory listings and
-    /// placeholder messages stay plain.
+    /// Real file contents get syntax-highlighted; directory listings,
+    /// placeholder messages and rendered mermaid art stay plain.
     pub fn load_preview(&mut self) {
         self.scroll = 0;
         let (text, highlight_path) = match self.selected_node() {
@@ -375,12 +385,31 @@ impl TreeBrowser {
             },
             None => (String::new(), None),
         };
+        let (text, plain_ranges) = match &highlight_path {
+            Some(path) => {
+                let rendered =
+                    mermaid::render(&text, std::path::Path::new(path), &self.mermaid_renderer);
+                (rendered.text, rendered.plain)
+            }
+            None => (text, Vec::new()),
+        };
         let mut hl = match &highlight_path {
             Some(path) => Highlighter::for_path(path),
             None => Highlighter::plain(),
         };
+        let mut plain = Highlighter::plain();
         self.preview_is_file = highlight_path.is_some();
-        self.preview_lines = text.lines().map(|l| hl.line(l)).collect();
+        self.preview_lines = text
+            .lines()
+            .enumerate()
+            .map(|(i, l)| {
+                if plain_ranges.iter().any(|r| r.contains(&i)) {
+                    plain.line(l)
+                } else {
+                    hl.line(l)
+                }
+            })
+            .collect();
         self.preview_line_count = self.preview_lines.len();
         self.preview = text;
     }
@@ -494,6 +523,7 @@ mod tests {
             "/nonexistent-pacer-tree-test".into(),
             "main".into(),
             "vim".into(),
+            String::new(),
             files.iter().map(|f| f.to_string()).collect(),
         )
     }
@@ -597,6 +627,7 @@ mod tests {
             dir.path().to_path_buf(),
             "main".into(),
             "vim".into(),
+            String::new(),
             vec!["src/lib.rs".into(), "gone.txt".into()],
         );
         b.filter = "lib".into();
@@ -620,6 +651,7 @@ mod tests {
             dir.path().to_path_buf(),
             "main".into(),
             "vim".into(),
+            String::new(),
             vec!["main.rs".into()],
         );
         assert_eq!(
@@ -653,6 +685,7 @@ mod tests {
             dir.path().to_path_buf(),
             "main".into(),
             "vim".into(),
+            String::new(),
             vec!["blob.bin".into()],
         );
         assert_eq!(b.preview, "(binary file)");
