@@ -436,7 +436,11 @@ pub const ACTIONS: &[ActionSpec] = &[
         hint: "Redraw everything from scratch (clears stale glyphs)",
         group: "TERMINAL",
         scope: Scope::Global,
-        defaults: &["ctrl+shift+r"],
+        // `F5` carries it off Windows: `^⇧` needs the kitty keyboard
+        // protocol, so on a stock Terminal.app the repaint would have had no
+        // reachable chord at all — and the escape hatch for a wrecked screen
+        // is the last thing that should depend on the terminal being modern.
+        defaults: &["ctrl+shift+r", "f5"],
     },
     // ---- GENERAL ----
     ActionSpec {
