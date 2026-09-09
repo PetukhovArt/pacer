@@ -8580,6 +8580,38 @@ mod tests {
         );
     }
 
+    /// The default layout stacks PRs *under* Worktrees in one column, so the
+    /// tile to the left of PRs is Projects, not Worktrees. The two tests
+    /// either side of this one both move a panel first, which left the
+    /// layout every user actually sees uncovered — and the arrow walk out of
+    /// PRs is what the e2e helper leans on to get back to Worktrees after a
+    /// fresh worktree drops focus into Sessions. ⇧Tab is the walk that goes
+    /// through the stack; ← is the one that steps out of the column.
+    #[test]
+    fn the_default_stack_puts_projects_left_of_prs() {
+        let mut app = App::new();
+        app.body_area = ratatui::layout::Rect::new(0, 0, 160, 40);
+        let mut out = Vec::new();
+
+        app.focus = Focus::Sessions;
+        press(&mut app, KeyCode::Left, KeyModifiers::NONE, &mut out);
+        assert_eq!(app.focus, Focus::Prs, "← off Sessions enters the stack");
+        press(&mut app, KeyCode::Left, KeyModifiers::NONE, &mut out);
+        assert_eq!(
+            app.focus,
+            Focus::Projects,
+            "← out of PRs leaves the column; Worktrees is above it, not beside"
+        );
+
+        app.focus = Focus::Prs;
+        press(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT, &mut out);
+        assert_eq!(
+            app.focus,
+            Focus::Worktrees,
+            "the panel walk is what climbs the stack"
+        );
+    }
+
     /// A panel dragged past the pane has the pane on its left, and the pane
     /// is never a stop going back. h/← steps over it onto the panel beyond
     /// rather than treating it as the row's left edge and jumping up into

@@ -391,11 +391,14 @@ fn create_worktree(tui: &mut TuiHarness, branch: &str) {
     tui.wait_for_gone("New worktree");
     tui.wait_for_text(branch);
     // A fresh worktree auto-focuses the sessions panel (so `n` starts an
-    // agent); hop back to Worktrees so callers stay panel-stable.
+    // agent); hop back to Worktrees so callers stay panel-stable. ⇧Tab, not
+    // ←: the arrows follow the panels' places on screen, and PRs sits
+    // stacked under Worktrees in one column, so ← out of PRs leaves the
+    // column for Projects. The panel walk is what climbs the stack.
     tui.wait_for_text(FOOTER_SESSIONS);
-    tui.send(LEFT); // (h is the hosts picker)
+    tui.send(SHIFT_TAB);
     tui.wait_for_text(FOOTER_PRS);
-    tui.send(LEFT);
+    tui.send(SHIFT_TAB);
     tui.wait_for_text(FOOTER_WORKTREES);
 }
 
@@ -546,9 +549,9 @@ fn tui_projects_worktrees_agents_navigation() {
     // The checkouts stand in CREATION ORDER — [main, feat-a, feat-b] — since
     // `SortMode::Created` is the default and recency is opted into. The
     // cursor is on feat-a, so the root checkout is one row up.
-    tui.send(LEFT); // Sessions -> PRs
+    tui.send(SHIFT_TAB); // Sessions -> PRs
     tui.wait_for_text(FOOTER_PRS);
-    tui.send(LEFT); // -> Worktrees (feat-a still selected)
+    tui.send(SHIFT_TAB); // -> Worktrees (feat-a still selected)
     tui.wait_for_text(FOOTER_WORKTREES);
     tui.send(b"k"); // main
     tui.wait_for_selected("main ⌂ root");
