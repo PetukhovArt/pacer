@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added mermaid diagrams to the `b` file preview: `.mmd` files and fenced `mermaid` blocks in markdown render as text art through the `mermaid_renderer` command (`mermaid-ascii -f -` by default), with one install hint when it is not on the path.
 - Added a `Bold names` setting under Appearance: off draws the panel headers and project names at normal weight, for terminals whose bold face is a heavier font.
 - Added `Ctrl+Shift+R` and `F5` to repaint the whole screen, and an automatic full repaint when the window regains focus, clearing stale glyphs left after the emulator repaints behind pacer's back. `Ctrl+Shift+R` needs a terminal that speaks the kitty keyboard protocol; `F5` always arrives.
 - Added a `Row timestamps` setting under Appearance: turn it off and the dim `2h ago` label leaves the project, worktree and session rows, which gives the columns back to the names.

@@ -2270,7 +2270,10 @@ fn open_tree_browser(app: &mut App) {
     let Some((files, editor)) = load_worktree_files(app, &path, &branch) else {
         return;
     };
-    app.overlay = Some(Overlay::Tree(TreeBrowser::new(path, branch, editor, files)));
+    let renderer = crate::config::Config::load().mermaid_renderer();
+    app.overlay = Some(Overlay::Tree(TreeBrowser::new(
+        path, branch, editor, renderer, files,
+    )));
 }
 
 /// Find-in-files (`F`): live `git grep` over the selected worktree; Enter

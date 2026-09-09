@@ -23,6 +23,7 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 | `theme` | `default` | color theme |
 | `animations` | `true` | status-text sweep and splash motion |
 | `focus_tint` | `false` | tint the focused panel |
+| `mermaid_renderer` | `mermaid-ascii -f -` | command the `b` preview renders mermaid diagrams with (`.mmd` files and fenced `mermaid` blocks in markdown); the block goes to its stdin, the text art comes back on stdout; empty turns it off |
 | `editor` | `vim` | what the `f` / `F` / `b` modals launch (`vim`, `nvim`, `nano`, `emacs`, `hx`, or any command line — it is called as `<editor> +<line> <file>`) |
 | `done_sound` | `Glass` | what rings when a turn finishes: `off`, `bell`, or a macOS system sound |
 | `session_idle_timeout` | `5m` | how long an unwatched idle session keeps its PTY before it is reaped (`off` never reaps) |
