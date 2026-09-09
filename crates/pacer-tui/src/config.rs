@@ -455,7 +455,7 @@ pub struct Config {
     /// Command the tree browser (`b`) preview renders mermaid diagrams
     /// with: the program plus arguments, the block's source on stdin and
     /// the text art on stdout. Empty turns rendering off; see
-    /// [`Config::mermaid_renderer`].
+    /// [`Config::mermaid_renderer_command`].
     pub mermaid_renderer: String,
     /// Create new agent sessions straight from the kind picker, with no
     /// name prompt: the session takes the generated default name and is
@@ -749,7 +749,7 @@ impl Config {
 
     /// The mermaid renderer command for the `b` preview, trimmed; empty
     /// means off.
-    pub fn mermaid_renderer(&self) -> String {
+    pub fn mermaid_renderer_command(&self) -> String {
         self.mermaid_renderer.trim().to_string()
     }
 
@@ -834,7 +834,7 @@ impl Config {
             SettingKind::GitInitOnCreate => on_off(self.git_init_on_create).into(),
             SettingKind::Editor => self.editor.clone(),
             SettingKind::MermaidRenderer => {
-                let cmd = self.mermaid_renderer();
+                let cmd = self.mermaid_renderer_command();
                 if cmd.is_empty() {
                     "off".into()
                 } else {
@@ -886,7 +886,7 @@ impl Config {
                 self.editor = cycle_choice(&self.editor, EDITORS, step).into();
             }
             SettingKind::MermaidRenderer => {
-                self.mermaid_renderer = if self.mermaid_renderer().is_empty() {
+                self.mermaid_renderer = if self.mermaid_renderer_command().is_empty() {
                     crate::mermaid::DEFAULT_RENDERER.into()
                 } else {
                     String::new()

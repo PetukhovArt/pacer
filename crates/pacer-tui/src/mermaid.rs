@@ -13,7 +13,7 @@ use std::io::{Read, Write};
 use std::ops::Range;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 pub const DEFAULT_RENDERER: &str = "mermaid-ascii -f -";
@@ -24,6 +24,7 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 const CACHE_CAP: usize = 256;
 
 pub struct Rendered {
+    /// The preview text with every block replaced by its rendering.
     pub text: String,
     /// Line ranges of `text` that are art (or the install hint), which the
     /// syntax highlighter must not colour.
@@ -34,7 +35,7 @@ pub struct Rendered {
 /// the renderer program plus arguments, whitespace-separated; empty means
 /// off. A missing renderer leaves the text as it is, with one hint line
 /// above the first block; a failing one puts its stderr in place of the
-/// block; a hanging one is killed and the block stays as source.
+/// block; a hanging one is killed and the block stays exactly as written.
 pub fn render(text: &str, path: &Path, command: &str) -> Rendered {
     let unchanged = || Rendered {
         text: text.to_string(),
@@ -75,7 +76,11 @@ pub fn render(text: &str, path: &Path, command: &str) -> Rendered {
         let art = match cached(&argv, &block.source) {
             Ok(art) => art,
             Err(RenderError::Failed(msg)) => msg,
-            Err(RenderError::TimedOut) => block.source.clone(),
+            Err(RenderError::TimedOut) => {
+                out.extend(lines[block.lines.clone()].iter().map(|l| l.to_string()));
+                cursor = block.lines.end;
+                continue;
+            }
         };
         let start = out.len();
         out.extend(art.lines().map(|l| l.replace('\t', "    ")));
@@ -173,47 +178,42 @@ fn closes(line: &str, ch: char, len: usize) -> bool {
     matches!(fence(line), Some((c, l, info)) if c == ch && l >= len && info.is_empty())
 }
 
+#[derive(Clone)]
 enum RenderError {
     Failed(String),
     TimedOut,
 }
 
-static CACHE: Mutex<Option<HashMap<u64, Result<String, String>>>> = Mutex::new(None);
+/// Every outcome is remembered, timeouts included: a hanging diagram costs
+/// its `TIMEOUT` once per session, not once per visit.
+static CACHE: LazyLock<Mutex<HashMap<u64, Result<String, RenderError>>>> =
+    LazyLock::new(Default::default);
 
 fn cached(argv: &[String], source: &str) -> Result<String, RenderError> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     argv.hash(&mut hasher);
     source.hash(&mut hasher);
     let key = hasher.finish();
-    let mut guard = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    let cache = guard.get_or_insert_with(HashMap::new);
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(hit) = cache.get(&key) {
-        return hit.clone().map_err(RenderError::Failed);
+        return hit.clone();
     }
     let result = run(argv, source);
-    let entry = match &result {
-        Ok(art) => Some(Ok(art.clone())),
-        Err(RenderError::Failed(msg)) => Some(Err(msg.clone())),
-        Err(RenderError::TimedOut) => None,
-    };
-    if let Some(entry) = entry {
-        if cache.len() >= CACHE_CAP {
-            cache.clear();
-        }
-        cache.insert(key, entry);
+    if cache.len() >= CACHE_CAP {
+        cache.clear();
     }
+    cache.insert(key, result.clone());
     result
 }
 
-static RESOLVED: Mutex<Option<HashMap<String, Option<String>>>> = Mutex::new(None);
+static RESOLVED: LazyLock<Mutex<HashMap<String, Option<String>>>> = LazyLock::new(Default::default);
 
 /// The command as argv with the program resolved, or `None` when it cannot
 /// be found. Probed once per command per process, so a missing renderer
 /// costs one lookup.
 fn available(command: &str) -> Option<Vec<String>> {
     let mut argv: Vec<String> = command.split_whitespace().map(str::to_string).collect();
-    let mut guard = RESOLVED.lock().unwrap_or_else(|e| e.into_inner());
-    let known = guard.get_or_insert_with(HashMap::new);
+    let mut known = RESOLVED.lock().unwrap_or_else(|e| e.into_inner());
     let program = known
         .entry(command.to_string())
         .or_insert_with(|| resolve(&argv[0]));

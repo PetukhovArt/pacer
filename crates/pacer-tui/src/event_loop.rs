@@ -2164,14 +2164,14 @@ fn selected_checkout(app: &mut App) -> Option<(std::path::PathBuf, String)> {
     Some((path, branch))
 }
 
-/// Every tracked + untracked file of a checkout, plus the configured editor
-/// command, for the finder and tree modals. Flashes and returns None when
+/// Every tracked + untracked file of a checkout, plus the config the finder
+/// and tree modals read their commands from. Flashes and returns None when
 /// git fails or the checkout has no files.
 fn load_worktree_files(
     app: &mut App,
     path: &std::path::Path,
     branch: &str,
-) -> Option<(Vec<String>, String)> {
+) -> Option<(Vec<String>, crate::config::Config)> {
     let files = match crate::git_diff::list_files(path) {
         Ok(files) => files,
         Err(msg) => {
@@ -2183,8 +2183,7 @@ fn load_worktree_files(
         app.flash = Some(format!("no files in {branch}"));
         return None;
     }
-    let editor = crate::config::Config::load().editor_command();
-    Some((files, editor))
+    Some((files, crate::config::Config::load()))
 }
 
 fn open_diff_view(app: &mut App) {
@@ -2253,9 +2252,10 @@ fn open_file_finder(app: &mut App) {
     let Some((path, branch)) = selected_checkout(app) else {
         return;
     };
-    let Some((files, editor)) = load_worktree_files(app, &path, &branch) else {
+    let Some((files, config)) = load_worktree_files(app, &path, &branch) else {
         return;
     };
+    let editor = config.editor_command();
     app.overlay = Some(Overlay::Files(FileFinder::new(path, branch, editor, files)));
 }
 
@@ -2267,12 +2267,15 @@ fn open_tree_browser(app: &mut App) {
     let Some((path, branch)) = selected_checkout(app) else {
         return;
     };
-    let Some((files, editor)) = load_worktree_files(app, &path, &branch) else {
+    let Some((files, config)) = load_worktree_files(app, &path, &branch) else {
         return;
     };
-    let renderer = crate::config::Config::load().mermaid_renderer();
     app.overlay = Some(Overlay::Tree(TreeBrowser::new(
-        path, branch, editor, renderer, files,
+        path,
+        branch,
+        config.editor_command(),
+        config.mermaid_renderer_command(),
+        files,
     )));
 }
 
