@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Added a `Bold names` setting under Appearance: off draws the panel headers and project names at normal weight, for terminals whose bold face is a heavier font.
-- Added `Ctrl+Shift+R` to repaint the whole screen, and an automatic full repaint when the window regains focus, clearing stale glyphs left after the emulator repaints behind pacer's back.
+- Added `Ctrl+Shift+R` and `F5` to repaint the whole screen, and an automatic full repaint when the window regains focus, clearing stale glyphs left after the emulator repaints behind pacer's back. `Ctrl+Shift+R` needs a terminal that speaks the kitty keyboard protocol; `F5` always arrives.
 - Added a `Row timestamps` setting under Appearance: turn it off and the dim `2h ago` label leaves the project, worktree and session rows, which gives the columns back to the names.
 - Added the main checkout's gitignored files and symlinks to every new worktree, so `.env`, local settings and linked skills are in place before an agent moves in. Ignored directories such as `node_modules` and `target` are left for you to build.
 - Fixed a session that had already answered sweeping yellow for another half hour, because a background subagent cancelled earlier in the turn never reported that it had stopped.
