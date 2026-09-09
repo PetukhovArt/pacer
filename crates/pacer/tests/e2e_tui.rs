@@ -546,9 +546,12 @@ fn tui_projects_worktrees_agents_navigation() {
     // The checkouts stand in CREATION ORDER — [main, feat-a, feat-b] — since
     // `SortMode::Created` is the default and recency is opted into. The
     // cursor is on feat-a, so the root checkout is one row up.
-    tui.send(LEFT); // Sessions -> PRs
+    // ⇧Tab, not ←: the arrows follow the panels' places on screen, and PRs
+    // sits stacked *under* Worktrees in the same column, so ← out of PRs
+    // lands on Projects. The fixed walk is what reaches Worktrees here.
+    tui.send(SHIFT_TAB); // Sessions -> PRs
     tui.wait_for_text(FOOTER_PRS);
-    tui.send(LEFT); // -> Worktrees (feat-a still selected)
+    tui.send(SHIFT_TAB); // -> Worktrees (feat-a still selected)
     tui.wait_for_text(FOOTER_WORKTREES);
     tui.send(b"k"); // main
     tui.wait_for_selected("main ⌂ root");
