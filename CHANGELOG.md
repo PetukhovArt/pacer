@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.0 (2026-09-10)
 
 - Added mermaid diagrams to the `b` file preview: `.mmd` files and fenced `mermaid` blocks in markdown render as text art through the `mermaid_renderer` command (`mermaid-ascii -f -` by default), with one install hint when it is not on the path.
 - Added a `Bold names` setting under Appearance: off draws the panel headers and project names at normal weight, for terminals whose bold face is a heavier font.
