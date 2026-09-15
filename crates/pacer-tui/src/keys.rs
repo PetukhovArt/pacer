@@ -16,8 +16,27 @@ const DISAMBIGUATE: u8 = 0x1;
 const REPORT_ALL: u8 = 0x8;
 
 pub fn encode_key(key: &KeyEvent, kitty_flags: u8, win32_input: bool) -> Option<Vec<u8>> {
+    encode_key_for(key, kitty_flags, win32_input, false)
+}
+
+/// `encode_key` with one more fact: `vt_child` says the child reads VT bytes
+/// through a libuv-style tty layer (node agents: Claude Code, cursor-agent).
+/// A win32-input-mode record reaches such a child as a bare `\r` because
+/// libuv encodes Enter without modifiers, so Shift+Enter goes as `ESC CR`
+/// (Alt+Enter), which those agents take as insert-newline. Measured against
+/// Claude Code 2.1.270 under the Windows 10 inbox ConPTY, where CSI-u input
+/// is dropped outright — see GOTCHAS "Windows port".
+pub fn encode_key_for(
+    key: &KeyEvent,
+    kitty_flags: u8,
+    win32_input: bool,
+    vt_child: bool,
+) -> Option<Vec<u8>> {
     if kitty_flags & DISAMBIGUATE != 0 {
         return encode_kitty(key, kitty_flags);
+    }
+    if vt_child && key.code == KeyCode::Enter && key.modifiers == KeyModifiers::SHIFT {
+        return Some(b"\x1b\r".to_vec());
     }
     if win32_input {
         if let Some(seq) = encode_win32(key) {
@@ -355,6 +374,19 @@ mod tests {
         assert_eq!(
             encode_key(&key(KeyCode::Enter, KeyModifiers::SHIFT), 0, true),
             Some(b"\x1b[13;0;13;1;16;1_\x1b[13;0;13;0;16;1_".to_vec())
+        );
+    }
+
+    #[test]
+    fn vt_child_shift_enter_is_alt_enter() {
+        assert_eq!(
+            encode_key_for(&key(KeyCode::Enter, KeyModifiers::SHIFT), 0, true, true),
+            Some(b"\x1b\r".to_vec())
+        );
+        assert_eq!(
+            encode_key_for(&key(KeyCode::Enter, KeyModifiers::ALT), 0, true, true),
+            Some(b"\x1b[13;0;13;1;2;1_\x1b[13;0;13;0;2;1_".to_vec()),
+            "only Shift+Enter is rerouted"
         );
     }
 

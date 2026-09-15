@@ -1828,6 +1828,9 @@ pub struct AttachedTerm {
     /// reads cooked Win32 input, where it is the only encoding that carries
     /// Shift+Enter. Always false on Unix.
     pub win32_input: bool,
+    /// The child reads VT bytes through a libuv-style layer (node agents),
+    /// which flattens win32 records — see `keys::encode_key_for`.
+    pub vt_child: bool,
     /// Whether any PTY bytes have reached this parser yet. False means the
     /// grid is blank because the session is still booting — attaching to a
     /// reaped session replays an empty ring, and an agent CLI takes seconds
@@ -1847,6 +1850,7 @@ impl AttachedTerm {
             scroll: 0,
             kitty_flags: 0,
             win32_input: false,
+            vt_child: false,
             painted: false,
         }
     }

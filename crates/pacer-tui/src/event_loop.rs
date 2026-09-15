@@ -1580,7 +1580,14 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
                 if term.scroll > 0 {
                     term.set_scroll(0);
                 }
-                if let Some(data) = keys::encode_key(&key, term.kitty_flags, term.win32_input) {
+                // The child's kitty push arrives through ConPTY's output
+                // pass-through, but the Windows 10 inbox ConPTY drops CSI-u
+                // on input — Esc as `CSI 27 u` vanished. Keys stay on the
+                // legacy bytes there; Claude Code parses both.
+                let kitty_flags = if cfg!(windows) { 0 } else { term.kitty_flags };
+                if let Some(data) =
+                    keys::encode_key_for(&key, kitty_flags, term.win32_input, term.vt_child)
+                {
                     out.push(ClientRequest::Input {
                         session: term.sref.clone(),
                         data,
@@ -4177,6 +4184,7 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     set_show_workspaces(app, cfg.show_workspaces);
     set_hide_projects(app, cfg.hide_projects);
     set_hide_worktrees(app, cfg.hide_worktrees);
+    set_hide_prs(app, cfg.hide_prs);
 }
 
 /// `R` in the settings overlay, confirmed: rewrite config.json from the
@@ -5470,7 +5478,16 @@ fn attach_inner(app: &mut App, sref: SessionRef, delay: Duration, out: &mut Vec<
         let (cols, rows) = pane_size(app);
         // Fresh screen, so any persisted selection would point at stale cells.
         app.term_selection = None;
-        app.term = Some(AttachedTerm::new(sref.clone(), cols, rows));
+        let mut term = AttachedTerm::new(sref.clone(), cols, rows);
+        if let SessionRef::Agent(id) = &sref {
+            term.vt_child = app
+                .tree
+                .agents
+                .iter()
+                .find(|a| a.id == *id)
+                .is_some_and(|a| matches!(a.kind, AgentKind::Claude | AgentKind::Cursor));
+        }
+        app.term = Some(term);
         app.dirty = true;
     }
     if delay.is_zero() {
