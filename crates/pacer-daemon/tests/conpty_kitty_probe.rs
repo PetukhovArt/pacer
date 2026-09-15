@@ -178,7 +178,7 @@ fn probe_claude_kitty_negotiation() {
 /// through crossterm — sees when the outer terminal injects a chord as
 /// text, the way a Windows Terminal `sendInput` binding does.
 ///
-/// Kitty CSI-u dies at conhost before any key record exists (a raw-VT child
+/// Kitty CSI-u dies at conhost — at most a stray ESC record survives (a raw-VT child
 /// would have received it verbatim — see `probe_input_csi_u_raw_mode_node`),
 /// so a `sendInput "\\u001b[13;2u"` binding, the recipe for running an agent
 /// CLI straight in Windows Terminal, makes Shift+Enter vanish on the way
@@ -186,10 +186,14 @@ fn probe_claude_kitty_negotiation() {
 /// into the child's own dialect — that is the binding to keep.
 #[test]
 fn injected_csi_u_dies_at_conhost_while_esc_cr_becomes_alt_enter() {
+    // Some conhosts swallow the whole sequence (no record at all); the Win10
+    // 19045 inbox conhost leaks the leading ESC as a bare key record
+    // (`KEY:27:0:0`) and drops the tail. Either way the chord never arrives
+    // as Enter — that is the load-bearing fact.
     let out = spawn_and_capture_for(READS_ONE_KEY, Some(b"\x1b[13;2u"), 4);
     let text = String::from_utf8_lossy(&out);
     assert!(
-        text.contains("READY") && !text.contains("KEY:"),
+        text.contains("READY") && !text.contains("KEY:13"),
         "conhost handed CSI-u to a console app after all: {text:?}"
     );
 
