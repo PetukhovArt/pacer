@@ -4,6 +4,7 @@ pub mod kill;
 pub mod kitty;
 pub mod progress;
 pub mod ring;
+pub mod title;
 
 use anyhow::{Context, Result};
 use capture::{Capture, CaptureExt};
@@ -15,6 +16,7 @@ use ring::ScrollbackRing;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use title::TitleScanner;
 use tokio::sync::{broadcast, mpsc};
 
 const RING_CAPACITY: usize = 1024 * 1024;
@@ -81,6 +83,14 @@ pub enum PtyEvent {
     Progress {
         busy: bool,
     },
+    /// The child's window title flipped between its working glyph and its
+    /// idle one. Claude Code 2.1.270 emits no OSC 9;4, so this is the only
+    /// end-of-turn news left there — but the title also reads idle while a
+    /// permission prompt waits, so only a turn already believed to be
+    /// running may act on it. See `pty::title`.
+    TitleIdle {
+        idle: bool,
+    },
     /// The child printed the id of the Claude Cloud session it created or
     /// attached to. Only scanned for on `--cloud` launches (`arm_cloud_scan`).
     CloudSession {
@@ -117,6 +127,9 @@ pub struct PtySession {
     dsr: Mutex<pacer_core::dsr::DsrScanner>,
     /// OSC 9;4 busy/idle tracking, likewise fed from live output.
     progress: Mutex<ProgressScanner>,
+    /// OSC 0/2 title-glyph tracking: the same news for a CLI that has
+    /// stopped advertising OSC 9;4.
+    title: Mutex<TitleScanner>,
     /// Claude Cloud session id / attach-refusal scanner; `None` until a
     /// `--cloud` launch arms it, so ordinary sessions pay nothing.
     cloud: Mutex<Option<CloudScanner>>,
@@ -195,6 +208,7 @@ impl PtySession {
             #[cfg(windows)]
             dsr: Mutex::new(pacer_core::dsr::DsrScanner::new()),
             progress: Mutex::new(ProgressScanner::new()),
+            title: Mutex::new(TitleScanner::new()),
             cloud: Mutex::new(None),
             capture: Mutex::new(capture),
             input_seen: AtomicBool::new(false),
@@ -310,6 +324,13 @@ impl PtySession {
         self.progress.lock().unwrap().busy()
     }
 
+    /// Whether the child's window title currently reads idle, or `None` if
+    /// it never set one. Only meaningful for a turn believed to be running —
+    /// see `pty::title`.
+    pub fn title_idle(&self) -> Option<bool> {
+        self.title.lock().unwrap().idle()
+    }
+
     /// Start watching this child's output for the Claude Cloud session id
     /// it prints on creation and for an attach refusal (see `pty::cloud`).
     /// Output that already landed in the ring is scanned first, so arming
@@ -421,6 +442,7 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
             }
         }
         let busy_edge = session.progress.lock().unwrap().feed(pending);
+        let title_edge = session.title.lock().unwrap().feed(pending);
         let cloud_sightings = match session.cloud.lock().unwrap().as_mut() {
             Some(scanner) => scanner.feed(pending),
             None => Vec::new(),
@@ -442,6 +464,10 @@ async fn pump(session: Arc<PtySession>, mut rx: mpsc::Receiver<ReaderMsg>) {
         if let Some(busy) = busy_edge {
             tracing::debug!(session = ?session.sref, busy, "child progress state changed");
             let _ = session.events.send(PtyEvent::Progress { busy });
+        }
+        if let Some(idle) = title_edge {
+            tracing::debug!(session = ?session.sref, idle, "child title glyph changed");
+            let _ = session.events.send(PtyEvent::TitleIdle { idle });
         }
         for sighting in cloud_sightings {
             tracing::info!(session = ?session.sref, ?sighting, "cloud sighting in child output");

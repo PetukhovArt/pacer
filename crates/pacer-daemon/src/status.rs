@@ -29,6 +29,12 @@
 //!   especially, since every other exit from `needs_feedback` is an event
 //!   that may never arrive. `tick` therefore also reads the CLI's current
 //!   progress *level* and closes such a turn out.
+//! - `TitleIdle` is the same news again for a CLI that has stopped emitting
+//!   OSC 9;4 (Claude Code 2.1.270 does not emit it at all, so `Progress`
+//!   never fires there). It is the weakest of the three and is gated
+//!   hardest: the window title also reads idle while a permission prompt
+//!   waits, so it may only close out a turn that is *already* `running`,
+//!   never one on `needs_feedback`, and it may never start one.
 
 use pacer_core::AgentStatus;
 use std::collections::HashMap;
@@ -82,6 +88,12 @@ pub enum HookEvent {
     /// end-of-turn — including the cancel that fires no hook.
     Progress {
         busy: bool,
+    },
+    /// Synthetic: the CLI's window-title glyph flipped (`pty::title`). The
+    /// fallback for a CLI with no progress bar left; `idle: true` ends a
+    /// turn, but only one already believed to be running.
+    TitleIdle {
+        idle: bool,
     },
 }
 
@@ -336,6 +348,16 @@ impl AgentStatusMachine {
                 // clears its progress bar on startup and on exit too, and
                 // neither is a finished turn.
             }
+            HookEvent::TitleIdle { idle } => {
+                // Deliberately narrower than `Progress`. The title reads idle
+                // while a permission prompt waits as well as when a turn is
+                // over, so `needs_feedback` is excluded — and it is never a
+                // reason to *start* a turn, since a CLI titles itself idle at
+                // startup and on exit too.
+                if idle && self.status == AgentStatus::Running {
+                    self.end_turn(now, &mut effects);
+                }
+            }
             HookEvent::SessionEnded { exit_code } => {
                 // Dead process: laggard subagent POSTs must never resurrect it.
                 self.subagents.clear();
@@ -551,6 +573,53 @@ mod tests {
         assert!(fx.contains(&Effect::SaveSessionId("s1".into())));
         let fx = m.handle(HookEvent::Stop, Some("s1"), now + Duration::from_secs(10));
         assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
+    }
+
+    /// The escape cancel, on a CLI that emits no OSC 9;4 at all: the title
+    /// glyph is the only news the turn ended, and without it the agent sits
+    /// on yellow forever.
+    #[test]
+    fn a_title_idle_edge_ends_a_cancelled_turn() {
+        let mut m = AgentStatusMachine::new(AgentStatus::Fresh, None);
+        let now = t0();
+        m.handle(HookEvent::UserPromptSubmit, Some("s1"), now);
+        let fx = m.handle(
+            HookEvent::TitleIdle { idle: true },
+            Some("s1"),
+            now + Duration::from_secs(10),
+        );
+        assert_eq!(status_of(&fx), Some(AgentStatus::Finished));
+    }
+
+    /// The gate that makes the title safe to read at all. Claude titles
+    /// itself idle while a permission prompt waits, so widening this to
+    /// `needs_feedback` would green out every agent that is genuinely
+    /// waiting on the user.
+    #[test]
+    fn a_title_idle_edge_never_greens_out_a_waiting_agent() {
+        let mut m = AgentStatusMachine::new(AgentStatus::Fresh, None);
+        let now = t0();
+        m.handle(HookEvent::UserPromptSubmit, Some("s1"), now);
+        m.handle(HookEvent::PermissionRequest, Some("s1"), now);
+        assert_eq!(m.status(), AgentStatus::NeedsFeedback);
+        let fx = m.handle(
+            HookEvent::TitleIdle { idle: true },
+            Some("s1"),
+            now + Duration::from_secs(1),
+        );
+        assert_eq!(status_of(&fx), None, "the prompt is still waiting");
+        assert_eq!(m.status(), AgentStatus::NeedsFeedback);
+    }
+
+    /// A CLI titles itself idle at startup and on exit too, so the title is
+    /// never a reason to believe a turn began.
+    #[test]
+    fn a_title_edge_never_starts_a_turn() {
+        let mut m = AgentStatusMachine::new(AgentStatus::Fresh, None);
+        let now = t0();
+        let fx = m.handle(HookEvent::TitleIdle { idle: false }, None, now);
+        assert_eq!(status_of(&fx), None);
+        assert_eq!(m.status(), AgentStatus::Fresh);
     }
 
     #[test]

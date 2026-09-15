@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Windows: Fixed `Esc` doing nothing in a Claude Code session on Windows 10, so a running turn could not be cancelled and the next letter typed landed as `Alt`+letter. The built-in console host drops the key encoding Claude Code asks for, so pacer keeps to the plain bytes there.
+- Windows: Fixed `Shift+Enter` in a Claude Code or cursor-agent session sending the message instead of adding a line.
+- Fixed sessions never getting their status, title or resume id on a machine with a system-wide `HTTP_PROXY`: the hooks sent their loopback call through the proxy, which answered 502. The hooks now bypass the proxy for the daemon.
+- Fixed a Claude Code session staying on the running status forever after `Esc` cancelled its turn. Claude Code 2.1.270 stopped emitting the progress sequence pacer read for the end of a cancelled turn, so pacer now reads the window title as well.
+
 ## 0.19.0 (2026-09-10)
 
 - Added mermaid diagrams to the `b` file preview: `.mmd` files and fenced `mermaid` blocks in markdown render as text art through the `mermaid_renderer` command (`mermaid-ascii -f -` by default), with one install hint when it is not on the path.

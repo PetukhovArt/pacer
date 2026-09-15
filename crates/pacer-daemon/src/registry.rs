@@ -2723,6 +2723,15 @@ impl Daemon {
                             daemon.apply_hook_event(id, HookEvent::Progress { busy }, None);
                         }
                     }
+                    // The same news off the window title, for a CLI that no
+                    // longer advertises a progress bar at all — Claude Code
+                    // 2.1.270 emits no OSC 9;4, so without this a cancelled
+                    // turn stays yellow forever. See `pty::title`.
+                    Ok(PtyEvent::TitleIdle { idle }) => {
+                        if let SessionRef::Agent(id) = &sref {
+                            daemon.apply_hook_event(id, HookEvent::TitleIdle { idle }, None);
+                        }
+                    }
                     // The Cloud session this row launched, read off the
                     // `claude --cloud` output. Persisted at once — the child
                     // is typically gone within milliseconds of printing it —
@@ -2747,10 +2756,13 @@ impl Daemon {
                         // broadcast queue. The scanner itself never lags, so
                         // reconcile from its current reading rather than
                         // leaving the status stuck on a dropped edge.
-                        if let (SessionRef::Agent(id), Some(busy)) =
-                            (&sref, session.progress_busy())
-                        {
-                            daemon.apply_hook_event(id, HookEvent::Progress { busy }, None);
+                        if let SessionRef::Agent(id) = &sref {
+                            if let Some(busy) = session.progress_busy() {
+                                daemon.apply_hook_event(id, HookEvent::Progress { busy }, None);
+                            }
+                            if let Some(idle) = session.title_idle() {
+                                daemon.apply_hook_event(id, HookEvent::TitleIdle { idle }, None);
+                            }
                         }
                         continue;
                     }
