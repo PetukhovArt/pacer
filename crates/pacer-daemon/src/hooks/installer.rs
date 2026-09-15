@@ -111,9 +111,12 @@ fn env_guard() -> String {
 /// The POST itself, identical for every dialect: bearer auth, the hook's
 /// stdin payload passed straight through, and the agent id plus event
 /// name on the query string so the daemon needs nothing else to route it.
+/// `--noproxy '*'`: the daemon is loopback, but a machine-wide `HTTP_PROXY`
+/// still captures the call (curl ignores `NO_PROXY` masks like `127.*`) and
+/// the proxy answers 502 for every hook, so no session ever gets its id.
 fn hook_curl(endpoint: &str, event: &str) -> String {
     format!(
-        "curl -sS -m {HOOK_CURL_TIMEOUT_SECS} -X POST -H \"Authorization: Bearer ${API_TOKEN}\" \
+        "curl -sS -m {HOOK_CURL_TIMEOUT_SECS} --noproxy '*' -X POST -H \"Authorization: Bearer ${API_TOKEN}\" \
          -H \"Content-Type: application/json\" --data-binary @- \
          \"${API_URL}/api/hooks/{endpoint}?agentId=${AGENT_ID}&hookEvent={event}\""
     )
@@ -481,7 +484,7 @@ mod tests {
         assert_eq!(
             hook_command("claude", "UserPromptSubmit"),
             "if [ -z \"$PACER_AGENT_ID\" ] || [ -z \"$PACER_API_URL\" ]; then exit 0; fi; \
-             curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
+             curl -sS -m 3 --noproxy '*' -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H \"Content-Type: application/json\" --data-binary @- \
              \"$PACER_API_URL/api/hooks/claude?agentId=$PACER_AGENT_ID&hookEvent=UserPromptSubmit\" \
              2>/dev/null || true"
@@ -489,7 +492,7 @@ mod tests {
         assert_eq!(
             hook_command("codex", "Stop"),
             "if [ -z \"$PACER_AGENT_ID\" ] || [ -z \"$PACER_API_URL\" ]; then exit 0; fi; \
-             curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
+             curl -sS -m 3 --noproxy '*' -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H \"Content-Type: application/json\" --data-binary @- \
              \"$PACER_API_URL/api/hooks/codex?agentId=$PACER_AGENT_ID&hookEvent=Stop\" \
              >/dev/null 2>&1 || true"
@@ -498,7 +501,7 @@ mod tests {
             cursor_hook_command("Stop"),
             "if [ -z \"$PACER_AGENT_ID\" ] || [ -z \"$PACER_API_URL\" ]; then \
              printf '{\"continue\": true}\\n'; exit 0; fi; \
-             curl -sS -m 3 -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
+             curl -sS -m 3 --noproxy '*' -X POST -H \"Authorization: Bearer $PACER_API_TOKEN\" \
              -H \"Content-Type: application/json\" --data-binary @- \
              \"$PACER_API_URL/api/hooks/cursor?agentId=$PACER_AGENT_ID&hookEvent=Stop\" \
              >/dev/null 2>&1 || true; printf '{\"continue\": true}\\n'"
