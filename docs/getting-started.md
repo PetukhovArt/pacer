@@ -198,8 +198,10 @@ The panels aren't the only view. With a worktree selected, from any panel:
 size. `Enter` resumes one in whatever worktree the cursor is on, so a conversation started in one
 checkout continues in another; Claude is told where it moved. Deleting a worktree does not take its
 conversations with it either: pacer saves the agent CLIs' session ids first, and those rows stay in the
-list marked with `⊘`. The list is built from two sources — pacer's own table (all three CLIs) and Claude
-Code's transcripts on disk, which also turns up sessions pacer never knew.
+list marked with `⊘`. The list is built from two sources: Claude Code's transcripts on disk, which also
+turn up sessions pacer never knew, and pacer's own table of saved orphans (all three CLIs). Only Claude
+sessions appear across worktrees; codex and cursor-agent conversations show up only after their worktree
+was deleted.
 
 ## Elsewhere
 

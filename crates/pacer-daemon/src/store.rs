@@ -765,6 +765,19 @@ impl Store {
         Ok(())
     }
 
+    /// Every agent row carrying this CLI session id. More than one is
+    /// possible: a resume inserts a new row with the old id.
+    pub fn agent_ids_by_session_id(&self, session_id: &str) -> Result<Vec<AgentId>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id FROM agents WHERE session_id = ?1")?;
+        let ids = stmt
+            .query_map(params![session_id], |r| r.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .map(AgentId)
+            .collect();
+        Ok(ids)
+    }
+
     pub fn delete_agent(&self, id: &AgentId) -> Result<()> {
         self.delete_by_id("agents", id.as_str())
     }

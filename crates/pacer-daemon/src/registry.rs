@@ -935,6 +935,18 @@ impl Daemon {
         if !self.cli_available_for_create(orphan.kind).await {
             bail!("{}", cli_missing_message(orphan.kind));
         }
+        // A live session's transcript has a process appending to it; a
+        // second `--resume` of the same id would have two CLIs writing one
+        // conversation. The orphans-only list ruled this out by
+        // construction — the project-wide one has to check.
+        let running = self
+            .store
+            .agent_ids_by_session_id(&orphan.session_id)?
+            .into_iter()
+            .any(|id| self.is_alive(&SessionRef::Agent(id)));
+        if running {
+            bail!("that conversation is already running — stop its session first");
+        }
         let agent = Agent {
             id: AgentId::generate(),
             worktree_id: worktree.id.clone(),
@@ -954,15 +966,12 @@ impl Daemon {
             cloud_mirroring: false,
         };
         self.store.insert_agent(&agent)?;
-        let notice = orphan_resume_prompt(&orphan, &worktree);
-        // No relocation to explain when the conversation comes back into the
-        // very checkout it ran in.
-        let same_checkout = pacer_core::paths::contains(
-            &pacer_core::paths::canonical_or_raw(&worktree.path),
-            &orphan.worktree_path,
-        );
-        let notice =
-            (orphan.kind == AgentKind::Claude && !same_checkout).then_some(notice.as_str());
+        // Claude only, like `relocation_prompt`: whether `codex resume` and
+        // `cursor-agent --resume` take a trailing prompt is unverified.
+        let notice = (orphan.kind == AgentKind::Claude)
+            .then(|| crate::orphans::resume_notice(&orphan, &worktree))
+            .flatten();
+        let notice = notice.as_deref();
         let spawned = self.spawn_agent_session_with(
             &agent,
             &worktree,
@@ -2850,38 +2859,6 @@ fn relocation_prompt(worktree: &Worktree) -> String {
     format!(
         "[pacer] This session now runs inside the worktree `{}` at {} — your working \
          directory is that checkout. Continue the user's most recent request there.",
-        worktree.branch,
-        worktree.path.display()
-    )
-}
-
-/// The prompt an ORPHANED SESSION is resumed with. A relocation moves a
-/// session to a checkout that exists; this moves one whose checkout is
-/// *gone*, so every path in the conversation's own history now points at
-/// nothing, and the branch under it is usually a different one. Both are
-/// named, so the agent re-reads instead of trusting what it recalls.
-///
-/// Claude only, for the same reason `relocation_prompt` is: whether `codex
-/// resume` and `cursor-agent --resume` take a trailing prompt is unverified.
-fn orphan_resume_prompt(orphan: &OrphanedSession, worktree: &Worktree) -> String {
-    let was = if orphan.branch.is_empty() {
-        "an unknown branch".to_string()
-    } else {
-        format!("branch `{}`", orphan.branch)
-    };
-    let fate = if orphan.live {
-        "a different checkout of the same repository"
-    } else {
-        "a worktree that has since been deleted — the paths in your own history are not on \
-         disk any more"
-    };
-    format!(
-        "[pacer] This conversation ran in {} at {}, {}. It now runs in `{}` at {}. \
-         Re-read any file before acting on what you remember of it, and tell the user which \
-         branch you are on before you change anything.",
-        was,
-        orphan.worktree_path.display(),
-        fate,
         worktree.branch,
         worktree.path.display()
     )

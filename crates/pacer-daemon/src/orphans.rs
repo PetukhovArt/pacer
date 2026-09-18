@@ -70,7 +70,13 @@ fn merge(mut stored: Vec<OrphanedSession>, scanned: Vec<OrphanedSession>) -> Vec
         .collect();
     for found in scanned {
         match seen.get(&found.session_id) {
-            Some(&i) => stored[i].transcript_bytes = found.transcript_bytes,
+            // `live` too: a store row is written at delete time, but the
+            // checkout can exist again by now (a worktree re-created at the
+            // same path), and the scan is the side that looked.
+            Some(&i) => {
+                stored[i].transcript_bytes = found.transcript_bytes;
+                stored[i].live = found.live;
+            }
             None => {
                 seen.insert(found.session_id.clone(), stored.len());
                 stored.push(found);
@@ -83,6 +89,44 @@ fn merge(mut stored: Vec<OrphanedSession>, scanned: Vec<OrphanedSession>) -> Vec
             .then_with(|| a.session_id.cmp(&b.session_id))
     });
     stored
+}
+
+/// The notice a resumed conversation opens with: where it used to run and
+/// where it runs now, so the agent re-reads instead of trusting what it
+/// recalls. A worktree that is gone gets the stronger wording — every path
+/// in the conversation's history points at nothing. None when the session
+/// comes back into the very checkout it ran in: there is no relocation to
+/// explain.
+pub fn resume_notice(orphan: &OrphanedSession, worktree: &Worktree) -> Option<String> {
+    // Both sides through `canonical_or_raw`: the scan canonicalizes its
+    // cwd, but a store row carries the raw path the worktree was saved
+    // with, and `paths::contains` on half-canonical input misdetects.
+    let target = paths::canonical_or_raw(&worktree.path);
+    let source = paths::canonical_or_raw(&orphan.worktree_path);
+    if paths::contains(&target, &source) {
+        return None;
+    }
+    let was = if orphan.branch.is_empty() {
+        "an unknown branch".to_string()
+    } else {
+        format!("branch `{}`", orphan.branch)
+    };
+    let fate = if orphan.live {
+        "a different checkout of the same repository"
+    } else {
+        "a worktree that has since been deleted — the paths in your own history are not on \
+         disk any more"
+    };
+    Some(format!(
+        "[pacer] This conversation ran in {} at {}, {}. It now runs in `{}` at {}. \
+         Re-read any file before acting on what you remember of it, and tell the user which \
+         branch you are on before you change anything.",
+        was,
+        orphan.worktree_path.display(),
+        fate,
+        worktree.branch,
+        worktree.path.display()
+    ))
 }
 
 /// Where Claude Code keeps its conversations: one directory per working
@@ -503,6 +547,31 @@ mod tests {
         .unwrap();
 
         assert!(scan_claude_transcripts(&root, &project_at(&repo), &[]).is_empty());
+    }
+
+    /// The store's row carries the raw path the worktree was saved with,
+    /// not the canonical one the scan writes — a resume into the very same
+    /// checkout must still be recognized, or the agent gets told its
+    /// worktree was deleted while it is sitting in it.
+    #[test]
+    fn a_resume_into_the_same_checkout_gets_no_notice() {
+        let tmp = tempfile::tempdir().unwrap();
+        let raw = tmp.path().join("demo");
+        std::fs::create_dir_all(&raw).unwrap();
+
+        let mut orphan = row("sid", "n", 0);
+        orphan.worktree_path = raw.clone();
+        let mut same = worktree_at(&paths::canonical_or_raw(&raw));
+        same.branch = "feat".into();
+        assert_eq!(resume_notice(&orphan, &same), None);
+
+        let elsewhere = worktree_at(&dir(tmp.path().join("demo-worktrees").join("other")));
+        let notice = resume_notice(&orphan, &elsewhere).unwrap();
+        assert!(notice.contains("since been deleted"), "{notice}");
+
+        orphan.live = true;
+        let notice = resume_notice(&orphan, &elsewhere).unwrap();
+        assert!(notice.contains("different checkout"), "{notice}");
     }
 
     fn row(session_id: &str, name: &str, orphaned_at: i64) -> OrphanedSession {

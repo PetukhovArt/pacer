@@ -65,8 +65,11 @@ The state of an Agent whose PTY is released and whose row is moved to the ARCHIV
 _Avoid_: deletion (Archive is reversible)
 
 **Orphaned Session**
-A Session whose Worktree was deleted. The row is gone from the tree, but its CLI session id is kept, so the conversation can be Resumed in a Worktree that still exists. Different from Archive (the Worktree is still there, and the row comes back where it was) and from Disconnected (the PTY died, the row did not).
+A Session whose Worktree was deleted. The row is gone from the tree, but its CLI session id is kept, so the conversation can be Resumed in a Worktree that still exists. Different from Archive (the Worktree is still there, and the row comes back where it was) and from Disconnected (the PTY died, the row did not). The `OrphanedSession` type also carries the Project Sessions picker's live rows — conversations whose checkout still exists, marked `live`, resumable in any other Worktree the same way.
 _Avoid_: archived session, lost session, dead session
+
+**Project Sessions**
+The `Shift+O` picker: every conversation of a Project across all its Worktrees — the live checkouts' own plus every Orphaned Session. Enter resumes the selected one in the Worktree the cursor is on. Cross-worktree listing is Claude-only; codex and cursor-agent rows appear only as Orphaned Sessions.
 
 ## Processes
 
