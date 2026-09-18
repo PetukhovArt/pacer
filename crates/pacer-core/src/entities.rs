@@ -267,4 +267,7 @@ pub struct OrphanedSession {
     /// Size of the CLI's transcript, or None when the session is known only
     /// from the store and no transcript was found for it.
     pub transcript_bytes: Option<u64>,
+    /// True when the conversation's checkout still exists in the project's
+    /// worktree list — not an orphan, but still resumable anywhere else.
+    pub live: bool,
 }

@@ -1093,6 +1093,7 @@ fn row_to_orphan(r: &rusqlite::Row) -> rusqlite::Result<OrphanedSession> {
         created_at: r.get(6)?,
         orphaned_at: r.get(7)?,
         transcript_bytes: None,
+        live: false,
     })
 }
 

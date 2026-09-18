@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 /// Bump on any breaking change to these enums. The daemon refuses mismatched
 /// clients; the client then offers a kill-and-restart of the old daemon.
-pub const PROTOCOL_VERSION: u32 = 36;
+pub const PROTOCOL_VERSION: u32 = 37;
 
 /// Max IPC frame size (length prefix sanity bound).
 pub const MAX_FRAME_LEN: u32 = 4 * 1024 * 1024;
@@ -114,13 +114,16 @@ pub enum ClientRequest {
         id: WorktreeId,
         force: bool,
     },
-    /// Every ORPHANED SESSION of `project`: the conversations whose Worktree
-    /// was deleted. Answered by one `OrphanedSessions`, not by deltas —
-    /// the list is read when the user opens it and is half derived from the
-    /// agent CLI's own transcript store, which pacer does not watch.
+    /// The resumable conversations of `project`: every ORPHANED SESSION,
+    /// plus — when `include_live` — the conversations of its live worktrees,
+    /// so any of them can be resumed in any checkout. Answered by one
+    /// `OrphanedSessions`, not by deltas — the list is read when the user
+    /// opens it and is half derived from the agent CLI's own transcript
+    /// store, which pacer does not watch.
     ListOrphanedSessions {
         req_id: u64,
         project: ProjectId,
+        include_live: bool,
     },
     /// Bring an ORPHANED SESSION back as a live AGENT in `worktree`. Creates
     /// an ordinary row there carrying the old CLI session id, so the next

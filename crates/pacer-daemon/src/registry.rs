@@ -899,10 +899,15 @@ impl Daemon {
 
     // ---- orphaned sessions ----
 
-    /// Every ORPHANED SESSION of `project`, newest first.
-    pub fn list_orphaned_sessions(&self, project: &ProjectId) -> Result<Vec<OrphanedSession>> {
+    /// The resumable conversations of `project`, newest first: every
+    /// ORPHANED SESSION, plus the live worktrees' own when `include_live`.
+    pub fn list_orphaned_sessions(
+        &self,
+        project: &ProjectId,
+        include_live: bool,
+    ) -> Result<Vec<OrphanedSession>> {
         let (project, live) = self.project_with_worktrees(project)?;
-        crate::orphans::list(&self.store, &project, &live)
+        crate::orphans::list(&self.store, &project, &live, include_live)
     }
 
     /// Bring an ORPHANED SESSION back as an AGENT in `worktree_id`.
@@ -921,7 +926,9 @@ impl Daemon {
             .get_worktree(worktree_id)?
             .context("worktree not found")?;
         let (project, live) = self.project_with_worktrees(&worktree.project_id)?;
-        let orphan = crate::orphans::list(&self.store, &project, &live)?
+        // The full list, not just the orphans: a conversation from another
+        // live worktree resumes here the same way.
+        let orphan = crate::orphans::list(&self.store, &project, &live, true)?
             .into_iter()
             .find(|o| o.session_id == session_id)
             .context("that session is not on record any more")?;
@@ -948,7 +955,14 @@ impl Daemon {
         };
         self.store.insert_agent(&agent)?;
         let notice = orphan_resume_prompt(&orphan, &worktree);
-        let notice = (orphan.kind == AgentKind::Claude).then_some(notice.as_str());
+        // No relocation to explain when the conversation comes back into the
+        // very checkout it ran in.
+        let same_checkout = pacer_core::paths::contains(
+            &pacer_core::paths::canonical_or_raw(&worktree.path),
+            &orphan.worktree_path,
+        );
+        let notice =
+            (orphan.kind == AgentKind::Claude && !same_checkout).then_some(notice.as_str());
         let spawned = self.spawn_agent_session_with(
             &agent,
             &worktree,
@@ -2855,13 +2869,19 @@ fn orphan_resume_prompt(orphan: &OrphanedSession, worktree: &Worktree) -> String
     } else {
         format!("branch `{}`", orphan.branch)
     };
+    let fate = if orphan.live {
+        "a different checkout of the same repository"
+    } else {
+        "a worktree that has since been deleted — the paths in your own history are not on \
+         disk any more"
+    };
     format!(
-        "[pacer] This conversation ran in {} at {}, a worktree that has since been deleted — \
-         the paths in your own history are not on disk any more. It now runs in `{}` at {}. \
+        "[pacer] This conversation ran in {} at {}, {}. It now runs in `{}` at {}. \
          Re-read any file before acting on what you remember of it, and tell the user which \
          branch you are on before you change anything.",
         was,
         orphan.worktree_path.display(),
+        fate,
         worktree.branch,
         worktree.path.display()
     )

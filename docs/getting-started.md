@@ -192,13 +192,14 @@ The panels aren't the only view. With a worktree selected, from any panel:
   two, on two workspaces, side by side), and `Shift+W` shows or hides the Workspaces bar across the top,
   where every workspace is a tab carrying the rolled-up status of the agents under it.
 
-## Orphaned sessions
+## Project sessions
 
-Deleting a worktree no longer takes the conversations with it: before removing it, pacer saves the agent
-CLIs' session ids. `Shift+O` lists them by project, with branch, date and transcript size. `Enter`
-resumes the conversation in whatever worktree the cursor is on, and Claude is told the old directory is
-gone. The list is built from two sources — pacer's own table (all three CLIs, from this version on) and
-Claude Code's transcripts on disk, which also turns up sessions lost before that.
+`Shift+O` lists every conversation of the project, from every worktree, with branch, date and transcript
+size. `Enter` resumes one in whatever worktree the cursor is on, so a conversation started in one
+checkout continues in another; Claude is told where it moved. Deleting a worktree does not take its
+conversations with it either: pacer saves the agent CLIs' session ids first, and those rows stay in the
+list marked with `⊘`. The list is built from two sources — pacer's own table (all three CLIs) and Claude
+Code's transcripts on disk, which also turns up sessions pacer never knew.
 
 ## Elsewhere
 

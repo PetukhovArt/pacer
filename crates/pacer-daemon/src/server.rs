@@ -525,8 +525,12 @@ async fn handle_client(
                     };
                     let _ = out_tx.send(ev).await;
                 }
-                ClientRequest::ListOrphanedSessions { req_id, project } => {
-                    let ev = match daemon.list_orphaned_sessions(&project) {
+                ClientRequest::ListOrphanedSessions {
+                    req_id,
+                    project,
+                    include_live,
+                } => {
+                    let ev = match daemon.list_orphaned_sessions(&project, include_live) {
                         Ok(sessions) => ServerEvent::OrphanedSessions { req_id, sessions },
                         Err(e) => ServerEvent::Error {
                             req_id: Some(req_id),

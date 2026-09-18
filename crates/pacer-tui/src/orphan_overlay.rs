@@ -1,5 +1,6 @@
-//! The ORPHANED SESSIONS overlay: the conversations of the selected
-//! project whose WORKTREE was deleted, and the Enter that brings one back.
+//! The SESSIONS overlay: every conversation of the selected project — the
+//! live worktrees' own and the ORPHANED SESSIONS whose WORKTREE was
+//! deleted — and the Enter that resumes one in the selected worktree.
 //!
 //! It is a modal rather than a group in the SESSIONS PANEL because that
 //! panel is scoped to one worktree (`App::visible_sessions` filters on
@@ -94,7 +95,7 @@ impl OrphansView {
 /// where a resume will land.
 pub(crate) fn open(app: &mut App, out: &mut Vec<ClientRequest>) {
     let Some(worktree) = app.selected_worktree().cloned() else {
-        app.flash = Some("orphaned sessions: select a worktree first".into());
+        app.flash = Some("sessions: select a worktree first".into());
         return;
     };
     app.overlay = Some(Overlay::Orphans(OrphansView::new(worktree.id)));
@@ -102,6 +103,7 @@ pub(crate) fn open(app: &mut App, out: &mut Vec<ClientRequest>) {
     crate::event_loop::send(app, out, |req_id| ClientRequest::ListOrphanedSessions {
         req_id,
         project,
+        include_live: true,
     });
 }
 
@@ -211,13 +213,9 @@ pub(crate) fn draw(f: &mut Frame, app: &mut App, view: &OrphansView, th: Theme) 
     let area = crate::ui::centered_rect(f.area(), ORPHANS_SIZE.0, ORPHANS_SIZE.1);
     f.render_widget(Clear, area);
     let title = if view.query.as_str().is_empty() {
-        format!(" Orphaned sessions ({}) ", view.sessions.len())
+        format!(" Sessions ({}) ", view.sessions.len())
     } else {
-        format!(
-            " Orphaned sessions ({}/{}) ",
-            view.matches.len(),
-            view.sessions.len()
-        )
+        format!(" Sessions ({}/{}) ", view.matches.len(), view.sessions.len())
     };
     let inner = render_modal_frame(f, area, title, th);
 
@@ -231,7 +229,7 @@ pub(crate) fn draw(f: &mut Frame, app: &mut App, view: &OrphansView, th: Theme) 
         let note = if !view.loaded {
             "looking…"
         } else if view.sessions.is_empty() {
-            "no orphaned sessions — deleting a worktree keeps its conversations here"
+            "no conversations yet — sessions from every worktree land here"
         } else {
             NO_MATCHES
         };
@@ -248,8 +246,9 @@ pub(crate) fn draw(f: &mut Frame, app: &mut App, view: &OrphansView, th: Theme) 
         };
         let budget = (list_inner.width as usize).saturating_sub(2);
         // "⊘ branch · name" on the left, "12d ago  626 KB" pinned right.
-        // The glyph is the ARCHIVED group's, and means the same thing here:
-        // a row with no process behind it.
+        // "⊘" is the ARCHIVED group's glyph and means the same thing here —
+        // a row whose checkout is gone; a live checkout's row gets "·".
+        let glyph = if session.live { "· " } else { "⊘ " };
         let right = right_column(session);
         let right_w = right.chars().count();
         let text_budget = budget.saturating_sub(right_w + 2);
@@ -262,7 +261,7 @@ pub(crate) fn draw(f: &mut Frame, app: &mut App, view: &OrphansView, th: Theme) 
         };
         let left = truncate(&left, text_budget.saturating_sub(2));
         let mut spans = vec![
-            Span::styled("⊘ ", Style::default().fg(th.dim)),
+            Span::styled(glyph, Style::default().fg(th.dim)),
             Span::raw(left.clone()),
         ];
         let used = left.chars().count() + 2;
@@ -308,6 +307,7 @@ mod tests {
             created_at: 0,
             orphaned_at: 0,
             transcript_bytes: bytes,
+            live: false,
         }
     }
 

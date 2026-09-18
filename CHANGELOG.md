@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Changed `Shift+O` from listing only orphaned sessions to a project-wide session picker: it now shows every conversation from every worktree of the project, so a session started in one checkout can be resumed in any other.
 - Windows: Fixed `Esc` doing nothing in a Claude Code session on Windows 10, so a running turn could not be cancelled and the next letter typed landed as `Alt`+letter. The built-in console host drops the key encoding Claude Code asks for, so pacer keeps to the plain bytes there.
 - Windows: Fixed `Shift+Enter` in a Claude Code or cursor-agent session sending the message instead of adding a line.
 - Fixed sessions never getting their status, title or resume id on a machine with a system-wide `HTTP_PROXY`: the hooks sent their loopback call through the proxy, which answered 502. The hooks now bypass the proxy for the daemon.

@@ -37,7 +37,7 @@ can't trap yourself.
 | `m` on a cloud row | **Attach cloud session** re-pulls the transcript now; **Send to cloud session** queues a message on it |
 | `r`, `a`, `u`, `d`, `A` | rename, archive, unarchive, delete, toggle archived |
 | `e` | agent presets: saved launch definitions (harness, model, effort, optional prefix/postfix). `Enter` asks for a task and starts the agent with prefix + task + postfix as its first prompt; `a` / `e` / `d` create, edit, delete |
-| `Shift+O` | orphaned sessions: conversations whose worktree was deleted, per project. `Enter` resumes one where the cursor is |
+| `Shift+O` | project sessions: every conversation across the project's worktrees, deleted ones included. `Enter` resumes one where the cursor is |
 | `Shift+D` | delete every row of the focused panel (the confirm lists the casualties) |
 | `t` | new shell terminal in the selected worktree's directory (Projects panel: the repo root) |
 | `Enter` on an OPEN PRS row | open it in the browser. Resting on the pull request reads it in the pane; `g` shows its diff, `PgUp`/`PgDn` scroll |

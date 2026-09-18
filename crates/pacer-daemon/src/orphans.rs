@@ -29,22 +29,30 @@ use crate::store::Store;
 /// it has what it needs.
 const HEAD_BUDGET_BYTES: u64 = 512 * 1024;
 
-/// Every ORPHANED SESSION of `project`, newest first.
+/// The resumable conversations of `project`, newest first.
 ///
-/// `live_worktrees` is the project's current checkouts: a transcript whose
-/// working directory still sits inside one of them is not orphaned — that
-/// conversation is reachable the ordinary way, from its own session row.
+/// `live_worktrees` is the project's current checkouts. A transcript whose
+/// working directory still sits inside one of them is not orphaned — it is
+/// marked `live` instead, and dropped unless `include_live`: the caller
+/// either wants the recoverable-only list (the classic orphans question) or
+/// every conversation the project ever had, so any of them can be resumed
+/// in any checkout.
 pub fn list(
     store: &Store,
     project: &Project,
     live_worktrees: &[Worktree],
+    include_live: bool,
 ) -> Result<Vec<OrphanedSession>> {
     let stored = store.load_orphaned_sessions(&project.id)?;
     let scanned = match claude_projects_dir() {
         Some(root) => scan_claude_transcripts(&root, project, live_worktrees),
         None => Vec::new(),
     };
-    Ok(merge(stored, scanned))
+    let mut merged = merge(stored, scanned);
+    if !include_live {
+        merged.retain(|s| !s.live);
+    }
+    Ok(merged)
 }
 
 /// Union the two sources by CLI session id, newest first.
@@ -191,10 +199,10 @@ fn modified_ms(meta: &std::fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-/// Claude conversations of `project` that ran in a checkout no longer in
-/// its worktree list. Every failure here is a directory that stays unread:
-/// this is a best-effort recovery of what the store lost, and it must never
-/// take the list down with it.
+/// Every Claude conversation of `project`, with the ones whose checkout is
+/// still in the worktree list marked `live`. Every failure here is a
+/// directory that stays unread: this is a best-effort recovery of what the
+/// store lost, and it must never take the list down with it.
 fn scan_claude_transcripts(
     root: &Path,
     project: &Project,
@@ -240,9 +248,7 @@ fn scan_claude_transcripts(
             if !home.iter().any(|dir| paths::contains(dir, &cwd)) {
                 continue;
             }
-            if live.iter().any(|w| paths::contains(w, &cwd)) {
-                continue;
-            }
+            let is_live = live.iter().any(|w| paths::contains(w, &cwd));
             let Ok(meta) = file.metadata() else {
                 continue;
             };
@@ -264,6 +270,7 @@ fn scan_claude_transcripts(
                 created_at: 0,
                 orphaned_at: modified_ms(&meta),
                 transcript_bytes: Some(meta.len()),
+                live: is_live,
             });
         }
     }
@@ -420,10 +427,10 @@ mod tests {
     }
 
     /// The rule that decides what "orphaned" means: a conversation whose
-    /// checkout is still in the project's worktree list is reachable from
-    /// its own session row and must not show up here as well.
+    /// checkout is still in the project's worktree list is `live`, and the
+    /// orphans-only view drops it while the everything view keeps it.
     #[test]
-    fn a_transcript_in_a_live_worktree_is_not_orphaned() {
+    fn a_transcript_in_a_live_worktree_is_marked_live() {
         let tmp = tempfile::tempdir().unwrap();
         let base = dir(tmp.path().to_path_buf());
         let repo = dir(base.join("demo"));
@@ -435,12 +442,14 @@ mod tests {
 
         let found = scan_claude_transcripts(&root, &project_at(&repo), &[worktree_at(&repo)]);
 
-        assert_eq!(found.len(), 1, "only the deleted checkout's session");
-        assert_eq!(found[0].session_id, "orphan");
-        assert_eq!(found[0].name, "feat-gitlab");
-        assert_eq!(found[0].branch, "feat");
-        assert_eq!(found[0].kind, pacer_core::AgentKind::Claude);
-        assert!(found[0].transcript_bytes.unwrap() > 0);
+        assert_eq!(found.len(), 2, "both checkouts' sessions");
+        let orphan = found.iter().find(|s| s.session_id == "orphan").unwrap();
+        assert!(!orphan.live);
+        assert_eq!(orphan.name, "feat-gitlab");
+        assert_eq!(orphan.branch, "feat");
+        assert_eq!(orphan.kind, pacer_core::AgentKind::Claude);
+        assert!(orphan.transcript_bytes.unwrap() > 0);
+        assert!(found.iter().find(|s| s.session_id == "live").unwrap().live);
     }
 
     /// The scan is scoped by the project's own slug, so another repo's
@@ -507,6 +516,7 @@ mod tests {
             created_at: 0,
             orphaned_at,
             transcript_bytes: None,
+            live: false,
         }
     }
 

@@ -376,8 +376,8 @@ pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         action: Action::OrphanedSessions,
         id: "orphaned_sessions",
-        label: "Orphaned sessions",
-        hint: "Conversations whose worktree was deleted; Enter resumes one in the selected worktree",
+        label: "Project sessions",
+        hint: "Every conversation across the project's worktrees, deleted ones included; Enter resumes one in the selected worktree",
         group: "SESSIONS",
         scope: Scope::Global,
         defaults: &["shift+o"],
