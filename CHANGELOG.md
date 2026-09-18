@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.0 (2026-09-18)
 
 - Changed `Shift+O` from listing only orphaned sessions to a project-wide session picker: it now shows every conversation from every worktree of the project, so a session started in one checkout can be resumed in any other.
 - Windows: Fixed `Esc` doing nothing in a Claude Code session on Windows 10, so a running turn could not be cancelled and the next letter typed landed as `Alt`+letter. The built-in console host drops the key encoding Claude Code asks for, so pacer keeps to the plain bytes there.
