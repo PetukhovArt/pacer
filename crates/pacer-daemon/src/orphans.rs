@@ -25,8 +25,8 @@ use crate::store::Store;
 /// How far into a transcript to look for its metadata. The `cwd` and
 /// `gitBranch` ride on the first real message, behind a handful of tiny
 /// header lines — but that message can be a whole pasted file, so the budget
-/// is a byte count rather than a line count, and the scan stops the moment
-/// it has what it needs.
+/// is a byte count rather than a line count. The scan reads all of it: see
+/// `read_head`.
 const HEAD_BUDGET_BYTES: u64 = 512 * 1024;
 
 /// The resumable conversations of `project`, newest first.
@@ -165,16 +165,18 @@ struct TranscriptHead {
     cwd: Option<String>,
     git_branch: Option<String>,
     custom_title: Option<String>,
+    ai_title: Option<String>,
 }
 
 impl TranscriptHead {
-    fn complete(&self) -> bool {
-        self.cwd.is_some() && self.git_branch.is_some() && self.custom_title.is_some()
-    }
-
     /// Take whatever this JSONL line knows and keep the first answer for
     /// each field — the earliest line is the closest to what the session
     /// started as, and a later `cd` must not rewrite where it belongs.
+    ///
+    /// `aiTitle` is the exception and keeps the last answer instead. It is
+    /// not a fact about where the session started but Claude Code's running
+    /// guess at what it is about, rewritten as the conversation goes on, and
+    /// `/resume` shows the newest one — so matching it means overwriting.
     fn absorb(&mut self, line: &str) {
         #[derive(Deserialize)]
         struct Line {
@@ -186,6 +188,9 @@ impl TranscriptHead {
             #[serde(default)]
             #[serde(rename = "customTitle")]
             custom_title: Option<String>,
+            #[serde(default)]
+            #[serde(rename = "aiTitle")]
+            ai_title: Option<String>,
         }
         let Ok(parsed) = serde_json::from_str::<Line>(line) else {
             return;
@@ -193,10 +198,18 @@ impl TranscriptHead {
         self.cwd = self.cwd.take().or(parsed.cwd);
         self.git_branch = self.git_branch.take().or(parsed.git_branch);
         self.custom_title = self.custom_title.take().or(parsed.custom_title);
+        if parsed.ai_title.is_some() {
+            self.ai_title = parsed.ai_title;
+        }
     }
 }
 
 /// Read a transcript's head far enough to learn where it ran.
+///
+/// The scan always spends the whole budget. It used to stop early once every
+/// field was answered, but the last `aiTitle` is only known by reading to the
+/// end of the budget — and the early exit required a `customTitle`, which
+/// almost no transcript has, so it practically never fired anyway.
 fn read_head(path: &Path) -> Option<TranscriptHead> {
     let file = std::fs::File::open(path).ok()?;
     let mut reader = BufReader::new(file);
@@ -210,9 +223,6 @@ fn read_head(path: &Path) -> Option<TranscriptHead> {
             Ok(n) => spent += n as u64,
         }
         head.absorb(&line);
-        if head.complete() {
-            break;
-        }
     }
     head.cwd.is_some().then_some(head)
 }
@@ -300,6 +310,7 @@ fn scan_claude_transcripts(
             let name = head
                 .custom_title
                 .filter(|t| !t.is_empty())
+                .or_else(|| head.ai_title.filter(|t| !t.is_empty()))
                 .or_else(|| (!branch.is_empty()).then(|| branch.clone()))
                 .unwrap_or_else(|| session_id.chars().take(8).collect());
             found.push(OrphanedSession {
@@ -494,6 +505,37 @@ mod tests {
         assert_eq!(orphan.kind, pacer_core::AgentKind::Claude);
         assert!(orphan.transcript_bytes.unwrap() > 0);
         assert!(found.iter().find(|s| s.session_id == "live").unwrap().live);
+    }
+
+    /// Claude Code writes an `ai-title` line whenever it sharpens its guess
+    /// at what a session is about, and `/resume` lists the newest one. With
+    /// no `customTitle` the picker has to show that title rather than the
+    /// branch, which is `main` for almost every session in the main checkout.
+    #[test]
+    fn a_session_is_named_after_its_last_ai_title() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = dir(tmp.path().to_path_buf());
+        let repo = dir(base.join("demo"));
+        let root = base.join("claude");
+        let slugged = root.join(slug(&repo));
+        std::fs::create_dir_all(&slugged).unwrap();
+        let cwd = serde_json::to_string(&repo.to_string_lossy()).unwrap();
+        std::fs::write(
+            slugged.join("s.jsonl"),
+            format!(
+                "{{\"type\":\"user\",\"cwd\":{cwd},\"gitBranch\":\"main\"}}
+                 {{\"type\":\"ai-title\",\"aiTitle\":\"first guess\"}}
+                 {{\"type\":\"ai-title\",\"aiTitle\":\"sharpened guess\"}}
+"
+            ),
+        )
+        .unwrap();
+
+        let found = scan_claude_transcripts(&root, &project_at(&repo), &[]);
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "sharpened guess");
+        assert_eq!(found[0].branch, "main");
     }
 
     /// The scan is scoped by the project's own slug, so another repo's

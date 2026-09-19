@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
+
 ## 0.20.0 (2026-09-18)
 
 - Changed `Shift+O` from listing only orphaned sessions to a project-wide session picker: it now shows every conversation from every worktree of the project, so a session started in one checkout can be resumed in any other.
