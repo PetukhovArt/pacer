@@ -92,6 +92,14 @@ _Avoid_: drill in
 Restoring an Agent from its stored CLI session id; a fresh session when the id is gone.
 _Avoid_: restore, restart (a restart is a new process; Resume continues the conversation)
 
+**Diagnostics Card**
+A non-modal floating panel listing every live Session's CPU, RAM and Claude token spend. Unlike every Overlay it does not take focus or swallow keys, and the user moves it.
+_Avoid_: HUD, widget, panel (a Panel here is a mosaic tile, `layout::Leaf::Panel`)
+
+**Sampler**
+The Daemon task that takes the one periodic reading the Diagnostics Card and the metrics modal both read. It is the only owner of the CPU delta and the transcript byte offsets, so `GetMetrics` answers from its last sample rather than sweeping.
+_Avoid_: poller, metrics collector
+
 ## Transport and runtime files
 
 **Daemon Socket**

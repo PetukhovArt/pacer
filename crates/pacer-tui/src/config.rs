@@ -517,6 +517,18 @@ pub struct Config {
     /// closed browser tab can't lose the choice the way the daemon's
     /// save-on-quit UI blob would.
     pub show_workspaces: bool,
+    /// Whether the DIAGNOSTICS CARD is on screen. Same argument as
+    /// `show_workspaces`: a visibility toggle is a setting, and the
+    /// daemon's save-on-quit UI blob can lose it to a crash.
+    pub show_diagnostics: bool,
+    /// Per-model rates for the diagnostics card's cost column, in USD per
+    /// million tokens. Empty by default and hand-edited only: pacer has no
+    /// price data and will not guess one. See `crate::price`.
+    ///
+    /// Deliberately absent from [`Config::write_into`], so a table typed
+    /// into `config.json` survives every save the settings overlay makes —
+    /// the same contract `prewarm_agents` has.
+    pub model_prices: std::collections::BTreeMap<String, crate::price::ModelPrice>,
     /// Hide the Projects panel and give its width to the terminal pane.
     /// False by default so configs written before this key keep the current
     /// three-panel layout.
@@ -571,6 +583,8 @@ impl Default for Config {
             show_ago: true,
             bold_names: true,
             show_workspaces: true,
+            show_diagnostics: false,
+            model_prices: Default::default(),
             hide_projects: false,
             hide_worktrees: false,
             hide_prs: false,
@@ -692,6 +706,10 @@ impl Config {
         obj.insert(
             "show_workspaces".into(),
             serde_json::json!(self.show_workspaces),
+        );
+        obj.insert(
+            "show_diagnostics".into(),
+            serde_json::json!(self.show_diagnostics),
         );
         obj.insert(
             "hide_projects".into(),

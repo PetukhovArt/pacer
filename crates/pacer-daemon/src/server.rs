@@ -253,18 +253,18 @@ async fn handle_client(
                     }
                 }
                 ClientRequest::GetMetrics { req_id } => {
-                    // A machine-wide `ps` sweep takes tens of ms; keep it off
-                    // the request loop so Input/Attach frames keep flowing.
-                    let pids = daemon.session_pids();
-                    let out_tx = out_tx.clone();
-                    tokio::spawn(async move {
-                        let snapshot =
-                            tokio::task::spawn_blocking(move || crate::metrics::collect(pids))
-                                .await;
-                        if let Ok(snapshot) = snapshot {
-                            let _ = out_tx.send(ServerEvent::Metrics { req_id, snapshot }).await;
-                        }
-                    });
+                    // The sampler measures; this only reads what it last
+                    // published. Sweeping here would date every CPU delta
+                    // from whichever client asked last — see `crate::sampler`.
+                    //
+                    // Always answer, even before the first tick: the client
+                    // frees its pending slot on the reply, so silence leaks
+                    // one slot per poll. `unsampled()` is the "nothing
+                    // measured yet" reply it knows to skip.
+                    let snapshot = daemon
+                        .last_sample()
+                        .unwrap_or_else(pacer_core::MetricsSnapshot::unsampled);
+                    let _ = out_tx.send(ServerEvent::Metrics { req_id, snapshot }).await;
                 }
                 // ---- entity CRUD: run the op, reply Ack/Error ----
                 ClientRequest::AddWorkspace { req_id, name } => {

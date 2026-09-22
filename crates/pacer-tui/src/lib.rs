@@ -4,6 +4,7 @@ pub mod base64;
 pub mod branch_name;
 pub mod completion;
 pub mod config;
+pub mod diagnostics;
 // Test-only: the stand-in editors the EDITOR modal tests spawn.
 #[cfg(test)]
 pub mod editor_stub;
@@ -23,6 +24,7 @@ pub mod orphan_overlay;
 pub mod paste_burst;
 pub mod pr_preview;
 pub mod preset_overlays;
+pub mod price;
 pub mod pull_request;
 pub mod raw_attach;
 pub mod remote;

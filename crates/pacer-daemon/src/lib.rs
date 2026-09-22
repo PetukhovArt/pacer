@@ -7,11 +7,13 @@ pub mod metrics;
 pub mod orphans;
 pub mod pty;
 pub mod registry;
+pub mod sampler;
 pub mod server;
 pub mod sibling;
 pub mod status;
 pub mod store;
 pub mod subagents;
+pub mod usage;
 pub mod worktree_seed;
 
 use anyhow::{bail, Context, Result};
@@ -140,6 +142,14 @@ async fn serve() -> Result<()> {
                 }
             }
         });
+    }
+
+    // Metrics sampler: the one owner of the CPU delta and the transcript
+    // offsets. See `crate::sampler` for why neither may be measured on a
+    // request.
+    {
+        let daemon = daemon.clone();
+        tokio::spawn(async move { crate::sampler::run(daemon).await });
     }
 
     // Idle-session reaper: kill PTYs in worktrees no client is looking at

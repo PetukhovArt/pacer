@@ -13,8 +13,8 @@ use pacer_core::paths;
 use pacer_core::spawn::NoWindow;
 use pacer_core::{
     Agent, AgentId, AgentKind, AgentStatus, EnterOutcome, Entity, EntityId, Link, LinkId,
-    OrphanedSession, PrewarmInfo, Project, ProjectId, ServerEvent, SessionRef, TerminalId,
-    TerminalTab, Workspace, WorkspaceId, Worktree, WorktreeId, MAX_CLOUD_PROMPT_BYTES,
+    MetricsSnapshot, OrphanedSession, PrewarmInfo, Project, ProjectId, ServerEvent, SessionRef,
+    TerminalId, TerminalTab, Workspace, WorkspaceId, Worktree, WorktreeId, MAX_CLOUD_PROMPT_BYTES,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -175,6 +175,11 @@ pub struct Daemon {
     /// cancel it. Stepping through the Workspaces column fires a sweep per
     /// row, and only the row the cursor rests on is worth warming.
     prewarm_sweep: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// The last reading [`crate::sampler`] published. `GetMetrics` answers
+    /// from here rather than sweeping: CPU is a delta and the token tally
+    /// is a file offset, so only one owner may measure them. The sampler
+    /// task is the only writer; every request handler only reads.
+    last_sample: Mutex<Option<MetricsSnapshot>>,
 }
 
 impl Daemon {
@@ -199,6 +204,7 @@ impl Daemon {
             cloud_mirrors: Mutex::new(HashMap::new()),
             spawn_gate: Mutex::new(()),
             prewarm_sweep: Mutex::new(None),
+            last_sample: Mutex::new(None),
         })
     }
 
@@ -264,6 +270,21 @@ impl Daemon {
     /// on every hook. Only Claude sends one.
     pub fn note_transcript_path(&self, agent_id: &AgentId, path: &str) {
         self.killed_subagents.note_transcript(agent_id, path);
+    }
+
+    /// The last transcript path the hooks reported for this agent; None
+    /// until one lands, and after a daemon restart.
+    pub fn transcript_path(&self, agent_id: &AgentId) -> Option<PathBuf> {
+        self.killed_subagents.transcript(agent_id)
+    }
+
+    pub fn publish_sample(&self, snapshot: MetricsSnapshot) {
+        *self.last_sample.lock().unwrap() = Some(snapshot);
+    }
+
+    /// The sampler's last reading. None before its first tick.
+    pub fn last_sample(&self) -> Option<MetricsSnapshot> {
+        self.last_sample.lock().unwrap().clone()
     }
 
     /// Deferred-finish recheck across all machines (runs on a timer). A held

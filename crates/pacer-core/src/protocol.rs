@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 /// Bump on any breaking change to these enums. The daemon refuses mismatched
 /// clients; the client then offers a kill-and-restart of the old daemon.
-pub const PROTOCOL_VERSION: u32 = 37;
+pub const PROTOCOL_VERSION: u32 = 38;
 
 /// Max IPC frame size (length prefix sanity bound).
 pub const MAX_FRAME_LEN: u32 = 4 * 1024 * 1024;
@@ -342,9 +342,16 @@ pub enum ClientRequest {
         id: AgentId,
     },
 
-    /// One point-in-time memory reading — the daemon plus every live
-    /// session's process subtree. Answered by `ServerEvent::Metrics` with
-    /// the same req_id (not an Ack).
+    /// The last reading the daemon's sampler published — the daemon plus
+    /// every live session's process subtree, its CPU share and its Claude
+    /// token spend. Answered by `ServerEvent::Metrics` with the same req_id
+    /// (not an Ack).
+    ///
+    /// This does not trigger a sweep. CPU is a delta and the token tally is
+    /// a file offset, so both are stateful over time and only one owner may
+    /// measure them; asking here would date every delta from whichever
+    /// client swept last. The answer is therefore up to one sampler tick
+    /// old, which `MetricsSnapshot::sampled_at_ms` reports.
     GetMetrics {
         req_id: u64,
     },
@@ -381,6 +388,82 @@ pub struct SessionMetrics {
     /// this is the only handle a client has for naming and placing it.
     #[serde(default)]
     pub prewarm: Option<PrewarmInfo>,
+    /// CPU share of the whole subtree over the interval between the last
+    /// two samples, as a percentage of **one core** (`top`'s convention: a
+    /// subtree busy on four cores reads up to 400).
+    ///
+    /// `None` means *not measured* — the sampler's first sweep, or a
+    /// previous sample too stale to divide by. Never `0.0` as a stand-in:
+    /// "idle" and "unknown" are different facts and must render apart.
+    #[serde(default)]
+    pub cpu_percent: Option<f32>,
+    /// Cumulative Claude token spend of this session's conversation.
+    ///
+    /// `None` means *not measured*: a Codex or Cursor session (their
+    /// transcripts are a different format), one with no CLI session id
+    /// yet, or one whose transcript could not be located. `Some` with an
+    /// empty `by_model` means measured and nothing spent.
+    #[serde(default)]
+    pub tokens: Option<TokenUsage>,
+}
+
+/// Tokens one model spent in one conversation. Rates differ per bucket — a
+/// cache read is a tenth of an input token, a 1h cache write twice one — so
+/// the buckets stay separate all the way to the price table.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelTokens {
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write_5m: u64,
+    pub cache_write_1h: u64,
+}
+
+/// One Claude conversation's cumulative spend, split by model.
+///
+/// `by_model` is a `Vec` and not a map on purpose: `HashMap` iteration
+/// order is nondeterministic, so a Sonnet/Opus breakdown would jitter
+/// between frames. First-seen order is a fact the daemon has and the client
+/// wants, and a conversation runs one to three models, so a map buys
+/// nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsage {
+    /// One entry per model that took a turn, in first-seen order.
+    pub by_model: Vec<ModelTokens>,
+}
+
+impl TokenUsage {
+    /// Fold `add` into this model's entry, appending it if new.
+    pub fn add(&mut self, model: &str, add: &ModelTokens) {
+        let slot = match self.by_model.iter_mut().find(|m| m.model == model) {
+            Some(slot) => slot,
+            None => {
+                self.by_model.push(ModelTokens {
+                    model: model.to_string(),
+                    ..Default::default()
+                });
+                self.by_model.last_mut().expect("just pushed")
+            }
+        };
+        slot.input += add.input;
+        slot.output += add.output;
+        slot.cache_read += add.cache_read;
+        slot.cache_write_5m += add.cache_write_5m;
+        slot.cache_write_1h += add.cache_write_1h;
+    }
+
+    /// Input, output and every cache bucket summed across models — the
+    /// three numbers the diagnostics card's columns show.
+    pub fn totals(&self) -> (u64, u64, u64) {
+        self.by_model.iter().fold((0, 0, 0), |(i, o, c), m| {
+            (
+                i + m.input,
+                o + m.output,
+                c + m.cache_read + m.cache_write_5m + m.cache_write_1h,
+            )
+        })
+    }
 }
 
 /// Where a prewarm-pool spare is homed and what it booted as.
@@ -401,6 +484,34 @@ pub struct MetricsSnapshot {
     /// Physical memory installed on the machine, bytes; 0 = unknown.
     pub system_total_bytes: u64,
     pub sessions: Vec<SessionMetrics>,
+    /// When the sampler took this reading, ms since the unix epoch.
+    /// `GetMetrics` answers from a cache, so without this a wedged sampler
+    /// is indistinguishable from a quiet machine.
+    ///
+    /// **Zero means nothing was measured** — see [`Self::unsampled`].
+    #[serde(default)]
+    pub sampled_at_ms: i64,
+}
+
+impl MetricsSnapshot {
+    /// The answer to a `GetMetrics` that arrived before the sampler's
+    /// first tick.
+    ///
+    /// The request is answered anyway, and with an unmistakable value,
+    /// because the client allocates a pending slot per request and only a
+    /// reply frees it: staying silent would leak one slot per poll for as
+    /// long as the sampler had nothing to say. A client must test
+    /// `sampled_at_ms != 0` before showing any of this — every other field
+    /// is zero, which would read as a machine using no memory at all.
+    pub fn unsampled() -> Self {
+        Self {
+            daemon_pid: 0,
+            daemon_rss_bytes: 0,
+            system_total_bytes: 0,
+            sessions: Vec::new(),
+            sampled_at_ms: 0,
+        }
+    }
 }
 
 /// What `EnterWorktree` did to the agent's live session.

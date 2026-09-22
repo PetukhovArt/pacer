@@ -63,6 +63,11 @@ pub enum HitTarget {
     /// three-column layout). A split with a hidden side owns no rule but
     /// keeps its id and size.
     Splitter(usize),
+    /// The DIAGNOSTICS CARD, whole. One variant rather than one per
+    /// sub-region: `crate::diagnostics` derives what was hit from the
+    /// offset inside `area`, which keeps this enum — matched all over
+    /// `event_loop` — from growing a private vocabulary.
+    DiagnosticsCard,
 }
 
 /// Default widths of the Projects / Worktrees / Sessions panels. Sessions
@@ -1974,6 +1979,14 @@ pub struct UiState {
     /// ULIDs never collide across kinds); absent in older blobs.
     #[serde(default)]
     pub pinned: Vec<String>,
+    /// Which corner the DIAGNOSTICS CARD is anchored to, and how far in
+    /// from it. Geometry produced by dragging, so it lives in the blob
+    /// beside `layout` and `diff_files_width`; whether the card is shown
+    /// at all is a setting and lives in `config.json`.
+    #[serde(default)]
+    pub diagnostics_corner: Option<crate::diagnostics::Corner>,
+    #[serde(default)]
+    pub diagnostics_offset: Option<(i16, i16)>,
 }
 
 /// A mouse selection over the terminal pane (drag or double-click word), in
@@ -2350,6 +2363,9 @@ pub struct App {
     /// for the footer's memory/session readout. Refreshed on a slow poll;
     /// the metrics modal shares the same replies at a faster cadence.
     pub last_metrics: Option<pacer_core::MetricsSnapshot>,
+    /// The DIAGNOSTICS CARD: a non-modal floating panel over the layout,
+    /// reading the same snapshot as the footer and the metrics modal.
+    pub diagnostics: crate::diagnostics::Card,
     /// This TUI process's own RSS, sampled alongside each metrics request
     /// (the daemon can't see us).
     pub client_rss_bytes: u64,
@@ -2487,6 +2503,7 @@ impl App {
             pr_diff_inflight: None,
             pr_diff_tx: None,
             last_metrics: None,
+            diagnostics: Default::default(),
             client_rss_bytes: 0,
             splash_epoch: std::time::Instant::now(),
             splash_preview: false,

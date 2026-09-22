@@ -56,6 +56,9 @@ const MIN_PREVIEW_TEXT_W: usize = 16;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     app.hits.clear();
+    // Before the splitter grab zones below, so a card floating over a rule
+    // wins `hit_at`'s first-match scan. See `crate::diagnostics`.
+    crate::diagnostics::register_hit(app, f.area());
 
     // The bar gets a blank row above it so it breathes off the panel
     // borders, matching the terminal's own padding below the last row.
@@ -70,6 +73,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_footer(f, app, footer);
         draw_overlay(f, app);
         draw_vim(f, app);
+        crate::diagnostics::draw(f, app);
         return;
     }
 
@@ -83,6 +87,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_footer(f, app, footer);
         draw_overlay(f, app);
         draw_vim(f, app);
+        crate::diagnostics::draw(f, app);
         return;
     }
 
@@ -149,6 +154,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_footer(f, app, footer);
     draw_overlay(f, app);
     draw_vim(f, app);
+    crate::diagnostics::draw(f, app);
 }
 
 /// The editor, above every overlay: a centered modal, or — spawned from the

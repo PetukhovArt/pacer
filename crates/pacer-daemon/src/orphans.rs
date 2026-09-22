@@ -131,7 +131,7 @@ pub fn resume_notice(orphan: &OrphanedSession, worktree: &Worktree) -> Option<St
 
 /// Where Claude Code keeps its conversations: one directory per working
 /// directory, named after it, holding one `<session-id>.jsonl` per session.
-fn claude_projects_dir() -> Option<PathBuf> {
+pub(crate) fn claude_projects_dir() -> Option<PathBuf> {
     pacer_core::env::home_dir().map(|home| home.join(".claude").join("projects"))
 }
 
@@ -143,7 +143,7 @@ fn claude_projects_dir() -> Option<PathBuf> {
 /// checkouts can slug the same. It is used only to narrow which directories
 /// are worth opening; what a transcript actually ran in is read back out of
 /// the transcript itself.
-fn slug(path: &Path) -> String {
+pub(crate) fn slug(path: &Path) -> String {
     path.to_string_lossy()
         .chars()
         .map(|c| {
@@ -154,6 +154,52 @@ fn slug(path: &Path) -> String {
             }
         })
         .collect()
+}
+
+/// Where Claude would keep `session_id`'s transcript for a session running
+/// in `cwd`, when the file is actually there.
+///
+/// Derived, so it can be wrong: the slug is lossy, and an agent that
+/// re-homed mid-conversation kept the directory it started in. A miss is
+/// "unknown", not "nothing spent" — hence the `exists` check, which lets
+/// the caller fall through to [`find_transcript`].
+pub(crate) fn transcript_path(cwd: &Path, session_id: &str) -> Option<PathBuf> {
+    if !names_one_file(session_id) {
+        return None;
+    }
+    let dir = claude_projects_dir()?.join(slug(&paths::canonical_or_raw(cwd)));
+    let path = dir.join(format!("{session_id}.jsonl"));
+    path.is_file().then_some(path)
+}
+
+/// The one directory under [`claude_projects_dir`] holding
+/// `<session_id>.jsonl`. A CLI session id is a UUID, so at most one can.
+/// A couple of dozen stats; the caller caches the answer.
+pub(crate) fn find_transcript(session_id: &str) -> Option<PathBuf> {
+    if !names_one_file(session_id) {
+        return None;
+    }
+    let root = claude_projects_dir()?;
+    let file = format!("{session_id}.jsonl");
+    std::fs::read_dir(root)
+        .ok()?
+        .flatten()
+        .map(|dir| dir.path().join(&file))
+        .find(|path| path.is_file())
+}
+
+/// Whether a session id can be interpolated into a path at all.
+///
+/// A CLI session id is a UUID and names one file inside one directory, but
+/// it reaches pacer through a hook payload that pacer does not author. Both
+/// lookups above build a path out of it, so anything carrying a separator
+/// or a parent reference would read a file outside the transcripts
+/// directory entirely.
+fn names_one_file(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id != "."
+        && session_id != ".."
+        && !session_id.contains(['/', '\\', ':'])
 }
 
 /// The metadata Claude Code writes into the head of a transcript. Every

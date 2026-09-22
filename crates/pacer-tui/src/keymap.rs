@@ -107,6 +107,10 @@ pub enum Action {
     Hosts,
     Settings,
     Metrics,
+    /// Show or hide the DIAGNOSTICS CARD.
+    Diagnostics,
+    /// Walk the card round the four screen corners.
+    DiagnosticsMove,
     Splash,
     Help,
     Quit,
@@ -559,6 +563,24 @@ pub const ACTIONS: &[ActionSpec] = &[
         group: "GENERAL",
         scope: Scope::Global,
         defaults: &["shift+m"],
+    },
+    ActionSpec {
+        action: Action::Diagnostics,
+        id: "diagnostics",
+        label: "Diagnostics card",
+        hint: "Toggle a floating card: CPU, RAM and Claude tokens per session",
+        group: "GENERAL",
+        scope: Scope::Global,
+        defaults: &["shift+c"],
+    },
+    ActionSpec {
+        action: Action::DiagnosticsMove,
+        id: "diagnostics_move",
+        label: "Move diagnostics card",
+        hint: "Send the card to the next screen corner (drag its title row to fine-tune)",
+        group: "GENERAL",
+        scope: Scope::Global,
+        defaults: &["shift+v"],
     },
     ActionSpec {
         action: Action::Splash,

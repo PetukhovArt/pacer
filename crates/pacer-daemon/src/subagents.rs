@@ -46,6 +46,14 @@ impl KilledSubagents {
             .insert(agent_id.clone(), PathBuf::from(path));
     }
 
+    /// The last transcript path the hooks reported for this session, if
+    /// any. Claude names the file itself, so this beats deriving the path —
+    /// but it is in-memory only, so it is empty after a daemon restart
+    /// until the session's next hook lands.
+    pub fn transcript(&self, agent_id: &AgentId) -> Option<PathBuf> {
+        self.transcripts.lock().unwrap().get(agent_id).cloned()
+    }
+
     /// Ids among `tracked` that this session's meta files report as killed.
     /// Empty whenever the path is unknown or nothing on disk says so.
     pub fn killed(&self, agent_id: &AgentId, tracked: &[String]) -> Vec<String> {

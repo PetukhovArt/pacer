@@ -38,7 +38,7 @@ one hooks dialect; Cursor speaks its own. The same hook channel powers auto-titl
 Each has a subcommand and a module named after it — start from the CLI entry in `crates/pacer`:
 `pacer ssh` (remote hosts), `pacer tunnel` / `pacer browser` (the TUI in a browser tab via ttyd),
 cloud sessions (`claude --cloud` / `--teleport`), agent presets, the prewarm pool, the idle reaper,
-and the memory modal's metrics sweep.
+and the metrics sampler behind the memory modal and the diagnostics card.
 
 ## Crate layout
 

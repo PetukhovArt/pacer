@@ -350,7 +350,9 @@ async fn main_loop(
             // initial reading is requested by the M keypress itself).
             _ = tokio::time::sleep_until(next_metrics_poll) => {
                 request_metrics(&mut app, &mut out);
-                let period = if matches!(app.overlay, Some(Overlay::Metrics(_))) {
+                let period = if app.diagnostics.shown
+                    || matches!(app.overlay, Some(Overlay::Metrics(_)))
+                {
                     METRICS_POLL
                 } else {
                     FOOTER_METRICS_POLL
@@ -1046,6 +1048,8 @@ fn ui_state_json(app: &App) -> String {
         layout: Some(app.layout.clone()),
         diff_files_width: Some(app.diff_files_width),
         pinned: app.pinned.iter().cloned().collect(),
+        diagnostics_corner: Some(app.diagnostics.corner),
+        diagnostics_offset: Some(app.diagnostics.offset),
     };
     serde_json::to_string(&state).unwrap_or_else(|_| "{}".into())
 }
@@ -1102,6 +1106,13 @@ fn restore_ui_state(app: &mut App, json: &str) -> bool {
     };
     app.show_archived = state.show_archived;
     app.pinned = state.pinned.into_iter().collect();
+    // Anchored geometry, so nothing needs clamping on a narrower screen.
+    if let Some(corner) = state.diagnostics_corner {
+        app.diagnostics.corner = corner;
+    }
+    if let Some(offset) = state.diagnostics_offset {
+        app.diagnostics.offset = offset;
+    }
     // The draw re-fits every size to the actual screen; only cap what a
     // blob from a far wider screen could quote. A blob predating the mosaic
     // carries the classic column widths instead.
@@ -1668,6 +1679,13 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             app.overlay = Some(Overlay::Metrics(MetricsView::new()));
             request_metrics(app, out);
         }
+        Action::Diagnostics => {
+            crate::diagnostics::toggle(app);
+            let mut cfg = crate::config::Config::load();
+            cfg.show_diagnostics = app.diagnostics.shown;
+            save_config(app, &cfg);
+        }
+        Action::DiagnosticsMove => app.diagnostics.cycle_corner(),
         // Replay the first-run pacer splash, fade-in included.
         Action::Splash => {
             app.splash_epoch = std::time::Instant::now();
@@ -4182,6 +4200,7 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     apply_sort(app, cfg.sort_modes());
     set_pr_filter(app, cfg.pr_list_filter());
     set_show_workspaces(app, cfg.show_workspaces);
+    app.diagnostics.apply_config(cfg);
     set_hide_projects(app, cfg.hide_projects);
     set_hide_worktrees(app, cfg.hide_worktrees);
     set_hide_prs(app, cfg.hide_prs);
@@ -6028,6 +6047,13 @@ fn update_pointer(app: &mut App, mouse: &MouseEvent) {
 fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) {
     let mouse_pos = ratatui::layout::Position::new(mouse.column, mouse.row);
     update_pointer(app, &mouse);
+    // The DIAGNOSTICS CARD floats above every modal, so its gestures are
+    // settled before anything else sees them: a click on it is not a click
+    // outside an open modal, and a drag over a rule is the card's rather
+    // than the splitter's.
+    if crate::diagnostics::on_mouse(app, &mouse) {
+        return;
+    }
     // The editor modal swallows the mouse entirely — its selection/scroll
     // story is vim's, not ours.
     if app.vim.is_some() {
@@ -6613,6 +6639,8 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent, out: &mut Vec<ClientRequest>) 
                     app.focus = Focus::Sessions;
                     toggle_archived(app, out);
                 }
+                // Settled in `diagnostics::on_mouse`, before this match.
+                Some(HitTarget::DiagnosticsCard) => {}
                 Some(HitTarget::PanelBg(focus)) => {
                     // Empty projects list: left click opens the obvious
                     // creation prompt. Other panels just take focus.
@@ -7143,11 +7171,17 @@ fn handle_server_event(app: &mut App, event: ServerEvent, out: &mut Vec<ClientRe
         ServerEvent::Metrics { req_id, snapshot } => {
             // Answered with Metrics, not Ack — clear the pending slot by hand.
             app.pending.remove(&req_id);
-            if let Some(Overlay::Metrics(view)) = &mut app.overlay {
-                view.snapshot = Some(snapshot.clone());
+            // The daemon answers every poll so this slot always frees, but
+            // before its sampler's first tick it has nothing to report and
+            // says so with a zero stamp. Adopting that would blank the
+            // footer and the modal; the last good reading is better.
+            if snapshot.sampled_at_ms != 0 {
+                if let Some(Overlay::Metrics(view)) = &mut app.overlay {
+                    view.snapshot = Some(snapshot.clone());
+                }
+                // The footer's readout keeps the latest reading either way.
+                app.last_metrics = Some(snapshot);
             }
-            // The footer's readout keeps the latest reading either way.
-            app.last_metrics = Some(snapshot);
             app.dirty = true;
         }
         ServerEvent::Error { req_id, message } => {
@@ -10732,6 +10766,7 @@ diff --git a/src/b.rs b/src/b.rs
             daemon_pid: 1,
             daemon_rss_bytes: 200 * 1024 * 1024,
             system_total_bytes: 0,
+            sampled_at_ms: 1,
             sessions: vec![
                 SessionMetrics {
                     session: SessionRef::Agent(AgentId("a1".into())),
@@ -10739,6 +10774,8 @@ diff --git a/src/b.rs b/src/b.rs
                     rss_bytes: 700 * 1024 * 1024,
                     procs: 3,
                     prewarm: None,
+                    cpu_percent: None,
+                    tokens: None,
                 },
                 SessionMetrics {
                     session: SessionRef::Terminal(TerminalId("t1".into())),
@@ -10746,6 +10783,8 @@ diff --git a/src/b.rs b/src/b.rs
                     rss_bytes: 24 * 1024 * 1024,
                     procs: 2,
                     prewarm: None,
+                    cpu_percent: None,
+                    tokens: None,
                 },
             ],
         });
@@ -17049,6 +17088,42 @@ diff --git a/src/b.rs b/src/b.rs
 
     // ---- `M` metrics modal ----
 
+    /// Before the sampler's first tick the daemon answers anyway, with a
+    /// zero stamp, so the client's pending slot frees. Catches the reply
+    /// being dropped again (a slot leaked per poll, forever) and catches
+    /// the empty reply being adopted, which would blank the footer's
+    /// readout to zeros on every poll until the sampler catches up.
+    #[test]
+    fn an_unsampled_metrics_reply_frees_its_slot_without_blanking_the_readout() {
+        let mut app = App::new();
+        let good = pacer_core::MetricsSnapshot {
+            daemon_pid: 42,
+            daemon_rss_bytes: 40 * 1024 * 1024,
+            system_total_bytes: 0,
+            sampled_at_ms: 1,
+            sessions: Vec::new(),
+        };
+        app.last_metrics = Some(good.clone());
+
+        let req_id = app.alloc_req_id(crate::app::PendingIntent::None);
+        hse(
+            &mut app,
+            ServerEvent::Metrics {
+                req_id,
+                snapshot: pacer_core::MetricsSnapshot::unsampled(),
+            },
+        );
+        assert!(
+            app.pending.is_empty(),
+            "an unsampled reply must still free its pending slot"
+        );
+        assert_eq!(
+            app.last_metrics.map(|m| m.daemon_rss_bytes),
+            Some(good.daemon_rss_bytes),
+            "the last real reading must survive an unsampled reply"
+        );
+    }
+
     #[test]
     fn metrics_modal_opens_requests_and_renders() {
         let mut app = App::new();
@@ -17070,12 +17145,15 @@ diff --git a/src/b.rs b/src/b.rs
                     daemon_pid: 42,
                     daemon_rss_bytes: 40 * 1024 * 1024,
                     system_total_bytes: 32 * 1024 * 1024 * 1024,
+                    sampled_at_ms: 1,
                     sessions: vec![pacer_core::SessionMetrics {
                         session: SessionRef::Agent(AgentId("a1".into())),
                         pid: 4321,
                         rss_bytes: 1_610_612_736, // 1.5 GB
                         procs: 3,
                         prewarm: None,
+                        cpu_percent: None,
+                        tokens: None,
                     }],
                 },
             },
@@ -17143,6 +17221,8 @@ diff --git a/src/b.rs b/src/b.rs
                 kind: pacer_core::AgentKind::Claude,
                 model: model.map(str::to_string),
             }),
+            cpu_percent: None,
+            tokens: None,
         };
         hse(
             &mut app,
@@ -17152,6 +17232,7 @@ diff --git a/src/b.rs b/src/b.rs
                     daemon_pid: 42,
                     daemon_rss_bytes: 40 * 1024 * 1024,
                     system_total_bytes: 0,
+                    sampled_at_ms: 1,
                     sessions: vec![
                         pacer_core::SessionMetrics {
                             session: SessionRef::Agent(AgentId("a1".into())),
@@ -17159,6 +17240,8 @@ diff --git a/src/b.rs b/src/b.rs
                             rss_bytes: 500 * 1024 * 1024,
                             procs: 4,
                             prewarm: None,
+                            cpu_percent: None,
+                            tokens: None,
                         },
                         spare("warm-1", 7001, 300, Some("opus")),
                         spare("warm-2", 7002, 250, None),
@@ -17238,12 +17321,15 @@ diff --git a/src/b.rs b/src/b.rs
             daemon_pid: 42,
             daemon_rss_bytes: 1024,
             system_total_bytes: 0,
+            sampled_at_ms: 1,
             sessions: vec![pacer_core::SessionMetrics {
                 session: SessionRef::Agent(AgentId("a1".into())),
                 pid: 4321,
                 rss_bytes: 2048,
                 procs: 1,
                 prewarm: None,
+                cpu_percent: None,
+                tokens: None,
             }],
         };
         hse(
@@ -17335,6 +17421,7 @@ diff --git a/src/b.rs b/src/b.rs
                     daemon_pid: 42,
                     daemon_rss_bytes: 0,
                     system_total_bytes: 0,
+                    sampled_at_ms: 1,
                     sessions: vec![],
                 },
             },

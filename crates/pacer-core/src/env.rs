@@ -23,6 +23,8 @@ pub const AGENT_CMD: &str = "PACER_AGENT_CMD";
 pub const IDLE_REAP_MS: &str = "PACER_IDLE_REAP_MS";
 /// External-worktree sync probe period in ms; tests shorten it.
 pub const WORKTREE_SYNC_MS: &str = "PACER_WORKTREE_SYNC_MS";
+/// Metrics sampler tick in ms; tests shorten it.
+pub const METRICS_SAMPLE_MS: &str = "PACER_METRICS_SAMPLE_MS";
 /// Cloud-mirror refresh cadence in seconds; `0` turns it off.
 pub const CLOUD_MIRROR_SECS: &str = "PACER_CLOUD_MIRROR_SECS";
 /// `RUST_LOG`-style tracing filter for both the daemon and the TUI.

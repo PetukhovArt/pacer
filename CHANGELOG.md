@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `shift+c` diagnostics card: a floating panel with per-session CPU, RAM and Claude token use, moved by dragging its title row or with `shift+v`, and remembered across restarts.
+- Added `model_prices` setting: fill in per-model rates and the diagnostics card shows a cost column.
 - Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
 
 ## 0.20.0 (2026-09-18)

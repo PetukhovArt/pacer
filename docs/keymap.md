@@ -50,6 +50,8 @@ can't trap yourself.
 | `f` / `F` / `b` | find file / find in files (`git grep`) / file tree browser, all scoped to the selected worktree — `Enter` opens the file in an editor modal (at the matched line, for `F`); in `f` and `b`, `Ctrl+y` copies the path |
 | `z` | full-screen terminal: collapse the sidebars and lock input into the attached session |
 | `Shift+M` | memory usage: RAM per agent/terminal process tree, pacer itself, and the machine-wide share; `↑`/`↓` + `Enter` opens the selected session |
+| `Shift+C` | show / hide the diagnostics card: a small floating panel with CPU, RAM and Claude token use per session, plus a total row. It takes no focus, so keys keep going where they were going and an open modal still works underneath |
+| `Shift+V` | send the diagnostics card to the next screen corner. Dragging its title row with the mouse moves it anywhere; both are remembered across restarts |
 | `Ctrl+Shift+R` / `F5` | repaint the whole screen from scratch, clearing any stale glyphs the emulator left behind; works inside a locked terminal pane too. `Ctrl+Shift+R` needs a terminal that speaks the kitty keyboard protocol, so `F5` is the one that always arrives |
 
 ## Workspaces & panels
