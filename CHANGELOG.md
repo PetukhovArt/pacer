@@ -7,6 +7,7 @@
 - Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
 - Fixed agents' `git add` and `git commit` failing with `index.lock: File exists` while pacer polls the checkout.
 - Fixed a session painting in no color at all when `NO_COLOR` or `FORCE_COLOR` was set in the daemon's environment or a login profile.
+- Fixed scrolling a pane up past its oldest line, which then took as many wheel notches to come back down.
 
 ## 0.20.0 (2026-09-18)
 

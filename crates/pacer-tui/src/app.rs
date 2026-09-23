@@ -1868,9 +1868,12 @@ impl AttachedTerm {
         self.painted = false;
     }
 
+    /// The parser clamps the offset to the rows it holds; `scroll` takes
+    /// that clamped value back, or wheel notches spent past the top would
+    /// have to be paid back before the pane moved down again.
     pub fn set_scroll(&mut self, scroll: usize) {
-        self.scroll = scroll;
         self.parser.screen_mut().set_scrollback(scroll);
+        self.scroll = self.parser.screen().scrollback();
     }
 }
 
@@ -3642,6 +3645,23 @@ mod tests {
             top_row.starts_with("history line"),
             "scrolled-back view should show an evicted history line, got {top_row:?}"
         );
+    }
+
+    /// Scrolling up past the oldest row stops there: the next notch down
+    /// has to move the view, not repay the notches spent past the top.
+    #[test]
+    fn scroll_stops_at_the_top_of_the_scrollback() {
+        let sref = SessionRef::Agent(AgentId::from("test-agent".to_string()));
+        let mut term = AttachedTerm::new(sref, 80, 24);
+        for i in 0..30 {
+            term.parser.process(format!("line {i}\r\n").as_bytes());
+        }
+        term.set_scroll(1_000);
+        let top = term.parser.screen().scrollback();
+        assert!(top > 3 && top < 1_000, "{top}");
+        assert_eq!(term.scroll, top);
+        term.set_scroll(term.scroll - 3);
+        assert_eq!(term.parser.screen().scrollback(), top - 3);
     }
 
     /// The alternate screen (vim, htop) has no scrollback buffer, so region
