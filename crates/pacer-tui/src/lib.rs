@@ -15,6 +15,7 @@ pub mod git_diff;
 pub mod grep_search;
 pub mod hosts;
 pub mod ipc;
+pub mod key_combo;
 pub mod keymap;
 pub mod keys;
 pub mod layout;

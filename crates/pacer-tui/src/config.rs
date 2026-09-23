@@ -153,6 +153,7 @@ pub enum SettingKind {
     CodexModel,
     CodexEffort,
     CursorEnabled,
+    ShowKeyCombos,
 }
 
 /// The tab strip, left to right. Ordered by how often a setting gets
@@ -318,6 +319,14 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 hint: "Offer Cursor in the New session picker (off hides it; existing sessions keep running)",
             },
         ]),
+    },
+    SettingsTab {
+        title: "Experimental",
+        body: TabBody::Values(&[SettingSpec {
+            kind: SettingKind::ShowKeyCombos,
+            label: "Key combo display",
+            hint: "Show each key you press bottom-left with what it did, for anyone watching",
+        }]),
     },
     SettingsTab {
         title: "Hotkeys",
@@ -517,6 +526,10 @@ pub struct Config {
     /// read as its top. Off is for terminals whose bold face is a heavier
     /// font, where the weight costs legibility rather than buying it.
     pub bold_names: bool,
+    /// Experimental: the KEY COMBO DISPLAY, each key pressed in the panels
+    /// spelled bottom-left with what it did. Off by default: a teaching
+    /// aid, and chrome nobody asked for otherwise.
+    pub show_key_combos: bool,
     /// Whether the Workspaces bar is drawn across the top. This is the
     /// bar's only home: `Shift+W` writes it here as it toggles, so a hidden
     /// bar stays hidden across restarts, and a crash or a
@@ -591,6 +604,7 @@ impl Default for Config {
             focus_tint: false,
             show_ago: true,
             bold_names: true,
+            show_key_combos: false,
             show_workspaces: true,
             show_diagnostics: false,
             model_prices: Default::default(),
@@ -713,6 +727,10 @@ impl Config {
         obj.insert("focus_tint".into(), serde_json::json!(self.focus_tint));
         obj.insert("show_ago".into(), serde_json::json!(self.show_ago));
         obj.insert("bold_names".into(), serde_json::json!(self.bold_names));
+        obj.insert(
+            "show_key_combos".into(),
+            serde_json::json!(self.show_key_combos),
+        );
         obj.insert(
             "show_workspaces".into(),
             serde_json::json!(self.show_workspaces),
@@ -885,6 +903,7 @@ impl Config {
             SettingKind::FocusTint => on_off(self.focus_tint).into(),
             SettingKind::ShowAgo => on_off(self.show_ago).into(),
             SettingKind::BoldNames => on_off(self.bold_names).into(),
+            SettingKind::ShowKeyCombos => on_off(self.show_key_combos).into(),
             SettingKind::ShowWorkspaces => on_off(self.show_workspaces).into(),
             SettingKind::HideProjects => shown_hidden(self.hide_projects).into(),
             SettingKind::HideWorktrees => shown_hidden(self.hide_worktrees).into(),
@@ -962,6 +981,9 @@ impl Config {
             }
             SettingKind::BoldNames => {
                 self.bold_names = !self.bold_names;
+            }
+            SettingKind::ShowKeyCombos => {
+                self.show_key_combos = !self.show_key_combos;
             }
             SettingKind::ShowWorkspaces => {
                 self.show_workspaces = !self.show_workspaces;

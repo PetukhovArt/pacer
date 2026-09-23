@@ -382,6 +382,11 @@ async fn main_loop(
                 }
                 next_ago_refresh = tokio::time::Instant::now() + AGO_REFRESH;
             }
+            // The KEY COMBO DISPLAY takes its last press down on its own.
+            _ = tokio::time::sleep(crate::key_combo::remaining(&app)), if app.key_combo.is_some() => {
+                app.key_combo = None;
+                app.dirty = true;
+            }
             // The selection rested past the debounce: tell the daemon what
             // the pane has been showing since the cursor landed here.
             _ = tokio::time::sleep(app.attach_delay().unwrap_or_default()),
@@ -1537,8 +1542,13 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
         return;
     }
 
-    // Modal overlays swallow all keys.
+    // Modal overlays swallow all keys. The KEY COMBO DISPLAY shows their
+    // navigation keys bare, never text typed into a field.
     if app.overlay.is_some() {
+        let chord = crate::keymap::KeyChord::from_event(&key);
+        if !crate::key_combo::is_text_key(&chord) {
+            crate::key_combo::note(app, &[chord], None);
+        }
         handle_overlay_key(app, key, out);
         return;
     }
@@ -1569,6 +1579,8 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
             || app.keymap.lookup(crate::keymap::Scope::Terminal, &chord)
                 == Some(crate::keymap::Action::UnlockTerminal);
         if is_hatch {
+            // The one locked-pane key the KEY COMBO DISPLAY shows.
+            crate::key_combo::note_action(app, chord, Some(crate::keymap::Action::UnlockTerminal));
             leave_terminal_lock(app);
             return;
         }
@@ -1665,7 +1677,9 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
     // in between — bound or not — breaks it, so the arm is taken here and
     // only the edge arms below put one back.
     let armed = app.edge_tap.take();
-    let Some(action) = app.keymap.lookup(crate::keymap::Scope::Global, &chord) else {
+    let action = app.keymap.lookup(crate::keymap::Scope::Global, &chord);
+    crate::key_combo::note_action(app, chord, action);
+    let Some(action) = action else {
         return;
     };
     use crate::keymap::Action;
@@ -4197,6 +4211,10 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     app.focus_tint = cfg.focus_tint;
     app.show_ago = cfg.show_ago;
     app.bold_names = cfg.bold_names;
+    app.show_key_combos = cfg.show_key_combos;
+    if !app.show_key_combos {
+        app.key_combo = None;
+    }
     apply_sort(app, cfg.sort_modes());
     set_pr_filter(app, cfg.pr_list_filter());
     set_show_workspaces(app, cfg.show_workspaces);

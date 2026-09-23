@@ -3664,6 +3664,7 @@ fn draw_footer(f: &mut Frame, app: &mut App, area: Rect) {
     if let Some(rect) = draw_footer_bar(f, app, area) {
         app.hits.push((rect, HitTarget::FooterWorkspace));
     }
+    crate::key_combo::draw(f, app, area);
 }
 
 /// Draw the bar; returns the screen rect of the workspace nameplate when

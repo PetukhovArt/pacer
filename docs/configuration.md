@@ -35,6 +35,7 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 | `sort_projects` / `sort_worktrees` / `sort_sessions` | `created` | per-column order: `created`, `recent` or `name` (pins float first) |
 | `show_ago` | `true` | show the dim `2h ago` label on project, worktree and session rows |
 | `bold_names` | `true` | bold the panel headers and project names |
+| `show_key_combos` | `false` | experimental: show each key pressed in the panels bottom-left with the action it ran, for screen shares. Keys typed into a locked pane or a text field never show |
 | `show_workspaces` | | show the Workspaces bar |
 | `show_diagnostics` | `false` | show the diagnostics card (`Shift+C`) |
 | `hide_projects` / `hide_worktrees` / `hide_prs` | `false` | start with that sidebar hidden; the Sessions panel always stays visible |

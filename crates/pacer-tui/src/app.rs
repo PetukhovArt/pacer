@@ -2398,6 +2398,10 @@ pub struct App {
     /// The `bold_names` setting: whether every panel header and the
     /// project row names are drawn BOLD.
     pub bold_names: bool,
+    /// The `show_key_combos` setting, and the last press it is showing
+    /// (cleared after `key_combo::LINGER`). See `key_combo.rs`.
+    pub show_key_combos: bool,
+    pub key_combo: Option<crate::key_combo::KeyCombo>,
     /// Pinned rows by entity id — workspaces, worktrees and sessions in one
     /// flat set (ULIDs never collide across kinds). Pinned worktrees and
     /// sessions sort to the top of their lists; a pinned workspace keeps its
@@ -2518,6 +2522,8 @@ impl App {
             focus_tint: false,
             show_ago: true,
             bold_names: true,
+            show_key_combos: false,
+            key_combo: None,
             pinned: std::collections::BTreeSet::new(),
             sort: SortModes::default(),
             pr_filter: crate::pull_request::ListFilter::default(),
