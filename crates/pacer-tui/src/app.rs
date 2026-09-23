@@ -1033,6 +1033,20 @@ fn build_palette_items(
     items
 }
 
+/// The sessions waiting on the user (NEEDS FEEDBACK, the red dot), in `/`
+/// palette row order across every workspace: what `]` and `[` step
+/// through. Archived rows are left out whatever the Sessions panel shows.
+pub fn attention_sessions(tree: &Tree) -> Vec<AgentId> {
+    build_palette_items(tree, false, &HashMap::new())
+        .into_iter()
+        .filter(|i| i.status == Some(AgentStatus::NeedsFeedback))
+        .filter_map(|i| match i.target {
+            PaletteTarget::Session(id) => Some(id),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The workspaces `/` walks, in row order: the open one first (so an empty
 /// query opens on what's already on screen), then the rest in tree order,
 /// then any workspace only a project still refers to — see the orphan note

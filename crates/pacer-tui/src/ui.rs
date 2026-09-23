@@ -555,6 +555,10 @@ fn draw_overlay(f: &mut Frame, app: &mut App) {
                         (Act(&[MoveDown, MoveUp]), "move selection (2×: bar)"),
                         (Act(&[Activate]), "drill in / attach session"),
                         (Act(&[Palette]), "fuzzy jump to anything"),
+                        (
+                            Act(&[NextAttention, PrevAttention]),
+                            "next/prev session needing you",
+                        ),
                         (Lit("^o / ^f"), "jump pick: open / focus row"),
                         (Act(&[FindFile]), "find file (^y copies path)"),
                         (Act(&[Grep]), "find in files (git grep)"),

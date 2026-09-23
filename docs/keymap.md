@@ -11,6 +11,7 @@ can't trap yourself.
 | `Ctrl+→` | cross into the terminal pane *without* taking its input |
 | `Enter` | drill in; on a session: attach |
 | `/` | fuzzy jump across every workspace, project, worktree, session and open PR — in *every* workspace, each row pathed `workspace/project/branch/session`, so typing another workspace's name jumps you into it (`Ctrl+n`/`p` move, `Ctrl+o` opens the hit, `Ctrl+f` just lands the selection on it) |
+| `]` / `[` | jump to the next / previous session waiting on you (the red needs-feedback dot), in any workspace, wrapping at both ends. Lands the way `/` `Enter` does, so `palette_enter_attaches` decides whether it attaches |
 | `Ctrl+F` | inline filter: a fuzzy query that narrows the focused panel; `Enter` parks it, `Esc` clears then closes |
 | `Shift+S` | cycle the focused column's sort: recent → name → created (pins always float first) |
 | `p` | pin / unpin the selected workspace, project, worktree or session — pins float to the top of their list |

@@ -4,6 +4,7 @@
 
 - Added `shift+c` diagnostics card: a floating panel with per-session CPU, RAM and Claude token use, moved by dragging its title row or with `shift+v`, and remembered across restarts.
 - Added `model_prices` setting: fill in per-model rates and the diagnostics card shows a cost column.
+- Added `]` and `[` to jump to the next and previous session waiting on you, in any workspace.
 - Added an experimental `Key combo display` setting (`show_key_combos`) that shows each key you press bottom-left with the action it ran.
 - Added a `Draft pull requests` setting under Appearance (`hide_draft_prs`) that hides draft pull requests and GitLab draft merge requests from the PRs panel and `/`.
 - Added five color themes: `lavender`, `coral`, `slate`, `sand` and `mono`.

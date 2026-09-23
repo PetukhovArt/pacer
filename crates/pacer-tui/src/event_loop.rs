@@ -26,6 +26,7 @@ use ratatui::Terminal;
 use std::io::BufWriter;
 use std::time::Duration;
 
+mod attention;
 mod focus_walk;
 mod list_order;
 use focus_walk::{
@@ -1954,6 +1955,8 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
                 )));
             }
         }
+        Action::NextAttention => attention::jump_attention(app, 1, out),
+        Action::PrevAttention => attention::jump_attention(app, -1, out),
         // Inline list filter over the focused panel. Re-pressed on a panel
         // that already has one, it just re-arms the query for editing.
         Action::FilterList => match app.focus {

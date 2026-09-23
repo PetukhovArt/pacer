@@ -59,6 +59,10 @@ pub enum Action {
     MoveUp,
     Activate,
     Palette,
+    /// `]`: the next session needing feedback, in any workspace.
+    NextAttention,
+    /// `[`: the same walk backwards.
+    PrevAttention,
     /// Inline fuzzy filter over the focused sidebar panel's list.
     FilterList,
     /// Cycle the focused column's sort setting: created → recent → name.
@@ -230,6 +234,24 @@ pub const ACTIONS: &[ActionSpec] = &[
         group: "NAVIGATE",
         scope: Scope::Global,
         defaults: &["/"],
+    },
+    ActionSpec {
+        action: Action::NextAttention,
+        id: "next_attention",
+        label: "Next session needing you",
+        hint: "Jump to the next session waiting on you (needs feedback) in any workspace, wrapping",
+        group: "NAVIGATE",
+        scope: Scope::Global,
+        defaults: &["]"],
+    },
+    ActionSpec {
+        action: Action::PrevAttention,
+        id: "prev_attention",
+        label: "Prev session needing you",
+        hint: "The same walk backwards, wrapping at the top",
+        group: "NAVIGATE",
+        scope: Scope::Global,
+        defaults: &["["],
     },
     ActionSpec {
         action: Action::FilterList,
