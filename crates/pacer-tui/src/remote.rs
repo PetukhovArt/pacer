@@ -17,9 +17,7 @@
 //! * **Local clones.** `/srv/git/repo` and `../sibling` are perfectly good
 //!   remotes with no web page at all. Those are a flash, not a bad URL.
 
-use pacer_core::spawn::NoWindow;
 use std::path::Path;
-use std::process::Command;
 
 /// The web page for the repository checked out at `root`. `Err` is a
 /// user-facing flash message.
@@ -53,11 +51,8 @@ fn remote_url(root: &Path, name: &str) -> Option<String> {
 /// `git -C root <args>`, stdout on success. A failing git (no remote by
 /// that name, not a repo) is `Err` carrying its own complaint.
 fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(root)
+    let out = crate::git_diff::git_command(root)
         .args(args)
-        .no_window()
         .output()
         .map_err(|e| format!("failed to run git: {e}"))?;
     if !out.status.success() {

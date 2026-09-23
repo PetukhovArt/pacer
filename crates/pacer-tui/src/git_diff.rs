@@ -73,12 +73,22 @@ pub fn classify_diff_line(line: &str) -> DiffLineKind {
     }
 }
 
+/// `git -C root` with git's optional locks off. `git status` refreshes the
+/// index's stat cache and, when it is stale (always, while an agent edits
+/// files), writes it back through `.git/index.lock` — so the WORKTREES
+/// PANEL's two-second changed-files poll lands under the agent's own
+/// `git add` / `commit`, which then fails with "index.lock: File exists".
+/// Every TUI-side git goes through here.
+pub(crate) fn git_command(root: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(root).env("GIT_OPTIONAL_LOCKS", "0");
+    cmd.no_window();
+    cmd
+}
+
 pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<Output, String> {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
+    git_command(root)
         .args(args)
-        .no_window()
         .output()
         .map_err(|e| format!("failed to run git: {e}"))
 }
@@ -406,6 +416,46 @@ mod tests {
         assert!(files[0].is_untracked());
         let diff = diff_for(&repo, &files[0], false);
         assert!(diff.contains("+content"), "{diff}");
+    }
+
+    /// The changed-files poll runs every two seconds on the checkout an agent
+    /// is working in; a status that rewrites the index there breaks the
+    /// agent's own `git add` with "index.lock: File exists".
+    #[test]
+    fn changed_files_never_rewrites_the_index() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let dir = tempfile::tempdir().unwrap();
+        let repo = make_repo(&dir);
+        let index = repo.join(".git").join("index");
+        let stamp = || std::fs::metadata(&index).unwrap().modified().unwrap();
+        // Same content, a different mtime: the index's stat cache no longer
+        // matches, which is what makes a status want to write it back.
+        let stale = |secs: u64| {
+            std::fs::File::options()
+                .write(true)
+                .open(repo.join("tracked.txt"))
+                .unwrap()
+                .set_modified(UNIX_EPOCH + Duration::from_secs(secs))
+                .unwrap();
+        };
+
+        stale(1_000_000_000);
+        let before = stamp();
+        changed_files(&repo).unwrap();
+        assert_eq!(stamp(), before, "the status poll rewrote the index");
+
+        // Control: with optional locks on, the same status does rewrite it.
+        stale(1_000_000_100);
+        let before = stamp();
+        let plain = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .env("GIT_OPTIONAL_LOCKS", "1")
+            .args(["status", "--porcelain=v1", "-z", "-uall"])
+            .output()
+            .unwrap();
+        assert!(plain.status.success());
+        assert_ne!(stamp(), before, "a plain status left the index alone");
     }
 
     #[test]
