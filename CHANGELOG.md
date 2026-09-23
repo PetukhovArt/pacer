@@ -4,6 +4,7 @@
 
 - Added `shift+c` diagnostics card: a floating panel with per-session CPU, RAM and Claude token use, moved by dragging its title row or with `shift+v`, and remembered across restarts.
 - Added `model_prices` setting: fill in per-model rates and the diagnostics card shows a cost column.
+- Added five color themes: `lavender`, `coral`, `slate`, `sand` and `mono`.
 - Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
 - Fixed agents' `git add` and `git commit` failing with `index.lock: File exists` while pacer polls the checkout.
 - Fixed a session painting in no color at all when `NO_COLOR` or `FORCE_COLOR` was set in the daemon's environment or a login profile.
