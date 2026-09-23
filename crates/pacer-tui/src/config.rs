@@ -145,6 +145,7 @@ pub enum SettingKind {
     HideProjects,
     HideWorktrees,
     HidePrs,
+    HideDraftPrs,
     ClaudeEnabled,
     ClaudeModel,
     ClaudeEffort,
@@ -270,6 +271,11 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::HidePrs,
                 label: "PRs panel",
                 hint: "Show or hide the PRs panel (Shift+R toggles)",
+            },
+            SettingSpec {
+                kind: SettingKind::HideDraftPrs,
+                label: "Draft pull requests",
+                hint: "Show or hide drafts in the PRs panel and / search",
             },
         ]),
     },
@@ -539,6 +545,9 @@ pub struct Config {
     /// Hide the PRs panel.
     #[serde(default)]
     pub hide_prs: bool,
+    /// Leave draft pull requests (GitLab: draft merge requests) out of the
+    /// PRs panel and `/`. Off by default: drafts are shown.
+    pub hide_draft_prs: bool,
     /// Default model/effort for new Claude / Codex sessions. "default"
     /// means "don't pass the flag" (the CLI picks); any other value is
     /// passed through verbatim, so hand-edited configs can name models the
@@ -588,6 +597,7 @@ impl Default for Config {
             hide_projects: false,
             hide_worktrees: false,
             hide_prs: false,
+            hide_draft_prs: false,
             claude_model: DEFAULT_CHOICE.into(),
             claude_effort: DEFAULT_CHOICE.into(),
             codex_model: DEFAULT_CHOICE.into(),
@@ -720,6 +730,10 @@ impl Config {
             serde_json::json!(self.hide_worktrees),
         );
         obj.insert("hide_prs".into(), serde_json::json!(self.hide_prs));
+        obj.insert(
+            "hide_draft_prs".into(),
+            serde_json::json!(self.hide_draft_prs),
+        );
         obj.insert("claude_model".into(), serde_json::json!(self.claude_model));
         obj.insert(
             "claude_effort".into(),
@@ -875,6 +889,7 @@ impl Config {
             SettingKind::HideProjects => shown_hidden(self.hide_projects).into(),
             SettingKind::HideWorktrees => shown_hidden(self.hide_worktrees).into(),
             SettingKind::HidePrs => shown_hidden(self.hide_prs).into(),
+            SettingKind::HideDraftPrs => shown_hidden(self.hide_draft_prs).into(),
             SettingKind::ClaudeModel => self.claude_model.clone(),
             SettingKind::ClaudeEffort => self.claude_effort.clone(),
             SettingKind::CodexModel => self.codex_model.clone(),
@@ -959,6 +974,9 @@ impl Config {
             }
             SettingKind::HidePrs => {
                 self.hide_prs = !self.hide_prs;
+            }
+            SettingKind::HideDraftPrs => {
+                self.hide_draft_prs = !self.hide_draft_prs;
             }
             SettingKind::ClaudeModel => {
                 self.claude_model = cycle_choice(&self.claude_model, CLAUDE_MODELS, step).into();

@@ -31,6 +31,7 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 | `palette_enter_attaches` | `true` | whether `Enter` in the fuzzy jump attaches or only selects |
 | `git_init_on_create` | — | `git init` a non-repo directory when it is added |
 | `pr_list_filter` | `all` | which open pull requests the group lists: `all`, `mine`, `involved` |
+| `hide_draft_prs` | `false` | leave draft pull requests (and GitLab draft merge requests) out of the PRs panel and `/` |
 | `sort_projects` / `sort_worktrees` / `sort_sessions` | `created` | per-column order: `created`, `recent` or `name` (pins float first) |
 | `show_ago` | `true` | show the dim `2h ago` label on project, worktree and session rows |
 | `bold_names` | `true` | bold the panel headers and project names |

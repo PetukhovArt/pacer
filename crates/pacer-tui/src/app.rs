@@ -2187,6 +2187,9 @@ pub struct App {
     pub hide_worktrees: bool,
     /// PRs panel hidden; mirrors CONFIG.JSON's `hide_prs`.
     pub hide_prs: bool,
+    /// Draft pull requests left out of the PRs panel and `/`; mirrors
+    /// CONFIG.JSON's `hide_draft_prs`.
+    pub hide_draft_prs: bool,
     pub next_req_id: u64,
     pub pending: HashMap<u64, PendingIntent>,
     /// `pacer --workspace <name>`: the workspace this instance was asked
@@ -2453,6 +2456,7 @@ impl App {
             hide_projects: false,
             hide_worktrees: false,
             hide_prs: false,
+            hide_draft_prs: false,
             next_req_id: 1,
             pending: HashMap::new(),
             startup_workspace: None,
@@ -3045,9 +3049,22 @@ impl App {
             .map(|o| o.list.as_slice())
             .unwrap_or_default()
             .iter()
+            .filter(|pr| !(self.hide_draft_prs && pr.is_draft))
             .filter(|pr| self.passes_filter(Focus::Prs, &pr.label()))
             .cloned()
             .collect()
+    }
+
+    /// The open pull requests `/` offers: all of them, less the drafts
+    /// while `hide_draft_prs` is on.
+    pub fn palette_prs(&self) -> HashMap<ProjectId, OpenPrs> {
+        let mut prs = self.open_prs.clone();
+        if self.hide_draft_prs {
+            for open in prs.values_mut() {
+                open.list.retain(|pr| !pr.is_draft);
+            }
+        }
+        prs
     }
 
     /// What each sidebar cursor is resting on right now — see

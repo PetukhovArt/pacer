@@ -1936,7 +1936,7 @@ fn handle_key(app: &mut App, key: KeyEvent, out: &mut Vec<ClientRequest>) {
                     &app.tree,
                     app.show_archived,
                     crate::config::Config::load().palette_enter_attaches,
-                    &app.open_prs,
+                    &app.palette_prs(),
                 )));
             }
         }
@@ -4204,6 +4204,8 @@ fn apply_config(app: &mut App, cfg: &crate::config::Config) {
     set_hide_projects(app, cfg.hide_projects);
     set_hide_worktrees(app, cfg.hide_worktrees);
     set_hide_prs(app, cfg.hide_prs);
+    app.hide_draft_prs = cfg.hide_draft_prs;
+    clamp_selections(app);
 }
 
 /// `R` in the settings overlay, confirmed: rewrite config.json from the
@@ -7354,8 +7356,9 @@ fn restore_worktree_rows(app: &mut App, rollback: WorktreeRollback) {
 /// Keep an open `/` palette in sync with tree changes (renames, removals,
 /// new entities) so its rows never go stale under the user's cursor.
 fn refresh_palette(app: &mut App) {
+    let prs = app.palette_prs();
     if let Some(Overlay::Palette(palette)) = &mut app.overlay {
-        palette.rebuild(&app.tree, app.show_archived, &app.open_prs);
+        palette.rebuild(&app.tree, app.show_archived, &prs);
     }
 }
 
