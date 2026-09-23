@@ -38,6 +38,21 @@ pub const EDITOR: &str = "PACER_EDITOR";
 /// every agent PTY and must never leak into plain terminals.
 pub const AGENT_SESSION_VARS: &[&str] = &[AGENT_ID, API_URL, API_TOKEN];
 
+/// `TERM` every PTY child is given. The pane is pacer's own grid, a vt100
+/// parser the TUI repaints through ratatui, and that grid keeps 24-bit
+/// colour whatever terminal pacer itself runs in, so the child never hears
+/// the host's `TERM`.
+pub const PANE_TERM: &str = "xterm-256color";
+/// `COLORTERM` for the same grid, so chalk-style detection picks truecolor
+/// over the 256-colour downsample `TERM` alone allows.
+pub const PANE_COLORTERM: &str = "truecolor";
+/// Colour overrides scrubbed from every PTY child. A `NO_COLOR` or a
+/// `FORCE_COLOR=0` describes the shell the daemon happened to be started
+/// from, or a login-only profile, not the pane; Claude Code reads either as
+/// "no colour at all" and paints its whole UI in the default foreground.
+/// The TUI still honours its own `NO_COLOR`.
+pub const PANE_COLOR_OVERRIDES: &[&str] = &["NO_COLOR", "FORCE_COLOR"];
+
 /// The value of `var`, treating unset and empty the same way — an empty
 /// override is how a caller says "use the default".
 pub fn non_empty(var: &str) -> Option<String> {

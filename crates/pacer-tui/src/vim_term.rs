@@ -126,7 +126,9 @@ impl VimTerm {
         let mut cmd = CommandBuilder::new(launch);
         cmd.args(args);
         cmd.cwd(cwd);
-        cmd.env("TERM", "xterm-256color");
+        // Drawn on pacer's grid, the same truecolor terminal every pane is.
+        cmd.env("TERM", pacer_core::env::PANE_TERM);
+        cmd.env("COLORTERM", pacer_core::env::PANE_COLORTERM);
         // Git for Windows ships MSYS builds of vim and nano, which take
         // their charset from the locale — see `utf8_locale_fallback`.
         #[cfg(windows)]
