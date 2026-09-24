@@ -38,6 +38,12 @@ pub fn encode_key_for(
     if vt_child && key.code == KeyCode::Enter && key.modifiers == KeyModifiers::SHIFT {
         return Some(b"\x1b\r".to_vec());
     }
+    // A Ctrl+Enter record reaches the child as LF — Ctrl+J, Claude's
+    // newline — so it goes as CSI-u, which Claude takes as send-now. Only a
+    // sideloaded `conpty.dll` passes it; the inbox ConPTY drops it.
+    if vt_child && key.code == KeyCode::Enter && key.modifiers == KeyModifiers::CONTROL {
+        return Some(b"\x1b[13;5u".to_vec());
+    }
     if win32_input {
         if let Some(seq) = encode_win32(key) {
             return Some(seq);
@@ -386,7 +392,11 @@ mod tests {
         assert_eq!(
             encode_key_for(&key(KeyCode::Enter, KeyModifiers::ALT), 0, true, true),
             Some(b"\x1b[13;0;13;1;2;1_\x1b[13;0;13;0;2;1_".to_vec()),
-            "only Shift+Enter is rerouted"
+            "Alt+Enter keeps the record"
+        );
+        assert_eq!(
+            encode_key_for(&key(KeyCode::Enter, KeyModifiers::CONTROL), 0, true, true),
+            Some(b"\x1b[13;5u".to_vec())
         );
     }
 
