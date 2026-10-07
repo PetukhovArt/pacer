@@ -136,6 +136,7 @@ at codex's "Hooks need review" prompt.
 
 Leave a new session on its default name and the agent retitles it after your first prompt — `Fix Login
 Redirect` rather than `agent-3`. Type a name yourself (or `r` to rename) and pacer never touches it.
+`/rename` inside Claude Code renames the row too, a few seconds later while pacer is open.
 
 ## Pull requests in the tree
 

@@ -8,6 +8,7 @@
 - Added an experimental `Key combo display` setting (`show_key_combos`) that shows each key you press bottom-left with the action it ran.
 - Added a `Draft pull requests` setting under Appearance (`hide_draft_prs`) that hides draft pull requests and GitLab draft merge requests from the PRs panel and `/`.
 - Added five color themes: `lavender`, `coral`, `slate`, `sand` and `mono`.
+- Added renaming a session's row when you `/rename` it inside Claude Code.
 - Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
 - Windows: Fixed `Ctrl+Enter` inserting a newline in Claude Code instead of sending the message now (needs a sideloaded `conpty.dll`).
 - Fixed agents' `git add` and `git commit` failing with `index.lock: File exists` while pacer polls the checkout.

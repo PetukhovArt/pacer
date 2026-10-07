@@ -17,6 +17,10 @@
 //! and the flat `cache_creation_input_tokens` repeats what the nested
 //! `cache_creation` object splits into tiers. Only the top-level fields
 //! below are read.
+//!
+//! The same pass picks up the title a user gives the conversation with
+//! Claude's `/rename` (a `custom-title` line), since it already reads every
+//! appended byte.
 
 use pacer_core::{AgentId, AgentKind, ModelTokens, TokenUsage};
 use serde::Deserialize;
@@ -54,18 +58,32 @@ struct Cursor {
     path: PathBuf,
     offset: u64,
     total: TokenUsage,
+    /// The last `/rename` title seen. Claude re-appends the same line all
+    /// the time, and a new cursor (daemon restart, respawn, resume) re-reads
+    /// old ones, so only a change after the first read counts as a rename —
+    /// otherwise a name set in pacer since would be overwritten.
+    title: Option<String>,
+    /// Whether the first read happened, which only sets the baseline title.
+    primed: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct Sweep {
+    pub tokens: HashMap<AgentId, TokenUsage>,
+    /// Conversations the user retitled with `/rename` since the last pass.
+    pub titles: Vec<(AgentId, String)>,
 }
 
 impl UsageTailer {
     /// One pass, reading only the bytes appended since the last one.
     /// Blocking; call via spawn_blocking.
     ///
-    /// An agent absent from the result was **not measured** — a Codex or
+    /// An agent absent from `tokens` was **not measured** — a Codex or
     /// Cursor session, one with no session id yet, or one whose transcript
     /// could not be located. Never read that as zero. An agent measured
     /// with nothing spent is present with an empty `by_model`.
-    pub(crate) fn sweep(&mut self, agents: &[AgentTranscript]) -> HashMap<AgentId, TokenUsage> {
-        let mut out = HashMap::new();
+    pub(crate) fn sweep(&mut self, agents: &[AgentTranscript]) -> Sweep {
+        let mut out = Sweep::default();
         for agent in agents {
             if agent.kind != AgentKind::Claude {
                 continue;
@@ -95,13 +113,23 @@ impl UsageTailer {
                         path,
                         offset: 0,
                         total: TokenUsage::default(),
+                        title: None,
+                        primed: false,
                     },
                 );
             }
             let cursor = self.by_agent.get_mut(&agent.agent).expect("just inserted");
-            if advance(cursor) {
-                out.insert(agent.agent.clone(), cursor.total.clone());
+            let seen = cursor.title.clone();
+            if !advance(cursor) {
+                continue;
             }
+            out.tokens.insert(agent.agent.clone(), cursor.total.clone());
+            if cursor.primed && cursor.title != seen {
+                if let Some(title) = &cursor.title {
+                    out.titles.push((agent.agent.clone(), title.clone()));
+                }
+            }
+            cursor.primed = true;
         }
         // Agents that went away take their cursors with them.
         self.by_agent
@@ -151,35 +179,46 @@ fn advance(cursor: &mut Cursor) -> bool {
     if file.read_to_end(&mut chunk).is_err() {
         return false;
     }
-    let (add, consumed) = tally(&chunk);
+    let (add, title, consumed) = tally(&chunk);
     for model in &add.by_model {
         cursor.total.add(&model.model, model);
+    }
+    if title.is_some() {
+        cursor.title = title;
     }
     cursor.offset += consumed as u64;
     true
 }
 
 /// Sum `message.usage` over every assistant line in `chunk`. Returns the
-/// tally and how many bytes were consumed: a trailing partial line is
-/// **not** consumed, so the next sweep re-reads it whole.
+/// tally, the last `/rename` title, and how many bytes were consumed: a
+/// trailing partial line is **not** consumed, so the next sweep re-reads it
+/// whole.
 ///
 /// That rule is what makes incremental tailing correct at all — Claude
 /// appends while this reads, so the last line is routinely half-written.
 /// Bytes rather than `&str` for the same reason: a chunk can end mid
 /// codepoint, and a lossy conversion would move the byte offsets the rule
 /// depends on.
-fn tally(chunk: &[u8]) -> (TokenUsage, usize) {
+fn tally(chunk: &[u8]) -> (TokenUsage, Option<String>, usize) {
     let Some(last) = chunk.iter().rposition(|b| *b == b'\n') else {
-        return (TokenUsage::default(), 0);
+        return (TokenUsage::default(), None, 0);
     };
     let consumed = last + 1;
     let mut out = TokenUsage::default();
+    let mut title = None;
     for line in chunk[..consumed].split(|b| *b == b'\n') {
         // A malformed line is skipped, not fatal: the fail-soft posture the
         // other transcript reader already takes.
         let Ok(entry) = serde_json::from_slice::<Entry>(line) else {
             continue;
         };
+        if entry.r#type == "custom-title" {
+            if let Some(t) = entry.custom_title.filter(|t| !t.trim().is_empty()) {
+                title = Some(t);
+            }
+            continue;
+        }
         if entry.r#type != "assistant" {
             continue;
         }
@@ -195,7 +234,7 @@ fn tally(chunk: &[u8]) -> (TokenUsage, usize) {
         }
         out.add(&model, &usage.into_tokens());
     }
-    (out, consumed)
+    (out, title, consumed)
 }
 
 #[derive(Deserialize)]
@@ -203,6 +242,8 @@ struct Entry {
     #[serde(default)]
     r#type: String,
     message: Option<Message>,
+    #[serde(rename = "customTitle")]
+    custom_title: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -295,7 +336,7 @@ mod tests {
         // Half an appended line, as a live transcript routinely ends.
         chunk.push_str(&assistant("claude-opus-5", 500, 500, LEGACY)[..20]);
 
-        let (usage, consumed) = tally(chunk.as_bytes());
+        let (usage, _, consumed) = tally(chunk.as_bytes());
         assert_eq!(consumed, complete, "a partial line must not be consumed");
         assert_eq!(usage.by_model.len(), 1, "synthetic and user lines counted");
         let opus = tokens_of(&usage, "claude-opus-5");
@@ -310,7 +351,7 @@ mod tests {
 
     #[test]
     fn a_chunk_with_no_newline_consumes_nothing() {
-        let (usage, consumed) = tally(assistant("claude-opus-5", 1, 1, LEGACY).as_bytes());
+        let (usage, _, consumed) = tally(assistant("claude-opus-5", 1, 1, LEGACY).as_bytes());
         assert_eq!(consumed, 0);
         assert!(usage.by_model.is_empty());
     }
@@ -343,7 +384,10 @@ mod tests {
         let mut tailer = UsageTailer::default();
         let agents = [agent_at(&path, sid)];
         let first = tailer.sweep(&agents);
-        assert_eq!(tokens_of(&first[&AgentId("a1".into())], "m").input, 10);
+        assert_eq!(
+            tokens_of(&first.tokens[&AgentId("a1".into())], "m").input,
+            10
+        );
 
         // Grown: the tail only, not the whole file again.
         write(
@@ -355,19 +399,28 @@ mod tests {
             ),
         );
         let second = tailer.sweep(&agents);
-        assert_eq!(tokens_of(&second[&AgentId("a1".into())], "m").input, 15);
+        assert_eq!(
+            tokens_of(&second.tokens[&AgentId("a1".into())], "m").input,
+            15
+        );
 
         // Shrunk: a different file now sits at that path.
         write(&path, &format!("{}\n", assistant("m", 3, 0, LEGACY)));
         let third = tailer.sweep(&agents);
-        assert_eq!(tokens_of(&third[&AgentId("a1".into())], "m").input, 3);
+        assert_eq!(
+            tokens_of(&third.tokens[&AgentId("a1".into())], "m").input,
+            3
+        );
 
         // Resumed: a new session id is a new conversation, from zero.
         let sid2 = "22222222-2222-2222-2222-222222222222";
         let path2 = dir.path().join(format!("{sid2}.jsonl"));
         write(&path2, &format!("{}\n", assistant("m", 1, 0, LEGACY)));
         let fourth = tailer.sweep(&[agent_at(&path2, sid2)]);
-        assert_eq!(tokens_of(&fourth[&AgentId("a1".into())], "m").input, 1);
+        assert_eq!(
+            tokens_of(&fourth.tokens[&AgentId("a1".into())], "m").input,
+            1
+        );
     }
 
     /// Absent and zero are different facts, and the card renders them
@@ -382,7 +435,7 @@ mod tests {
         let mut tailer = UsageTailer::default();
         let measured = tailer.sweep(&[agent_at(&empty, sid)]);
         assert_eq!(
-            measured[&AgentId("a1".into())],
+            measured.tokens[&AgentId("a1".into())],
             TokenUsage::default(),
             "a started conversation with no turn is measured, and spent nothing"
         );
@@ -391,12 +444,48 @@ mod tests {
             session_id: None,
             ..agent_at(&empty, sid)
         };
-        assert!(tailer.sweep(&[no_session]).is_empty());
+        assert!(tailer.sweep(&[no_session]).tokens.is_empty());
 
         let codex = AgentTranscript {
             kind: AgentKind::Codex,
             ..agent_at(&empty, sid)
         };
-        assert!(tailer.sweep(&[codex]).is_empty());
+        assert!(tailer.sweep(&[codex]).tokens.is_empty());
+    }
+
+    /// A title already in the transcript, or repeated by Claude, must not
+    /// undo a name given in pacer since — only a new `/rename` counts.
+    #[test]
+    fn only_a_new_rename_is_reported_not_a_reread_or_repeated_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let sid = "44444444-4444-4444-4444-444444444444";
+        let path = dir.path().join(format!("{sid}.jsonl"));
+        let titled = |t: &str| format!(r#"{{"type":"custom-title","customTitle":"{t}"}}"#);
+        let a1 = AgentId("a1".into());
+        let mut log = String::new();
+        let mut grow = |line: String| {
+            log.push_str(&line);
+            log.push('\n');
+            write(&path, &log);
+        };
+
+        // A daemon restart reads an old rename with a fresh tailer.
+        grow(titled("Old"));
+        let mut tailer = UsageTailer::default();
+        assert!(tailer.sweep(&[agent_at(&path, sid)]).titles.is_empty());
+
+        grow(assistant("m", 1, 0, LEGACY));
+        grow(titled("Old"));
+        assert!(tailer.sweep(&[agent_at(&path, sid)]).titles.is_empty());
+
+        grow(titled("Fix Login"));
+        let renamed = tailer.sweep(&[agent_at(&path, sid)]);
+        assert_eq!(renamed.titles, [(a1, "Fix Login".to_string())]);
+
+        // A resume starts a new transcript that repeats the title.
+        let sid2 = "55555555-5555-5555-5555-555555555555";
+        let path2 = dir.path().join(format!("{sid2}.jsonl"));
+        write(&path2, &format!("{}\n", titled("Fix Login")));
+        assert!(tailer.sweep(&[agent_at(&path2, sid2)]).titles.is_empty());
     }
 }

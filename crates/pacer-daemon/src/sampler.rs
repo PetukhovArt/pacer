@@ -13,6 +13,9 @@
 //! [`CpuTimes`] and [`UsageTailer`] are locals of this loop, so there is no
 //! sharing to get wrong, and the loop is the only writer of the published
 //! sample, so ordering is its own program order.
+//!
+//! The transcript pass also reports `/rename` titles, so this loop applies
+//! them to the agent rows as well.
 
 use crate::metrics::CpuTimes;
 use crate::registry::Daemon;
@@ -76,7 +79,7 @@ pub async fn run(daemon: Arc<Daemon>) {
             let tokens = transcripts.map(|t| lent.sweep(&t));
             (snapshot, next, lent, tokens)
         });
-        let (mut snapshot, next, returned, tokens) = match handle.await {
+        let (mut snapshot, next, returned, swept) = match handle.await {
             Ok(done) => done,
             Err(err) => {
                 // The tailer went into the task and died with it, so the
@@ -89,8 +92,15 @@ pub async fn run(daemon: Arc<Daemon>) {
         };
         cpu = Some(next);
         tailer = returned;
-        if let Some(tokens) = tokens {
-            last_tokens = tokens;
+        if let Some(swept) = swept {
+            // A `/rename` typed in Claude is a name a human chose, so it
+            // replaces the row's name the way `r` in pacer does.
+            for (id, title) in &swept.titles {
+                if let Err(e) = daemon.rename_agent(id, title) {
+                    tracing::warn!(agent = %id, error = %e, "adopting /rename title failed");
+                }
+            }
+            last_tokens = swept.tokens;
         }
         for session in &mut snapshot.sessions {
             if let SessionRef::Agent(id) = &session.session {
