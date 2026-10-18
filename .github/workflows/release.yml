@@ -124,10 +124,28 @@ jobs:
     if: needs.gate.outputs.release == 'true'
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v4
         with:
           pattern: archive-*
           merge-multiple: true
+
+      # Before tagging: a release whose section is missing would ship with no notes.
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            index($0, "## " v " ") == 1 { f = 1; next }
+            f && index($0, "## ") == 1 { exit }
+            f
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          grep -q '[^[:space:]]' RELEASE_NOTES.md ||
+            { echo "::error::CHANGELOG.md has no '## $VERSION (YYYY-MM-DD)' section"; exit 1; }
 
       # Only when the run came from main — a tag push already has one.
       - name: Tag this version
@@ -145,7 +163,7 @@ jobs:
           files: |
             pacer-*.tar.gz
             pacer-*.zip
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
 
   # npm carries the binaries itself, so it is the install route that works
   # everywhere. Same binaries the release job just attached, never a rebuild.
