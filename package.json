@@ -6,6 +6,7 @@
   "scripts": {
     "dev:server": "pnpm --filter @veyra/server dev",
     "dev:web": "pnpm --filter @veyra/web dev",
+    "dev:desktop": "pnpm --filter @veyra/desktop dev",
     "runner": "pnpm --filter @veyra/runner start",
     "build:tokens": "pnpm --filter @ui/tokens build",
     "typecheck": "tsc -p . && pnpm -r typecheck",
