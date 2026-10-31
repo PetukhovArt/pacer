@@ -8,5 +8,6 @@ import App from './App.vue';
 
 const app = createApp(App);
 installUiKit(app);
-installClient(app, new VeyraClient(location.origin));
-app.mount('#app');
+const client = new VeyraClient(location.origin);
+installClient(app, client);
+void client.restore().finally(() => app.mount('#app'));

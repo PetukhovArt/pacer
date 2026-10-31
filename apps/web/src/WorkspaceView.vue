@@ -12,6 +12,11 @@ const client = useClient();
 const state = useClientState();
 const dark = ref(document.documentElement.classList.contains(DARK_CLASS));
 const layoutKey = `veyra.layout.${state.value.me?.id}`;
+const runnerCommand = ref('');
+
+async function connectRunner() {
+  runnerCommand.value = (await client.runnerToken()).command;
+}
 
 function toggleTheme() {
   dark.value = !dark.value;
@@ -42,8 +47,14 @@ function onReady({ api }: DockviewReadyEvent) {
       <span class="vr-dot" :data-online="state.connected" :title="state.connected ? 'online' : 'offline'" />
       <span class="spacer" />
       <VButton size="small" text :label="dark ? 'Светлая' : 'Тёмная'" @click="toggleTheme" />
+      <VButton size="small" text label="Подключить runner" data-testid="connect-runner" @click="connectRunner" />
       <VButton size="small" text label="Выйти" data-testid="logout" @click="client.logout()" />
     </header>
+    <div v-if="runnerCommand" class="runner-command" data-testid="runner-command">
+      <span class="vr-muted">Запустите в репозитории:</span>
+      <code>{{ runnerCommand }}</code>
+      <VButton size="small" text label="Скрыть" @click="runnerCommand = ''" />
+    </div>
     <div class="dock">
       <div class="dock-view">
         <DockviewVue :theme="dark ? themeAbyss : themeLight" class="dock-fill" @ready="onReady" />
@@ -66,6 +77,19 @@ header {
   padding: var(--vr-space-2) var(--vr-space-4);
   background: var(--vr-color-surface);
   border-bottom: 1px solid var(--vr-color-border);
+}
+
+.runner-command {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-3);
+  padding: var(--vr-space-2) var(--vr-space-4);
+  border-bottom: 1px solid var(--vr-color-border);
+}
+
+.runner-command code {
+  user-select: all;
+  overflow-wrap: anywhere;
 }
 
 .spacer {

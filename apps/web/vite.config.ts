@@ -10,6 +10,7 @@ export default defineConfig({
     proxy: {
       '/api': server,
       '/ws': { target: server.replace(/^http/, 'ws'), ws: true },
+      '/runner': { target: server.replace(/^http/, 'ws'), ws: true },
     },
   },
 });
