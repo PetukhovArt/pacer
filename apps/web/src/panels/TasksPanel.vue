@@ -5,11 +5,14 @@ import type { Task } from '@veyra/protocol';
 import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
 import { useClient, useClientState } from '@core/vue-bindings';
 import { openTask } from '../open-task';
+import { priorityRank } from '../priority';
+import TaskMeta from './TaskMeta.vue';
 
-type Filters = { releases: string[]; statuses: string[]; assignee: string; text: string; hideClosed: boolean };
+type Filters = { releases: string[]; statuses: string[]; priorities: string[]; labels: string[]; assignee: string; text: string; hideClosed: boolean };
 
 const NO_RELEASE = 'none';
-const defaults = (): Filters => ({ releases: [], statuses: [], assignee: 'all', text: '', hideClosed: true });
+const NO_PRIORITY = 'none';
+const defaults = (): Filters => ({ releases: [], statuses: [], priorities: [], labels: [], assignee: 'all', text: '', hideClosed: true });
 
 const props = defineProps<{ params: IDockviewPanelProps }>();
 const client = useClient();
@@ -31,7 +34,7 @@ const filters = reactive<Filters>(load());
 watch(
   filters,
   (value) => {
-    const snapshot = { ...value, releases: [...value.releases], statuses: [...value.statuses] };
+    const snapshot = { ...value, releases: [...value.releases], statuses: [...value.statuses], priorities: [...value.priorities], labels: [...value.labels] };
     localStorage.setItem(storageKey, JSON.stringify(snapshot));
     props.params.api.updateParameters({ filters: snapshot });
   },
@@ -48,7 +51,18 @@ const releaseOptions = computed(() => [...sortedReleases.value.map((r) => ({ lab
 
 const statusOptions = computed(() => [...new Set(state.value.tasks.map((t) => t.status))].sort((a, b) => a.localeCompare(b)));
 
-const trackerUser = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.trackerUser ?? null);
+const priorityOptions = computed(() => {
+  const names = [...new Set(state.value.tasks.flatMap((t) => (t.priority ? [t.priority] : [])))].sort((a, b) => priorityRank(a) - priorityRank(b) || a.localeCompare(b));
+  return [...names.map((n) => ({ label: n, value: n })), { label: 'Без приоритета', value: NO_PRIORITY }];
+});
+
+const labelOptions = computed(() => [...new Set(state.value.tasks.flatMap((t) => t.labels ?? []))].sort((a, b) => a.localeCompare(b)));
+
+function byPriority(a: Task, b: Task) {
+  return priorityRank(a.priority) - priorityRank(b.priority) || a.externalRef.localeCompare(b.externalRef, undefined, { numeric: true });
+}
+
+const trackerUser =computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.trackerUser ?? null);
 
 const assigneeOptions = computed(() => {
   const ids = new Set(state.value.tasks.flatMap((t) => (t.assigneeId ? [t.assigneeId] : [])));
@@ -77,7 +91,9 @@ function matches(task: Task) {
   if (filters.hideClosed && isClosed(task)) return false;
   if (filters.releases.length && !filters.releases.includes(task.releaseId ?? NO_RELEASE)) return false;
   if (filters.statuses.length && !filters.statuses.includes(task.status)) return false;
-  if (filters.assignee === 'mine' && !isMine(task)) return false;
+  if (filters.priorities.length && !filters.priorities.includes(task.priority ?? NO_PRIORITY)) return false;
+  if (filters.labels.length && !filters.labels.some((l) => task.labels?.includes(l))) return false;
+  if (filters.assignee === 'mine'&& !isMine(task)) return false;
   if (filters.assignee === 'unassigned' && (task.assigneeId || task.assigneeRef)) return false;
   if (filters.assignee.startsWith('ref:') && task.assigneeRef !== filters.assignee.slice(4)) return false;
   if (filters.assignee.startsWith('actor:') && task.assigneeId !== filters.assignee.slice(6)) return false;
@@ -88,7 +104,7 @@ function matches(task: Task) {
 const visible = computed(() => state.value.tasks.filter(matches));
 
 const groups = computed(() => {
-  const tasks = visible.value;
+  const tasks = [...visible.value].sort(byPriority);
   const byRelease = sortedReleases.value.map((r) => ({ id: r.id, name: r.name, tasks: tasks.filter((t) => t.releaseId === r.id) }));
   const known = new Set(sortedReleases.value.map((r) => r.id));
   const none = { id: NO_RELEASE, name: 'Без релиза', tasks: tasks.filter((t) => !t.releaseId || !known.has(t.releaseId)) };
@@ -130,6 +146,27 @@ function open(task: Task) {
         size="small"
         data-testid="filter-status"
       />
+      <VMultiSelect
+        v-model="filters.priorities"
+        :options="priorityOptions"
+        option-label="label"
+        option-value="value"
+        placeholder="Приоритет"
+        :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
+        size="small"
+        data-testid="filter-priority"
+      />
+      <VMultiSelect
+        v-model="filters.labels"
+        :options="labelOptions"
+        placeholder="Метки"
+        filter
+        :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
+        size="small"
+        data-testid="filter-labels"
+      />
       <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
       <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
       <label class="toggle">
@@ -145,6 +182,7 @@ function open(task: Task) {
         <span class="ref">{{ task.externalRef }}</span>
         <span class="title">{{ task.title }}</span>
         <span class="vr-muted meta">
+          <TaskMeta :task="task" />
           {{ assigneeLabel(task) }} · {{ task.status }}
           <span v-for="id in task.delegateIds" :key="id" class="vr-dot" :data-status="agentStatus(id)" :title="client.actorName(id)" />
         </span>

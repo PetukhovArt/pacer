@@ -5,6 +5,7 @@ import type { BillingMode, PinKind, VeyraEvent } from '@veyra/protocol';
 import { useClient, useClientState } from '@core/vue-bindings';
 import { VButton, VMessage, VSelect, VTag, VTextarea } from '@ui/kit';
 import type { TaskPanelParams } from '../open-task';
+import TaskMeta from './TaskMeta.vue';
 
 const props = defineProps<{ params: IDockviewPanelProps<TaskPanelParams> }>();
 const taskId = props.params.params.taskId;
@@ -95,6 +96,7 @@ function describe(event: VeyraEvent): string {
   <div v-if="task" class="task-panel" :data-testid="`task-panel-${task.externalRef}`">
     <header>
       <h2>{{ task.externalRef }} · {{ task.title }}</h2>
+      <TaskMeta :task="task" />
       <span class="vr-muted">
         {{ task.status }} · {{ task.assigneeId ? `исполнитель: ${client.actorName(task.assigneeId)}` : task.assigneeName ? `исполнитель: ${task.assigneeName}` : 'не назначена' }}
       </span>
