@@ -313,7 +313,9 @@ function describe(event: VeyraEvent): string {
 
     <section>
       <h3>Запустить агента</h3>
-      <form class="row" @submit.prevent="startAgent">
+      <form class="agent-form" @submit.prevent="startAgent">
+        <VTextarea v-model="prompt" rows="3" auto-resize placeholder="Что сделать агенту" aria-label="Задание агенту" data-testid="agent-prompt" />
+        <div class="agent-controls">
         <VSelect
           v-model="preset"
           :options="presets"
@@ -324,7 +326,6 @@ function describe(event: VeyraEvent): string {
           data-testid="agent-preset"
           @update:model-value="applyPreset"
         />
-        <VTextarea v-model="prompt" rows="2" auto-resize placeholder="Что сделать агенту" aria-label="Задание агенту" data-testid="agent-prompt" />
         <VSelect v-model="billingMode" :options="billingModes" option-label="label" option-value="value" aria-label="Оплата агента" data-testid="agent-billing" />
         <VSelect
           v-if="projects.length"
@@ -336,6 +337,7 @@ function describe(event: VeyraEvent): string {
           data-testid="agent-project"
         />
         <VButton type="submit" label="Запустить" :disabled="!prompt.trim()" data-testid="agent-start" />
+        </div>
       </form>
     </section>
 
@@ -471,6 +473,22 @@ li {
   display: flex;
   gap: var(--vr-space-2);
   align-items: flex-start;
+}
+
+.agent-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vr-space-2);
+}
+
+.agent-form > :deep(textarea) {
+  width: 100%;
+}
+
+.agent-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vr-space-2);
 }
 
 .row > :deep(textarea) {
