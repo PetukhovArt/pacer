@@ -111,6 +111,16 @@ const groups = computed(() => {
   return [...byRelease, none].filter((g) => g.tasks.length);
 });
 
+const mrCounts = computed(() => {
+  const counts = new Map<string, number>();
+  for (const mr of state.value.mergeRequests) for (const ref of mr.taskRefs) counts.set(ref, (counts.get(ref) ?? 0) + 1);
+  return counts;
+});
+
+function mrCount(task: Task) {
+  return mrCounts.value.get(task.externalRef) ?? 0;
+}
+
 function agentStatus(id: string) {
   const actor = state.value.actors.get(id);
   return actor?.kind === 'agent' ? actor.status : null;
@@ -183,6 +193,7 @@ function open(task: Task) {
         <span class="title">{{ task.title }}</span>
         <span class="vr-muted meta">
           <TaskMeta :task="task" />
+          <span v-if="mrCount(task)" class="mr-count" :title="`Merge requests: ${mrCount(task)}`" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
           {{ assigneeLabel(task) }} · {{ task.status }}
           <span v-for="id in task.delegateIds" :key="id" class="vr-dot" :data-status="agentStatus(id)" :title="client.actorName(id)" />
         </span>
@@ -256,6 +267,15 @@ h3 {
 .ref {
   font-family: var(--vr-font-mono);
   color: var(--vr-color-accent);
+}
+
+.mr-count {
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 9px;
+  color: var(--vr-color-accent);
+  border: 1px solid var(--vr-color-accent);
 }
 
 .meta {

@@ -57,6 +57,14 @@ function worktreeOf(actorId: string) {
   return last?.type === 'agent.status' ? (last.detail ?? '') : '';
 }
 
+const taskMergeRequests = computed(() => (task.value ? state.value.mergeRequests.filter((m) => m.taskRefs.includes(task.value!.externalRef)) : []));
+
+function openMergeRequest(event: MouseEvent, id: string) {
+  if (!('__TAURI_INTERNALS__' in window)) return;
+  event.preventDefault();
+  void run(() => client.openMergeRequest(id));
+}
+
 async function stopAgent(agentId: string) {
   await run(() => client.stopAgent(agentId));
 }
@@ -142,6 +150,18 @@ function describe(event: VeyraEvent): string {
 
     <section v-for="overlap in field?.overlaps ?? []" :key="overlap.module" class="overlap" data-testid="overlap">
       Пересечение в модуле <code>{{ overlap.module }}</code>: {{ overlap.actorIds.map((id) => client.actorName(id)).join(', ') }}
+    </section>
+
+    <section v-if="taskMergeRequests.length">
+      <h3>Merge requests</h3>
+      <ul class="merge-requests" data-testid="merge-requests">
+        <li v-for="mr in taskMergeRequests" :key="mr.id" :data-testid="`merge-request-${mr.iid}`">
+          <a :href="mr.webUrl" target="_blank" rel="noopener" data-testid="merge-request-link" @click="openMergeRequest($event, mr.id)">!{{ mr.iid }} {{ mr.title }}</a>
+          <VTag v-if="mr.draft" value="Draft" severity="secondary" />
+          <span class="vr-muted">{{ mr.state }} · {{ projectName(mr.projectId) }}</span>
+          <code>{{ mr.sourceBranch }} → {{ mr.targetBranch }}</code>
+        </li>
+      </ul>
     </section>
 
     <section>
