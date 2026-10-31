@@ -45,7 +45,9 @@ function onReady({ api }: DockviewReadyEvent) {
       <VButton size="small" text label="Выйти" data-testid="logout" @click="client.logout()" />
     </header>
     <div class="dock">
-      <DockviewVue :theme="dark ? themeAbyss : themeLight" class="dock-view" @ready="onReady" />
+      <div class="dock-view">
+        <DockviewVue :theme="dark ? themeAbyss : themeLight" class="dock-fill" @ready="onReady" />
+      </div>
     </div>
   </div>
 </template>
@@ -79,5 +81,9 @@ header {
 .dock-view {
   position: absolute;
   inset: 0;
+}
+
+.dock-view > :deep(.dock-fill) {
+  height: 100%;
 }
 </style>
