@@ -1,0 +1,30 @@
+{
+  "name": "veyra",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev:server": "pnpm --filter @veyra/server dev",
+    "dev:web": "pnpm --filter @veyra/web dev",
+    "runner": "pnpm --filter @veyra/runner start",
+    "build:tokens": "pnpm --filter @ui/tokens build",
+    "typecheck": "tsc -p . && pnpm -r typecheck",
+    "test": "vitest run --maxWorkers=1",
+    "e2e": "tsx scripts/e2e.ts",
+    "verify": "pnpm build:tokens && pnpm typecheck && pnpm test && pnpm e2e"
+  },
+  "devDependencies": {
+    "@core/client-sdk": "workspace:*",
+    "@electric-sql/pglite": "^0.5.14",
+    "@fastify/websocket": "^11.3.5",
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "@veyra/protocol": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5",
+    "ws": "^8.22.1"
+  }
+}

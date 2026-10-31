@@ -1,0 +1,19 @@
+{
+  "name": "@ui/kit",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@primeuix/themes": "^3.1.0",
+    "@ui/tokens": "workspace:*",
+    "primevue": "^5.0.4",
+    "vue": "^3.5.44"
+  }
+}
