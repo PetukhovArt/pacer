@@ -1,5 +1,5 @@
 {
-  "runtime": "browser",
+  "runtime": "tauri",
   "port": 9333,
   "launch": "",
   "allowEval": true,
