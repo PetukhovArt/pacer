@@ -170,6 +170,10 @@ function describe(event: VeyraEvent): string {
       return `ответ агенту ${client.actorName(event.agentId)}: ${event.text}`;
     case 'agent.session':
       return `сессия ${event.sessionId}`;
+    case 'agent.step':
+      return `jig · ${event.unit}: ${event.status}`;
+    case 'agent.todos':
+      return `план: ${event.items.filter((i) => i.status === 'completed').length}/${event.items.length}`;
   }
 }
 </script>
