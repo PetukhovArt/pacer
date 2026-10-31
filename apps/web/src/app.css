@@ -1,0 +1,32 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--vr-font-family);
+  background: var(--vr-color-surface-muted);
+  color: var(--vr-color-text);
+}
+
+.vr-muted {
+  color: var(--vr-color-text-muted);
+}
+
+.vr-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vr-color-border);
+}
+
+.vr-dot[data-online='true'] {
+  background: var(--vr-color-presence-online);
+}
+
+.vr-dot[data-status='running'] {
+  background: var(--vr-color-agent-running);
+}

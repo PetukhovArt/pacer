@@ -1,0 +1,25 @@
+{
+  "name": "@veyra/web",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@core/client-sdk": "workspace:*",
+    "@core/vue-bindings": "workspace:*",
+    "@ui/kit": "workspace:*",
+    "@veyra/protocol": "workspace:*",
+    "dockview-core": "^8.8.3",
+    "dockview-vue": "^8.8.3",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.10",
+    "vite": "^8.3.5",
+    "vue-tsc": "^3.3.14"
+  }
+}

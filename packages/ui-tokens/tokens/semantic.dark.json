@@ -1,0 +1,16 @@
+{
+  "color": {
+    "$type": "color",
+    "surface": { "$value": "{palette.slate.900}" },
+    "surface-muted": { "$value": "{palette.slate.950}" },
+    "border": { "$value": "{palette.slate.700}" },
+    "text": { "$value": "{palette.slate.50}" },
+    "text-muted": { "$value": "{palette.slate.400}" },
+    "accent": { "$value": "{palette.indigo.400}" },
+    "danger": { "$value": "{palette.red.500}" },
+    "conflict": { "$value": "{palette.amber.500}" },
+    "presence-online": { "$value": "{palette.green.500}" },
+    "agent-running": { "$value": "{palette.sky.500}" },
+    "pin-bg": { "$value": "{palette.indigo.950}" }
+  }
+}

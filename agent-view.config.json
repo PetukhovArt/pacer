@@ -1,0 +1,7 @@
+{
+  "runtime": "browser",
+  "port": 9333,
+  "launch": "",
+  "allowEval": true,
+  "testIdAttribute": "data-testid"
+}

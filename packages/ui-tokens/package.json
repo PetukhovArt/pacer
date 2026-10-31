@@ -6,10 +6,11 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./css": "./build/tokens.css",
-    "./tokens.json": "./tokens/tokens.json"
+    "./light.css": "./generated/light.css",
+    "./dark.css": "./generated/dark.css"
   },
   "scripts": {
+    "build": "tsx scripts/build.ts",
     "typecheck": "tsc -p ."
   },
   "devDependencies": {
