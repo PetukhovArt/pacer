@@ -272,6 +272,7 @@ li {
 .feed li {
   font-size: 13px;
   border-bottom: 1px solid var(--vr-color-border);
+  white-space: pre-wrap;
 }
 
 code {
