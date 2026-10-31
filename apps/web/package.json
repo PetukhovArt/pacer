@@ -15,6 +15,8 @@
     "@veyra/protocol": "workspace:*",
     "dockview-core": "^8.8.3",
     "dockview-vue": "^8.8.3",
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.2",
     "vue": "^3.5.44"
   },
   "devDependencies": {

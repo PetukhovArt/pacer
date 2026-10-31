@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import type { IDockviewPanelProps } from 'dockview-core';
 import type { BillingMode, PinKind, VeyraEvent } from '@veyra/protocol';
 import { useClient, useClientState } from '@core/vue-bindings';
@@ -17,6 +19,23 @@ const field = computed(() => state.value.fields.get(taskId));
 const messages = computed(() => (state.value.events.get(taskId) ?? []).flatMap((e) => (e.type === 'chat.message' ? [e.message] : [])));
 const chatText = ref('');
 const events = computed(() => [...(state.value.events.get(taskId) ?? [])].reverse());
+
+type ToolCall = Extract<VeyraEvent, { type: 'agent.tool_call' }>;
+type FeedItem = { kind: 'event'; id: string; event: VeyraEvent } | { kind: 'tools'; id: string; actorId: string; at: string; calls: ToolCall[] };
+
+const feed = computed(() =>
+  events.value.reduce<FeedItem[]>((items, event) => {
+    const last = items[items.length - 1];
+    if (event.type !== 'agent.tool_call') items.push({ kind: 'event', id: event.id, event });
+    else if (last?.kind === 'tools' && last.actorId === event.actorId) last.calls.unshift(event);
+    else items.push({ kind: 'tools', id: event.id, actorId: event.actorId, at: event.at, calls: [event] });
+    return items;
+  }, []),
+);
+
+function markdown(text: string): string {
+  return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }));
+}
 
 const pinKinds: { label: string; value: PinKind }[] = [
   { label: 'Решение', value: 'decision' },
@@ -274,10 +293,24 @@ function describe(event: VeyraEvent): string {
     <section>
       <h3>Лента</h3>
       <ol class="feed" data-testid="feed">
-        <li v-for="event in events" :key="event.id">
-          <span class="vr-muted">{{ new Date(event.at).toLocaleTimeString() }}</span>
-          <strong>{{ client.actorName(event.actorId) }}</strong>
-          <span>{{ describe(event) }}</span>
+        <li v-for="item in feed" :key="item.id" :class="item.kind">
+          <template v-if="item.kind === 'tools'">
+            <span class="vr-muted">{{ new Date(item.at).toLocaleTimeString() }}</span>
+            <strong>{{ client.actorName(item.actorId) }}</strong>
+            <span class="vr-muted">инструменты: {{ item.calls.length }}</span>
+            <div class="tool-calls">
+              <div v-for="call in item.calls" :key="call.id" class="tool-call">
+                <code class="tool-name">{{ call.tool }}</code>
+                <span class="tool-summary" :title="call.summary">{{ call.summary }}</span>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <span class="vr-muted">{{ new Date(item.event.at).toLocaleTimeString() }}</span>
+            <strong>{{ client.actorName(item.event.actorId) }}</strong>
+            <div v-if="item.event.type === 'agent.message'" class="markdown" v-html="markdown(item.event.text)" />
+            <span v-else>{{ describe(item.event) }}</span>
+          </template>
         </li>
       </ol>
     </section>
@@ -392,6 +425,68 @@ li {
   font-size: 13px;
   border-bottom: 1px solid var(--vr-color-border);
   white-space: pre-wrap;
+}
+
+.feed li.tools {
+  white-space: normal;
+}
+
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 100%;
+  gap: 2px;
+}
+
+.tool-call {
+  display: flex;
+  gap: var(--vr-space-2);
+  min-width: 0;
+}
+
+.tool-name {
+  flex: none;
+  font-weight: 600;
+}
+
+.tool-summary {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--vr-color-text-muted);
+  font-family: var(--vr-font-mono);
+  font-size: 12px;
+}
+
+.markdown {
+  flex-basis: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.markdown :deep(p),
+.markdown :deep(ul),
+.markdown :deep(ol),
+.markdown :deep(pre) {
+  margin: 0 0 var(--vr-space-1);
+}
+
+.markdown :deep(ul),
+.markdown :deep(ol) {
+  padding-left: var(--vr-space-4);
+  list-style: revert;
+}
+
+.markdown :deep(li) {
+  display: list-item;
+  padding: 0;
+}
+
+.markdown :deep(pre) {
+  overflow: auto;
+  padding: var(--vr-space-2);
+  background: var(--vr-color-surface-muted);
+  border-radius: var(--vr-radius-sm);
 }
 
 code {
