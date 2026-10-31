@@ -84,6 +84,12 @@ function openMergeRequest(event: MouseEvent, id: string) {
   void run(() => client.openMergeRequest(id));
 }
 
+function openInTracker(event: MouseEvent) {
+  if (!('__TAURI_INTERNALS__' in window)) return;
+  event.preventDefault();
+  void run(() => client.openTaskInTracker(taskId));
+}
+
 async function stopAgent(agentId: string) {
   await run(() => client.stopAgent(agentId));
 }
@@ -171,7 +177,11 @@ function describe(event: VeyraEvent): string {
 <template>
   <div v-if="task" class="task-panel" :data-testid="`task-panel-${task.externalRef}`">
     <header>
-      <h2>{{ task.externalRef }} · {{ task.title }}</h2>
+      <h2 :title="task.title">
+        <a v-if="task.webUrl" :href="task.webUrl" target="_blank" rel="noopener" class="key" data-testid="task-tracker-link" @click="openInTracker">{{ task.externalRef }}</a>
+        <span v-else class="key">{{ task.externalRef }}</span>
+        · {{ task.title }}
+      </h2>
       <TaskMeta :task="task" />
       <span class="vr-muted">
         {{ task.status }} · {{ task.assigneeId ? `исполнитель: ${client.actorName(task.assigneeId)}` : task.assigneeName ? `исполнитель: ${task.assigneeName}` : 'не назначена' }}
@@ -339,6 +349,16 @@ h2 {
   flex-basis: 100%;
   margin: 0;
   font-size: 18px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.key {
+  font-family: var(--vr-font-mono);
+  color: var(--vr-color-accent);
 }
 
 h3 {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import type { WorkspaceInfo } from '@core/client-sdk';
 import { DockviewVue } from 'dockview-vue';
 import { themeAbyss, themeLight, type DockviewApi, type DockviewReadyEvent } from 'dockview-core';
@@ -17,7 +17,27 @@ const runnerCommand = ref('');
 const workspaces = ref<WorkspaceInfo[]>([]);
 const WORKSPACE_KEY = 'veyra.workspace';
 
+const lastStatus = new Map<string, string>();
+
+watch(
+  () => state.value.actors,
+  (actors) => {
+    for (const actor of actors.values()) {
+      if (actor.kind !== 'agent' || actor.ownerId !== state.value.me?.id) continue;
+      const previous = lastStatus.get(actor.id);
+      lastStatus.set(actor.id, actor.status);
+      if (!previous || previous === actor.status || !['done', 'failed'].includes(actor.status)) continue;
+      if (document.hasFocus() || typeof Notification === 'undefined' || Notification.permission !== 'granted') continue;
+      const task = state.value.tasks.find((t) => t.id === actor.taskId);
+      const title = actor.status === 'done' ? 'Агент закончил' : 'Агент упал';
+      new Notification(title, { body: task ? `${task.externalRef} · ${task.title}` : actor.name, tag: actor.id });
+    }
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission().catch(() => undefined);
   workspaces.value = await client.workspaces().catch(() => []);
   const current = state.value.workspaceId;
   if (workspaces.value.length && !workspaces.value.some((w) => w.id === current)) await switchWorkspace(workspaces.value[0]!.id);

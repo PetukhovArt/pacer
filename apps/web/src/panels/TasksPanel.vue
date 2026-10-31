@@ -130,6 +130,22 @@ function open(task: Task) {
   openTask(props.params.containerApi, task);
 }
 
+const selectedId = ref<string | null>(null);
+
+function trackActive(panelId: string | undefined) {
+  if (panelId?.startsWith('task:')) selectedId.value = panelId.slice(5);
+}
+
+trackActive(props.params.containerApi.activePanel?.id);
+const activeSub = props.params.containerApi.onDidActivePanelChange((panel) => trackActive(panel?.id));
+const removeSub = props.params.containerApi.onDidRemovePanel((panel) => {
+  if (panel.id === `task:${selectedId.value}`) selectedId.value = null;
+});
+onUnmounted(() => {
+  activeSub.dispose();
+  removeSub.dispose();
+});
+
 const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
 const now = ref(Date.now());
 const ticker = setInterval(() => (now.value = Date.now()), 30_000);
@@ -231,9 +247,17 @@ async function syncNow() {
     </div>
     <section v-for="group in groups" :key="group.id">
       <h3>{{ group.name }}</h3>
-      <button v-for="task in group.tasks" :key="task.id" class="task" :data-testid="`task-${task.externalRef}`" @click="open(task)">
+      <button
+        v-for="task in group.tasks"
+        :key="task.id"
+        class="task"
+        :class="{ selected: task.id === selectedId }"
+        :aria-current="task.id === selectedId ? 'true' : undefined"
+        :data-testid="`task-${task.externalRef}`"
+        @click="open(task)"
+      >
         <span class="ref">{{ task.externalRef }}</span>
-        <span class="title">{{ task.title }}</span>
+        <span class="title" :title="task.title">{{ task.title }}</span>
         <span class="vr-muted meta">
           <TaskMeta :task="task" />
           <span v-if="mrCount(task)" class="mr-count" :title="`Merge requests: ${mrCount(task)}`" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
@@ -242,6 +266,13 @@ async function syncNow() {
         </span>
       </button>
     </section>
+    <div v-if="!visible.length" class="empty" data-testid="tasks-empty">
+      <template v-if="state.tasks.length">
+        <span>Нет задач по фильтрам</span>
+        <VButton label="Сбросить" size="small" text data-testid="empty-reset" @click="reset" />
+      </template>
+      <span v-else class="vr-muted">Задач пока нет</span>
+    </div>
   </div>
 </template>
 
@@ -321,6 +352,28 @@ h3 {
 
 .task:hover {
   border-color: var(--vr-color-accent);
+}
+
+.task.selected {
+  border-color: var(--vr-color-accent);
+  background: var(--vr-color-surface-muted);
+  box-shadow: inset 3px 0 0 var(--vr-color-accent);
+}
+
+.title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vr-space-2);
+  padding: var(--vr-space-4);
 }
 
 .ref {
