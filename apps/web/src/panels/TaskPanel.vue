@@ -69,6 +69,10 @@ function describe(event: VeyraEvent): string {
       return 'взял задачу';
     case 'agent.started':
       return `агент запущен: ${event.prompt}`;
+    case 'task.updated':
+      return `трекер: ${event.title} (${event.status})`;
+    case 'task.mr':
+      return `MR ${event.state}: ${event.title} ${event.url}`;
   }
 }
 </script>
