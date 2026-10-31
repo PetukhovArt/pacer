@@ -68,6 +68,22 @@ function openMergeRequest(event: MouseEvent, id: string) {
 async function stopAgent(agentId: string) {
   await run(() => client.stopAgent(agentId));
 }
+
+const replyTexts = ref<Record<string, string>>({});
+
+function canReply(actorId: string) {
+  const agent = agentOf(actorId);
+  return !!agent && agent.ownerId === state.value.me?.id && ['done', 'failed', 'stopped'].includes(agent.status);
+}
+
+async function replyToAgent(agentId: string) {
+  const text = (replyTexts.value[agentId] ?? '').trim();
+  if (!text) return;
+  await run(async () => {
+    await client.replyToAgent(agentId, text);
+    replyTexts.value[agentId] = '';
+  });
+}
 const error = ref('');
 
 onMounted(() => client.loadTask(taskId).catch(report));
@@ -125,6 +141,10 @@ function describe(event: VeyraEvent): string {
       return `MR ${event.state}: ${event.title} ${event.url}`;
     case 'chat.message':
       return `в чате: ${event.message.text}`;
+    case 'agent.reply':
+      return `ответ агенту ${client.actorName(event.agentId)}: ${event.text}`;
+    case 'agent.session':
+      return `сессия ${event.sessionId}`;
   }
 }
 </script>
@@ -202,6 +222,18 @@ function describe(event: VeyraEvent): string {
               @click="stopAgent(a.actorId)"
             />
           </span>
+          <form v-if="agentOf(a.actorId)?.ownerId === state.me?.id" class="row reply" @submit.prevent="replyToAgent(a.actorId)">
+            <VTextarea
+              v-model="replyTexts[a.actorId]"
+              rows="1"
+              auto-resize
+              placeholder="Ответ агенту"
+              aria-label="Ответ агенту"
+              :disabled="!canReply(a.actorId)"
+              data-testid="agent-reply-text"
+            />
+            <VButton type="submit" size="small" label="Ответить" :disabled="!canReply(a.actorId) || !replyTexts[a.actorId]?.trim()" data-testid="agent-reply-send" />
+          </form>
         </li>
       </ul>
     </section>
@@ -345,6 +377,10 @@ li {
   align-items: center;
   gap: var(--vr-space-2);
   font-size: 12px;
+}
+
+.reply {
+  flex-basis: 100%;
 }
 
 .chat-text {
