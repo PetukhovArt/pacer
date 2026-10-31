@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import type { IDockviewPanelProps } from 'dockview-core';
-import type { PinKind, VeyraEvent } from '@veyra/protocol';
+import type { BillingMode, PinKind, VeyraEvent } from '@veyra/protocol';
 import { useClient, useClientState } from '@core/vue-bindings';
 import { VButton, VMessage, VSelect, VTag, VTextarea } from '@ui/kit';
 import type { TaskPanelParams } from '../open-task';
@@ -25,6 +25,11 @@ const pinKinds: { label: string; value: PinKind }[] = [
 const pinKind = ref<PinKind>('decision');
 const pinText = ref('');
 const prompt = ref('');
+const billingModes: { label: string; value: BillingMode }[] = [
+  { label: 'Личная подписка', value: 'personal' },
+  { label: 'Командный API', value: 'team' },
+];
+const billingMode = ref<BillingMode>('personal');
 const error = ref('');
 
 onMounted(() => client.loadTask(taskId).catch(report));
@@ -44,7 +49,7 @@ async function addPin() {
 }
 
 async function startAgent() {
-  await run(() => client.startAgent(taskId, prompt.value.trim()));
+  await run(() => client.startAgent(taskId, prompt.value.trim(), billingMode.value));
   prompt.value = '';
 }
 
@@ -98,6 +103,12 @@ function describe(event: VeyraEvent): string {
 
     <VMessage v-if="error" severity="error" closable @close="error = ''">{{ error }}</VMessage>
 
+    <section v-if="field?.summary" class="summary" data-testid="task-summary">
+      <h3>Сводка</h3>
+      <p>{{ field.summary.text }}</p>
+      <span class="vr-muted">обновлено {{ new Date(field.summary.at).toLocaleTimeString() }}</span>
+    </section>
+
     <section v-for="overlap in field?.overlaps ?? []" :key="overlap.module" class="overlap" data-testid="overlap">
       Пересечение в модуле <code>{{ overlap.module }}</code>: {{ overlap.actorIds.map((id) => client.actorName(id)).join(', ') }}
     </section>
@@ -134,6 +145,7 @@ function describe(event: VeyraEvent): string {
       <h3>Запустить агента</h3>
       <form class="row" @submit.prevent="startAgent">
         <VTextarea v-model="prompt" rows="2" auto-resize placeholder="Что сделать агенту" aria-label="Задание агенту" data-testid="agent-prompt" />
+        <VSelect v-model="billingMode" :options="billingModes" option-label="label" option-value="value" aria-label="Оплата агента" data-testid="agent-billing" />
         <VButton type="submit" label="Запустить" :disabled="!prompt.trim()" data-testid="agent-start" />
       </form>
     </section>
@@ -217,6 +229,22 @@ li {
   margin-bottom: var(--vr-space-1);
   background: var(--vr-color-pin-bg);
   border-radius: var(--vr-radius-sm);
+}
+
+.summary {
+  margin-top: var(--vr-space-3);
+  padding: var(--vr-space-2);
+  border-left: 4px solid var(--vr-color-border);
+  background: var(--vr-color-surface-muted);
+}
+
+.summary h3 {
+  margin-top: 0;
+}
+
+.summary p {
+  margin: 0 0 var(--vr-space-1);
+  white-space: pre-wrap;
 }
 
 .overlap {
