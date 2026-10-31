@@ -13,6 +13,8 @@ const state = useClientState();
 
 const task = computed(() => state.value.tasks.find((t) => t.id === taskId));
 const field = computed(() => state.value.fields.get(taskId));
+const messages = computed(() => (state.value.events.get(taskId) ?? []).flatMap((e) => (e.type === 'chat.message' ? [e.message] : [])));
+const chatText = ref('');
 const events = computed(() => [...(state.value.events.get(taskId) ?? [])].reverse());
 
 const pinKinds: { label: string; value: PinKind }[] = [
@@ -46,6 +48,11 @@ async function startAgent() {
   prompt.value = '';
 }
 
+async function sendChat() {
+  await run(() => client.sendMessage(taskId, chatText.value.trim()));
+  chatText.value = '';
+}
+
 function statusOf(actorId: string) {
   const actor = state.value.actors.get(actorId);
   return actor?.kind === 'agent' ? actor.status : state.value.presence.get(actorId) ? 'online' : 'offline';
@@ -69,6 +76,8 @@ function describe(event: VeyraEvent): string {
       return 'взял задачу';
     case 'agent.started':
       return `агент запущен: ${event.prompt}`;
+    case 'chat.message':
+      return `в чате: ${event.message.text}`;
   }
 }
 </script>
@@ -122,6 +131,21 @@ function describe(event: VeyraEvent): string {
       <form class="row" @submit.prevent="startAgent">
         <VTextarea v-model="prompt" rows="2" auto-resize placeholder="Что сделать агенту" aria-label="Задание агенту" data-testid="agent-prompt" />
         <VButton type="submit" label="Запустить" :disabled="!prompt.trim()" data-testid="agent-start" />
+      </form>
+    </section>
+
+    <section>
+      <h3>Чат</h3>
+      <ol class="chat" data-testid="chat">
+        <li v-for="m in messages" :key="m.id">
+          <strong>{{ client.actorName(m.authorId) }}</strong>
+          <span class="vr-muted">{{ new Date(m.at).toLocaleTimeString() }}</span>
+          <span class="chat-text">{{ m.text }}</span>
+        </li>
+      </ol>
+      <form class="row" @submit.prevent="sendChat">
+        <VTextarea v-model="chatText" rows="1" auto-resize placeholder="Сообщение по задаче" aria-label="Сообщение в чат" data-testid="chat-text" />
+        <VButton type="submit" label="Отправить" :disabled="!chatText.trim()" data-testid="chat-send" />
       </form>
     </section>
 
@@ -206,6 +230,11 @@ li {
 
 .row > :deep(textarea) {
   flex: 1;
+}
+
+.chat-text {
+  flex-basis: 100%;
+  white-space: pre-wrap;
 }
 
 .feed li {
