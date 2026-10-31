@@ -1,18 +1,83 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import type { IDockviewPanelProps } from 'dockview-core';
 import type { Task } from '@veyra/protocol';
+import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
 import { useClient, useClientState } from '@core/vue-bindings';
 import { openTask } from '../open-task';
+
+type Filters = { releases: string[]; statuses: string[]; assignee: string; text: string; hideClosed: boolean };
+
+const NO_RELEASE = 'none';
+const defaults = (): Filters => ({ releases: [], statuses: [], assignee: 'all', text: '', hideClosed: true });
 
 const props = defineProps<{ params: IDockviewPanelProps }>();
 const client = useClient();
 const state = useClientState();
+const storageKey = `veyra.taskFilters.${state.value.me?.id}`;
+
+function load(): Filters {
+  const fromPanel = (props.params.params as { filters?: Partial<Filters> } | undefined)?.filters;
+  if (fromPanel) return { ...defaults(), ...fromPanel };
+  try {
+    return { ...defaults(), ...(JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<Filters>) };
+  } catch {
+    return defaults();
+  }
+}
+
+const filters = reactive<Filters>(load());
+
+watch(
+  filters,
+  (value) => {
+    const snapshot = { ...value, releases: [...value.releases], statuses: [...value.statuses] };
+    localStorage.setItem(storageKey, JSON.stringify(snapshot));
+    props.params.api.updateParameters({ filters: snapshot });
+  },
+  { deep: true },
+);
+
+function reset() {
+  Object.assign(filters, defaults());
+}
+
+const sortedReleases = computed(() => [...state.value.releases].sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true })));
+
+const releaseOptions = computed(() => [...sortedReleases.value.map((r) => ({ label: r.name, value: r.id })), { label: 'Без релиза', value: NO_RELEASE }]);
+
+const statusOptions = computed(() => [...new Set(state.value.tasks.map((t) => t.status))].sort((a, b) => a.localeCompare(b)));
+
+const assigneeOptions = computed(() => {
+  const ids = new Set(state.value.tasks.flatMap((t) => (t.assigneeId ? [t.assigneeId] : [])));
+  for (const actor of state.value.actors.values()) if (actor.kind === 'human') ids.add(actor.id);
+  const people = [...ids].map((id) => ({ label: client.actorName(id), value: `actor:${id}` })).sort((a, b) => a.label.localeCompare(b.label));
+  return [{ label: 'Все', value: 'all' }, { label: 'Мои', value: 'mine' }, { label: 'Не назначены', value: 'unassigned' }, ...people];
+});
+
+function isClosed(task: Task) {
+  return task.statusCategory === 'done';
+}
+
+function matches(task: Task) {
+  if (filters.hideClosed && isClosed(task)) return false;
+  if (filters.releases.length && !filters.releases.includes(task.releaseId ?? NO_RELEASE)) return false;
+  if (filters.statuses.length && !filters.statuses.includes(task.status)) return false;
+  if (filters.assignee === 'mine' && task.assigneeId !== state.value.me?.id) return false;
+  if (filters.assignee === 'unassigned' && task.assigneeId) return false;
+  if (filters.assignee.startsWith('actor:') && task.assigneeId !== filters.assignee.slice(6)) return false;
+  const text = filters.text.trim().toLowerCase();
+  return !text || task.externalRef.toLowerCase().includes(text) || task.title.toLowerCase().includes(text);
+}
+
+const visible = computed(() => state.value.tasks.filter(matches));
 
 const groups = computed(() => {
-  const { releases, tasks } = state.value;
-  const byRelease = releases.map((r) => ({ id: r.id, name: r.name, tasks: tasks.filter((t) => t.releaseId === r.id) }));
-  return [...byRelease, { id: 'none', name: 'Без релиза', tasks: tasks.filter((t) => !t.releaseId) }].filter((g) => g.tasks.length);
+  const tasks = visible.value;
+  const byRelease = sortedReleases.value.map((r) => ({ id: r.id, name: r.name, tasks: tasks.filter((t) => t.releaseId === r.id) }));
+  const known = new Set(sortedReleases.value.map((r) => r.id));
+  const none = { id: NO_RELEASE, name: 'Без релиза', tasks: tasks.filter((t) => !t.releaseId || !known.has(t.releaseId)) };
+  return [...byRelease, none].filter((g) => g.tasks.length);
 });
 
 function agentStatus(id: string) {
@@ -27,6 +92,36 @@ function open(task: Task) {
 
 <template>
   <div class="tasks">
+    <div class="filters">
+      <VMultiSelect
+        v-model="filters.releases"
+        :options="releaseOptions"
+        option-label="label"
+        option-value="value"
+        placeholder="Релиз"
+        filter
+        :max-selected-labels="2"
+        size="small"
+        data-testid="filter-release"
+      />
+      <VMultiSelect
+        v-model="filters.statuses"
+        :options="statusOptions"
+        placeholder="Статус"
+        filter
+        :max-selected-labels="2"
+        size="small"
+        data-testid="filter-status"
+      />
+      <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
+      <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
+      <label class="toggle">
+        <VToggleSwitch v-model="filters.hideClosed" data-testid="filter-hide-closed" />
+        Скрыть закрытые
+      </label>
+      <VButton label="Сбросить" size="small" text data-testid="filter-reset" @click="reset" />
+      <span class="vr-muted count" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }} задач</span>
+    </div>
     <section v-for="group in groups" :key="group.id">
       <h3>{{ group.name }}</h3>
       <button v-for="task in group.tasks" :key="task.id" class="task" :data-testid="`task-${task.externalRef}`" @click="open(task)">
@@ -49,6 +144,31 @@ function open(task: Task) {
   background: var(--vr-color-surface);
   color: var(--vr-color-text);
   box-sizing: border-box;
+}
+
+.filters {
+  position: sticky;
+  top: calc(-1 * var(--vr-space-3));
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vr-space-2);
+  padding: var(--vr-space-2) 0;
+  background: var(--vr-color-surface);
+  border-bottom: 1px solid var(--vr-color-border);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-1);
+  font-size: 12px;
+}
+
+.count {
+  margin-left: auto;
+  font-size: 12px;
 }
 
 h3 {

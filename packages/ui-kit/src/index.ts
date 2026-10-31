@@ -25,3 +25,5 @@ export { default as VTextarea } from 'primevue/textarea';
 export { default as VSelect } from 'primevue/select';
 export { default as VTag } from 'primevue/tag';
 export { default as VMessage } from 'primevue/message';
+export { default as VMultiSelect } from 'primevue/multiselect';
+export { default as VToggleSwitch } from 'primevue/toggleswitch';
