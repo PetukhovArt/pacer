@@ -31,6 +31,35 @@ const billingModes: { label: string; value: BillingMode }[] = [
   { label: 'Командный API', value: 'team' },
 ];
 const billingMode = ref<BillingMode>('personal');
+const projects = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.projects ?? []);
+const projectKey = computed(() => `veyra.agentProject.${state.value.workspaceId ?? 'default'}`);
+const storedProject = ref(localStorage.getItem(projectKey.value));
+const projectId = computed({
+  get: () => (projects.value.some((p) => p.id === storedProject.value) ? storedProject.value : (projects.value[0]?.id ?? null)),
+  set: (id: string | null) => {
+    storedProject.value = id;
+    if (id) localStorage.setItem(projectKey.value, id);
+  },
+});
+
+function projectName(id: string | null | undefined) {
+  return projects.value.find((p) => p.id === id)?.name ?? id ?? '';
+}
+
+function agentOf(actorId: string) {
+  const actor = state.value.actors.get(actorId);
+  return actor?.kind === 'agent' ? actor : null;
+}
+
+function worktreeOf(actorId: string) {
+  const running = (state.value.events.get(taskId) ?? []).filter((e) => e.actorId === actorId && e.type === 'agent.status' && e.status === 'running');
+  const last = running[running.length - 1];
+  return last?.type === 'agent.status' ? (last.detail ?? '') : '';
+}
+
+async function stopAgent(agentId: string) {
+  await run(() => client.stopAgent(agentId));
+}
 const error = ref('');
 
 onMounted(() => client.loadTask(taskId).catch(report));
@@ -50,7 +79,7 @@ async function addPin() {
 }
 
 async function startAgent() {
-  await run(() => client.startAgent(taskId, prompt.value.trim(), billingMode.value));
+  await run(() => client.startAgent(taskId, prompt.value.trim(), billingMode.value, projectId.value));
   prompt.value = '';
 }
 
@@ -139,6 +168,20 @@ function describe(event: VeyraEvent): string {
           <strong>{{ client.actorName(a.actorId) }}</strong>
           <span class="vr-muted">{{ statusOf(a.actorId) }} · событий: {{ a.eventCount }}</span>
           <code v-for="m in a.modules" :key="m">{{ m }}</code>
+          <span v-if="agentOf(a.actorId)" class="session" data-testid="agent-session">
+            <span v-if="agentOf(a.actorId)?.projectId" data-testid="agent-session-project">проект: {{ projectName(agentOf(a.actorId)?.projectId) }}</span>
+            <code data-testid="agent-session-branch">agent/{{ a.actorId.slice(0, 8) }}</code>
+            <code v-if="worktreeOf(a.actorId)" data-testid="agent-session-worktree">{{ worktreeOf(a.actorId) }}</code>
+            <VButton
+              v-if="agentOf(a.actorId)?.status === 'running' && agentOf(a.actorId)?.ownerId === state.me?.id"
+              size="small"
+              severity="danger"
+              text
+              label="Остановить"
+              data-testid="agent-stop"
+              @click="stopAgent(a.actorId)"
+            />
+          </span>
         </li>
       </ul>
     </section>
@@ -148,6 +191,15 @@ function describe(event: VeyraEvent): string {
       <form class="row" @submit.prevent="startAgent">
         <VTextarea v-model="prompt" rows="2" auto-resize placeholder="Что сделать агенту" aria-label="Задание агенту" data-testid="agent-prompt" />
         <VSelect v-model="billingMode" :options="billingModes" option-label="label" option-value="value" aria-label="Оплата агента" data-testid="agent-billing" />
+        <VSelect
+          v-if="projects.length"
+          v-model="projectId"
+          :options="projects"
+          option-label="name"
+          option-value="id"
+          aria-label="Проект агента"
+          data-testid="agent-project"
+        />
         <VButton type="submit" label="Запустить" :disabled="!prompt.trim()" data-testid="agent-start" />
       </form>
     </section>
@@ -264,6 +316,15 @@ li {
 
 .row > :deep(textarea) {
   flex: 1;
+}
+
+.session {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vr-space-2);
+  font-size: 12px;
 }
 
 .chat-text {
