@@ -96,7 +96,7 @@ function describe(event: VeyraEvent): string {
     <header>
       <h2>{{ task.externalRef }} · {{ task.title }}</h2>
       <span class="vr-muted">
-        {{ task.status }} · {{ task.assigneeId ? `исполнитель: ${client.actorName(task.assigneeId)}` : 'не назначена' }}
+        {{ task.status }} · {{ task.assigneeId ? `исполнитель: ${client.actorName(task.assigneeId)}` : task.assigneeName ? `исполнитель: ${task.assigneeName}` : 'не назначена' }}
       </span>
       <VButton v-if="task.assigneeId !== state.me?.id" size="small" label="Взять себе" data-testid="assign-me" @click="run(() => client.assignToMe(taskId))" />
     </header>

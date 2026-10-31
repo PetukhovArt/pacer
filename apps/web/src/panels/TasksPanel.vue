@@ -48,12 +48,26 @@ const releaseOptions = computed(() => [...sortedReleases.value.map((r) => ({ lab
 
 const statusOptions = computed(() => [...new Set(state.value.tasks.map((t) => t.status))].sort((a, b) => a.localeCompare(b)));
 
+const trackerUser = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.trackerUser ?? null);
+
 const assigneeOptions = computed(() => {
   const ids = new Set(state.value.tasks.flatMap((t) => (t.assigneeId ? [t.assigneeId] : [])));
   for (const actor of state.value.actors.values()) if (actor.kind === 'human') ids.add(actor.id);
-  const people = [...ids].map((id) => ({ label: client.actorName(id), value: `actor:${id}` })).sort((a, b) => a.label.localeCompare(b.label));
-  return [{ label: 'Все', value: 'all' }, { label: 'Мои', value: 'mine' }, { label: 'Не назначены', value: 'unassigned' }, ...people];
+  const people = [...ids].map((id) => ({ label: client.actorName(id), value: `actor:${id}` }));
+  const refs = new Map(state.value.tasks.flatMap((t) => (t.assigneeRef ? [[t.assigneeRef, t.assigneeName ?? t.assigneeRef] as const] : [])));
+  const trackerPeople = [...refs].map(([ref, name]) => ({ label: name, value: `ref:${ref}` }));
+  const all = [...people, ...trackerPeople].sort((a, b) => a.label.localeCompare(b.label));
+  return [{ label: 'Все', value: 'all' }, { label: 'Мои', value: 'mine' }, { label: 'Не назначены', value: 'unassigned' }, ...all];
 });
+
+function isMine(task: Task) {
+  return task.assigneeId === state.value.me?.id || (!!trackerUser.value && task.assigneeRef === trackerUser.value);
+}
+
+function assigneeLabel(task: Task) {
+  if (task.assigneeId) return client.actorName(task.assigneeId);
+  return task.assigneeName ?? 'не назначена';
+}
 
 function isClosed(task: Task) {
   return task.statusCategory === 'done';
@@ -63,8 +77,9 @@ function matches(task: Task) {
   if (filters.hideClosed && isClosed(task)) return false;
   if (filters.releases.length && !filters.releases.includes(task.releaseId ?? NO_RELEASE)) return false;
   if (filters.statuses.length && !filters.statuses.includes(task.status)) return false;
-  if (filters.assignee === 'mine' && task.assigneeId !== state.value.me?.id) return false;
-  if (filters.assignee === 'unassigned' && task.assigneeId) return false;
+  if (filters.assignee === 'mine' && !isMine(task)) return false;
+  if (filters.assignee === 'unassigned' && (task.assigneeId || task.assigneeRef)) return false;
+  if (filters.assignee.startsWith('ref:') && task.assigneeRef !== filters.assignee.slice(4)) return false;
   if (filters.assignee.startsWith('actor:') && task.assigneeId !== filters.assignee.slice(6)) return false;
   const text = filters.text.trim().toLowerCase();
   return !text || task.externalRef.toLowerCase().includes(text) || task.title.toLowerCase().includes(text);
@@ -101,6 +116,7 @@ function open(task: Task) {
         placeholder="Релиз"
         filter
         :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
         size="small"
         data-testid="filter-release"
       />
@@ -110,6 +126,7 @@ function open(task: Task) {
         placeholder="Статус"
         filter
         :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
         size="small"
         data-testid="filter-status"
       />
@@ -128,7 +145,7 @@ function open(task: Task) {
         <span class="ref">{{ task.externalRef }}</span>
         <span class="title">{{ task.title }}</span>
         <span class="vr-muted meta">
-          {{ task.assigneeId ? client.actorName(task.assigneeId) : 'не назначена' }} · {{ task.status }}
+          {{ assigneeLabel(task) }} · {{ task.status }}
           <span v-for="id in task.delegateIds" :key="id" class="vr-dot" :data-status="agentStatus(id)" :title="client.actorName(id)" />
         </span>
       </button>
