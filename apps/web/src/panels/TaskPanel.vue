@@ -46,6 +46,22 @@ const pinKinds: { label: string; value: PinKind }[] = [
 const pinKind = ref<PinKind>('decision');
 const pinText = ref('');
 const prompt = ref('');
+const presets = [
+  { label: 'jig: фича', value: 'feature', text: (key: string, title: string) => `/jig:jig feature: ${key} ${title}` },
+  { label: 'jig: баг', value: 'bug', text: (key: string, title: string) => `/jig:jig bug-fix: ${key} ${title}` },
+  {
+    label: 'Анализ (без правок)',
+    value: 'analysis',
+    text: (key: string, title: string) =>
+      `Проанализируй задачу ${key} «${title}» без правок кода: найди затронутые модули, опиши причину или план решения, риски и открытые вопросы. Файлы не меняй, ничего не коммить.`,
+  },
+];
+const preset = ref<string | null>(null);
+
+function applyPreset(value: string) {
+  const picked = presets.find((p) => p.value === value);
+  if (picked && task.value) prompt.value = picked.text(task.value.externalRef, task.value.title);
+}
 const billingModes: { label: string; value: BillingMode }[] = [
   { label: 'Личная подписка', value: 'personal' },
   { label: 'Командный API', value: 'team' },
@@ -298,6 +314,16 @@ function describe(event: VeyraEvent): string {
     <section>
       <h3>Запустить агента</h3>
       <form class="row" @submit.prevent="startAgent">
+        <VSelect
+          v-model="preset"
+          :options="presets"
+          option-label="label"
+          option-value="value"
+          placeholder="Шаблон"
+          aria-label="Шаблон задания"
+          data-testid="agent-preset"
+          @update:model-value="applyPreset"
+        />
         <VTextarea v-model="prompt" rows="2" auto-resize placeholder="Что сделать агенту" aria-label="Задание агенту" data-testid="agent-prompt" />
         <VSelect v-model="billingMode" :options="billingModes" option-label="label" option-value="value" aria-label="Оплата агента" data-testid="agent-billing" />
         <VSelect
