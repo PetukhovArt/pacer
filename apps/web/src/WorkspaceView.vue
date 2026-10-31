@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
+import type { WorkspaceInfo } from '@core/client-sdk';
 import { DockviewVue } from 'dockview-vue';
 import { themeAbyss, themeLight, type DockviewApi, type DockviewReadyEvent } from 'dockview-core';
 import { useClient, useClientState } from '@core/vue-bindings';
@@ -13,6 +14,19 @@ const state = useClientState();
 const dark = ref(document.documentElement.classList.contains(DARK_CLASS));
 const layoutKey = `veyra.layout.${state.value.me?.id}`;
 const runnerCommand = ref('');
+const workspaces = ref<WorkspaceInfo[]>([]);
+const WORKSPACE_KEY = 'veyra.workspace';
+
+onMounted(async () => {
+  workspaces.value = await client.workspaces().catch(() => []);
+  const current = state.value.workspaceId;
+  if (workspaces.value.length && !workspaces.value.some((w) => w.id === current)) await switchWorkspace(workspaces.value[0]!.id);
+});
+
+async function switchWorkspace(id: string) {
+  localStorage.setItem(WORKSPACE_KEY, id);
+  await client.setWorkspace(id);
+}
 
 async function connectRunner() {
   runnerCommand.value = (await client.runnerToken()).command;
@@ -45,6 +59,16 @@ function onReady({ api }: DockviewReadyEvent) {
       <strong>Veyra</strong>
       <span class="vr-muted">{{ state.me?.name }}</span>
       <span class="vr-dot" :data-online="state.connected" :title="state.connected ? 'online' : 'offline'" />
+      <select
+        v-if="workspaces.length > 1"
+        class="workspace-switch"
+        data-testid="workspace-switch"
+        aria-label="Компания"
+        :value="state.workspaceId ?? workspaces[0]?.id"
+        @change="switchWorkspace(($event.target as HTMLSelectElement).value)"
+      >
+        <option v-for="w in workspaces" :key="w.id" :value="w.id">{{ w.name }}</option>
+      </select>
       <span class="spacer" />
       <VButton size="small" text :label="dark ? 'Светлая' : 'Тёмная'" @click="toggleTheme" />
       <VButton size="small" text label="Подключить runner" data-testid="connect-runner" @click="connectRunner" />
@@ -90,6 +114,15 @@ header {
 .runner-command code {
   user-select: all;
   overflow-wrap: anywhere;
+}
+
+.workspace-switch {
+  font: inherit;
+  color: inherit;
+  background: var(--vr-color-surface);
+  border: 1px solid var(--vr-color-border);
+  border-radius: 4px;
+  padding: 2px var(--vr-space-2);
 }
 
 .spacer {

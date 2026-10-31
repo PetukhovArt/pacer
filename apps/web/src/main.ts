@@ -10,4 +10,5 @@ const app = createApp(App);
 installUiKit(app);
 const client = new VeyraClient(location.origin);
 installClient(app, client);
+void client.setWorkspace(localStorage.getItem('veyra.workspace'));
 void client.restore().finally(() => app.mount('#app'));
