@@ -41,7 +41,18 @@ function defaultLayout(api: DockviewApi) {
   api.addPanel({ id: 'tasks', component: 'tasks', title: 'Задачи' });
 }
 
+let dock: DockviewApi | null = null;
+
+function openAgents() {
+  if (!dock) return;
+  const existing = dock.getPanel('agents');
+  if (existing) return existing.api.setActive();
+  const position = dock.getPanel('tasks') ? { direction: 'below' as const, referencePanel: 'tasks' } : undefined;
+  dock.addPanel({ id: 'agents', component: 'agents', title: 'Мои агенты', position });
+}
+
 function onReady({ api }: DockviewReadyEvent) {
+  dock = api;
   const saved = localStorage.getItem(layoutKey);
   try {
     if (saved) api.fromJSON(JSON.parse(saved));
@@ -70,6 +81,7 @@ function onReady({ api }: DockviewReadyEvent) {
         <option v-for="w in workspaces" :key="w.id" :value="w.id">{{ w.name }}</option>
       </select>
       <span class="spacer" />
+      <VButton size="small" text label="Мои агенты" data-testid="open-agents" @click="openAgents" />
       <VButton size="small" text :label="dark ? 'Светлая' : 'Тёмная'" @click="toggleTheme" />
       <VButton size="small" text label="Подключить runner" data-testid="connect-runner" @click="connectRunner" />
       <VButton size="small" text label="Выйти" data-testid="logout" @click="client.logout()" />
