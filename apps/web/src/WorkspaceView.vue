@@ -46,6 +46,7 @@ onMounted(async () => {
 async function switchWorkspace(id: string) {
   localStorage.setItem(WORKSPACE_KEY, id);
   await client.setWorkspace(id);
+  for (const panel of [...(dock?.panels ?? [])]) if (panel.id.startsWith('task:')) dock?.removePanel(panel);
 }
 
 async function connectRunner() {

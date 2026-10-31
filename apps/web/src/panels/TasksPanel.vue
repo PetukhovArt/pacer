@@ -17,13 +17,13 @@ const defaults = (): Filters => ({ releases: [], statuses: [], priorities: [], l
 const props = defineProps<{ params: IDockviewPanelProps }>();
 const client = useClient();
 const state = useClientState();
-const storageKey = `veyra.taskFilters.${state.value.me?.id}`;
+const storageKey = () => `veyra.taskFilters.${state.value.me?.id}.${state.value.workspaceId ?? ''}`;
 
 function load(): Filters {
-  const fromPanel = (props.params.params as { filters?: Partial<Filters> } | undefined)?.filters;
-  if (fromPanel) return { ...defaults(), ...fromPanel };
+  const saved = props.params.params as { filters?: Partial<Filters>; workspaceId?: string | null } | undefined;
+  if (saved?.filters && saved.workspaceId === state.value.workspaceId) return { ...defaults(), ...saved.filters };
   try {
-    return { ...defaults(), ...(JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<Filters>) };
+    return { ...defaults(), ...(JSON.parse(localStorage.getItem(storageKey()) ?? '{}') as Partial<Filters>) };
   } catch {
     return defaults();
   }
@@ -32,11 +32,26 @@ function load(): Filters {
 const filters = reactive<Filters>(load());
 
 watch(
+  () => state.value.workspaceId,
+  () => Object.assign(filters, load()),
+);
+
+watch(
+  () => state.value.releases,
+  (releases) => {
+    if (!releases.length) return;
+    const known = new Set([...releases.map((r) => r.id), NO_RELEASE]);
+    const kept = filters.releases.filter((id) => known.has(id));
+    if (kept.length !== filters.releases.length) filters.releases = kept;
+  },
+);
+
+watch(
   filters,
   (value) => {
     const snapshot = { ...value, releases: [...value.releases], statuses: [...value.statuses], priorities: [...value.priorities], labels: [...value.labels] };
-    localStorage.setItem(storageKey, JSON.stringify(snapshot));
-    props.params.api.updateParameters({ filters: snapshot });
+    localStorage.setItem(storageKey(), JSON.stringify(snapshot));
+    props.params.api.updateParameters({ filters: snapshot, workspaceId: state.value.workspaceId });
   },
   { deep: true },
 );
@@ -169,7 +184,8 @@ const syncLine = computed(() => {
   const kind = w.trackerKind === 'jira' ? 'Jira' : 'GitLab';
   const tracker = w.sync?.tracker;
   const mr = w.sync?.mergeRequests;
-  const mrError = mr && !mr.ok ? ` · MR: ${failure(mr.error)}` : '';
+  const sameFailure = tracker && !tracker.ok && mr && !mr.ok && mr.error === tracker.error;
+  const mrError = mr && !mr.ok && !sameFailure ? ` · MR: ${failure(mr.error)}` : '';
   if (!tracker) return { ok: !mrError, text: `${kind} · синхронизация…${mrError}` };
   if (!tracker.ok) return { ok: false, text: `${kind} недоступен: ${failure(tracker.error)}${mrError}`, at: tracker.at };
   return { ok: !mrError, text: `${kind} · синхр. ${ago(tracker.at)}${mrError}`, at: tracker.at };
