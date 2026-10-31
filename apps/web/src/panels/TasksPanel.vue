@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 import type { IDockviewPanelProps } from 'dockview-core';
 import type { Task } from '@veyra/protocol';
 import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
@@ -129,62 +129,105 @@ function agentStatus(id: string) {
 function open(task: Task) {
   openTask(props.params.containerApi, task);
 }
+
+const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
+const now = ref(Date.now());
+const ticker = setInterval(() => (now.value = Date.now()), 30_000);
+onUnmounted(() => clearInterval(ticker));
+const syncing = ref(false);
+
+function ago(at: string) {
+  const minutes = Math.floor((now.value - new Date(at).getTime()) / 60_000);
+  if (minutes < 1) return 'только что';
+  if (minutes < 60) return `${minutes} мин назад`;
+  return `${Math.floor(minutes / 60)} ч назад`;
+}
+
+function failure(error: string | undefined) {
+  return `${error ?? 'ошибка'}${error === 'timeout' ? ' — проверь VPN' : ''}`;
+}
+
+const syncLine = computed(() => {
+  const w = workspace.value;
+  if (!w?.trackerKind) return null;
+  const kind = w.trackerKind === 'jira' ? 'Jira' : 'GitLab';
+  const tracker = w.sync?.tracker;
+  const mr = w.sync?.mergeRequests;
+  const mrError = mr && !mr.ok ? ` · MR: ${failure(mr.error)}` : '';
+  if (!tracker) return { ok: !mrError, text: `${kind} · синхронизация…${mrError}` };
+  if (!tracker.ok) return { ok: false, text: `${kind} недоступен: ${failure(tracker.error)}${mrError}`, at: tracker.at };
+  return { ok: !mrError, text: `${kind} · синхр. ${ago(tracker.at)}${mrError}`, at: tracker.at };
+});
+
+async function syncNow() {
+  const id = state.value.workspaceId ?? workspace.value?.id;
+  if (!id || syncing.value) return;
+  syncing.value = true;
+  await client.syncWorkspace(id).catch(() => undefined);
+  syncing.value = false;
+}
 </script>
 
 <template>
   <div class="tasks">
-    <div class="filters">
-      <VMultiSelect
-        v-model="filters.releases"
-        :options="releaseOptions"
-        option-label="label"
-        option-value="value"
-        placeholder="Релиз"
-        filter
-        :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
-        size="small"
-        data-testid="filter-release"
-      />
-      <VMultiSelect
-        v-model="filters.statuses"
-        :options="statusOptions"
-        placeholder="Статус"
-        filter
-        :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
-        size="small"
-        data-testid="filter-status"
-      />
-      <VMultiSelect
-        v-model="filters.priorities"
-        :options="priorityOptions"
-        option-label="label"
-        option-value="value"
-        placeholder="Приоритет"
-        :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
-        size="small"
-        data-testid="filter-priority"
-      />
-      <VMultiSelect
-        v-model="filters.labels"
-        :options="labelOptions"
-        placeholder="Метки"
-        filter
-        :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
-        size="small"
-        data-testid="filter-labels"
-      />
-      <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
-      <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
-      <label class="toggle">
-        <VToggleSwitch v-model="filters.hideClosed" data-testid="filter-hide-closed" />
-        Скрыть закрытые
-      </label>
-      <VButton label="Сбросить" size="small" text data-testid="filter-reset" @click="reset" />
-      <span class="vr-muted count" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }} задач</span>
+    <div class="sticky">
+      <div v-if="syncLine" class="sync" :class="{ failed: !syncLine.ok }" data-testid="sync-status" :title="syncLine.at ? new Date(syncLine.at).toLocaleString() : undefined">
+        <span>{{ syncLine.text }}</span>
+        <VButton label="Обновить" size="small" text :loading="syncing" data-testid="sync-now" @click="syncNow" />
+      </div>
+      <div class="filters">
+        <VMultiSelect
+          v-model="filters.releases"
+          :options="releaseOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="Релиз"
+          filter
+          :max-selected-labels="2"
+          selected-items-label="Выбрано: {0}"
+          size="small"
+          data-testid="filter-release"
+        />
+        <VMultiSelect
+          v-model="filters.statuses"
+          :options="statusOptions"
+          placeholder="Статус"
+          filter
+          :max-selected-labels="2"
+          selected-items-label="Выбрано: {0}"
+          size="small"
+          data-testid="filter-status"
+        />
+        <VMultiSelect
+          v-model="filters.priorities"
+          :options="priorityOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="Приоритет"
+          :max-selected-labels="2"
+          selected-items-label="Выбрано: {0}"
+          size="small"
+          data-testid="filter-priority"
+        />
+        <VMultiSelect
+          v-model="filters.labels"
+          :options="labelOptions"
+          placeholder="Метки"
+          filter
+          :max-selected-labels="2"
+          selected-items-label="Выбрано: {0}"
+          size="small"
+          data-testid="filter-labels"
+        />
+        <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
+        <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
+        <label class="toggle">
+          <VToggleSwitch v-model="filters.hideClosed" data-testid="filter-hide-closed" />
+          Скрыть закрытые
+        </label>
+        <VButton label="Сбросить" size="small" text data-testid="filter-reset" @click="reset" />
+        <span class="vr-muted count" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }} задач</span>
+      </div>
     </div>
     <section v-for="group in groups" :key="group.id">
       <h3>{{ group.name }}</h3>
@@ -212,10 +255,26 @@ function open(task: Task) {
   box-sizing: border-box;
 }
 
-.filters {
+.sticky {
   position: sticky;
   top: calc(-1 * var(--vr-space-3));
   z-index: 1;
+  background: var(--vr-color-surface);
+}
+
+.sync {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-2);
+  font-size: 12px;
+  color: var(--vr-color-text-muted);
+}
+
+.sync.failed {
+  color: var(--vr-color-danger);
+}
+
+.filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
