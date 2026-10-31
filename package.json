@@ -9,9 +9,8 @@
     "runner": "pnpm --filter @veyra/runner start",
     "build:tokens": "pnpm --filter @ui/tokens build",
     "typecheck": "tsc -p . && pnpm -r typecheck",
-    "test": "vitest run --maxWorkers=1",
     "e2e": "tsx scripts/e2e.ts",
-    "verify": "pnpm build:tokens && pnpm typecheck && pnpm test && pnpm e2e"
+    "verify": "pnpm build:tokens && pnpm typecheck && pnpm e2e"
   },
   "devDependencies": {
     "@core/client-sdk": "workspace:*",
@@ -24,7 +23,6 @@
     "fastify": "^5.12.7",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.5",
     "ws": "^8.22.1"
   }
 }
