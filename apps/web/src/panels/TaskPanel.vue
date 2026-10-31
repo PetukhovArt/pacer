@@ -26,6 +26,7 @@ type FeedItem = { kind: 'event'; id: string; event: VeyraEvent } | { kind: 'tool
 const feed = computed(() =>
   events.value.reduce<FeedItem[]>((items, event) => {
     const last = items[items.length - 1];
+    if (event.type === 'agent.todos') return items;
     if (event.type !== 'agent.tool_call') items.push({ kind: 'event', id: event.id, event });
     else if (last?.kind === 'tools' && last.actorId === event.actorId) last.calls.unshift(event);
     else items.push({ kind: 'tools', id: event.id, actorId: event.actorId, at: event.at, calls: [event] });
@@ -75,6 +76,17 @@ function worktreeOf(actorId: string) {
   const last = running[running.length - 1];
   return last?.type === 'agent.status' ? (last.detail ?? '') : '';
 }
+
+function lastOf<T extends VeyraEvent['type']>(actorId: string, type: T): Extract<VeyraEvent, { type: T }> | null {
+  const list = state.value.events.get(taskId) ?? [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const e = list[i]!;
+    if (e.actorId === actorId && e.type === type) return e as Extract<VeyraEvent, { type: T }>;
+  }
+  return null;
+}
+
+const todoIcons = { completed: '☑', in_progress: '◐', pending: '☐' } as const;
 
 const taskMergeRequests = computed(() => (task.value ? state.value.mergeRequests.filter((m) => m.taskRefs.includes(task.value!.externalRef)) : []));
 
@@ -255,6 +267,18 @@ function describe(event: VeyraEvent): string {
               @click="stopAgent(a.actorId)"
             />
           </span>
+          <div v-if="agentOf(a.actorId) && (lastOf(a.actorId, 'agent.todos') || lastOf(a.actorId, 'agent.step'))" class="progress" data-testid="agent-progress">
+            <ul v-if="lastOf(a.actorId, 'agent.todos')?.items.length" class="todos" data-testid="agent-todos">
+              <li v-for="(todo, i) in lastOf(a.actorId, 'agent.todos')?.items" :key="i" :data-status="todo.status">
+                <span aria-hidden="true">{{ todoIcons[todo.status] }}</span>
+                <strong v-if="todo.status === 'in_progress'">{{ todo.content }}</strong>
+                <span v-else>{{ todo.content }}</span>
+              </li>
+            </ul>
+            <span v-if="lastOf(a.actorId, 'agent.step')" class="vr-muted" data-testid="agent-jig-step">
+              jig · {{ lastOf(a.actorId, 'agent.step')?.unit }}: {{ lastOf(a.actorId, 'agent.step')?.status || lastOf(a.actorId, 'agent.step')?.phase }}
+            </span>
+          </div>
           <form v-if="agentOf(a.actorId)?.ownerId === state.me?.id" class="row reply" @submit.prevent="replyToAgent(a.actorId)">
             <VTextarea
               v-model="replyTexts[a.actorId]"
@@ -438,6 +462,23 @@ li {
 
 .reply {
   flex-basis: 100%;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 100%;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.todos li {
+  padding: 0;
+  gap: var(--vr-space-1);
+}
+
+.todos li[data-status='completed'] {
+  color: var(--vr-color-text-muted);
 }
 
 .chat-text {
