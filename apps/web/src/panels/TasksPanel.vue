@@ -152,7 +152,7 @@ function trackActive(panelId: string | undefined) {
 }
 
 trackActive(props.params.containerApi.activePanel?.id);
-const activeSub = props.params.containerApi.onDidActivePanelChange((panel) => trackActive(panel?.id));
+const activeSub = props.params.containerApi.onDidActivePanelChange((event) => trackActive(event.panel?.id));
 const removeSub = props.params.containerApi.onDidRemovePanel((panel) => {
   if (panel.id === `task:${selectedId.value}`) selectedId.value = null;
 });
