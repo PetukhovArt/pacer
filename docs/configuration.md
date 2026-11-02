@@ -27,6 +27,8 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 | `editor` | `vim` | what the `f` / `F` / `b` modals launch (`vim`, `nvim`, `nano`, `emacs`, `hx`, or any command line — it is called as `<editor> +<line> <file>`) |
 | `done_sound` | `Glass` | what rings when a turn finishes: `off`, `bell`, or a macOS system sound |
 | `session_idle_timeout` | `5m` | how long an unwatched idle session keeps its PTY before it is reaped (`off` never reaps) |
+| `prewarm_agents` | `true` | start an agent CLI ahead of time so a new session opens instantly; each idle one costs a few hundred MB |
+| `prewarm_sessions` | `true` | boot a worktree's closed sessions when the cursor rests on it |
 | `skip_session_naming` | `false` | skip the name prompt when creating a session |
 | `palette_enter_attaches` | `true` | whether `Enter` in the fuzzy jump attaches or only selects |
 | `git_init_on_create` | — | `git init` a non-repo directory when it is added |

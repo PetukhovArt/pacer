@@ -131,6 +131,8 @@ pub enum SettingKind {
     MermaidRenderer,
     SkipSessionNaming,
     SessionIdleTimeout,
+    PrewarmAgents,
+    PrewarmSessions,
     DoneSound,
     PrListFilter,
     SortProjects,
@@ -217,6 +219,16 @@ pub const SETTINGS_TABS: &[SettingsTab] = &[
                 kind: SettingKind::SessionIdleTimeout,
                 label: "Idle session timeout",
                 hint: "Kill idle sessions in unviewed worktrees (busy ones spared; off disables)",
+            },
+            SettingSpec {
+                kind: SettingKind::PrewarmAgents,
+                label: "Prewarm agents",
+                hint: "Start an agent CLI ahead of time so a new session opens instantly (costs RAM per idle CLI)",
+            },
+            SettingSpec {
+                kind: SettingKind::PrewarmSessions,
+                label: "Prewarm sessions",
+                hint: "Boot a worktree's closed sessions when the cursor rests on it (costs RAM per idle process)",
             },
             SettingSpec {
                 kind: SettingKind::DoneSound,
@@ -483,6 +495,11 @@ pub struct Config {
     /// disables. Owned by the daemon (which does the parsing and reaping);
     /// the TUI writes it so the settings overlay can cycle it.
     pub session_idle_timeout: String,
+    /// Whether the daemon keeps the PREWARM POOL and pre-spawns a
+    /// worktree's dead sessions. Owned by the daemon; the TUI writes them so
+    /// the settings overlay can toggle them.
+    pub prewarm_agents: bool,
+    pub prewarm_sessions: bool,
     /// What rings when a turn reaches FINISHED: "off", "bell" (terminal
     /// BEL) or the name of a macOS system sound (`Glass` by default,
     /// `Ping`, …; see [`DONE_SOUNDS`]). Resolved by [`Config::done_sound`],
@@ -545,8 +562,7 @@ pub struct Config {
     /// price data and will not guess one. See `crate::price`.
     ///
     /// Deliberately absent from [`Config::write_into`], so a table typed
-    /// into `config.json` survives every save the settings overlay makes —
-    /// the same contract `prewarm_agents` has.
+    /// into `config.json` survives every save the settings overlay makes.
     pub model_prices: std::collections::BTreeMap<String, crate::price::ModelPrice>,
     /// Hide the Projects panel and give its width to the terminal pane.
     /// False by default so configs written before this key keep the current
@@ -594,6 +610,8 @@ impl Default for Config {
             mermaid_renderer: crate::mermaid::DEFAULT_RENDERER.into(),
             skip_session_naming: false,
             session_idle_timeout: "5m".into(),
+            prewarm_agents: true,
+            prewarm_sessions: true,
             done_sound: "Glass".into(),
             pr_list_filter: "all".into(),
             sort_projects: "created".into(),
@@ -660,8 +678,8 @@ impl Config {
 
     /// Put every setting back to its default and return the result. The
     /// file is rewritten from scratch rather than patched like
-    /// [`Config::save`], so keys the overlay doesn't own — the daemon's
-    /// `prewarm_*`, anything hand-added — go too: a reset reads as if the
+    /// [`Config::save`], so keys the overlay doesn't own — `model_prices`,
+    /// anything hand-added — go too: a reset reads as if the
     /// file had never been edited.
     pub fn reset_to_defaults() -> std::io::Result<Self> {
         #[cfg(test)]
@@ -704,6 +722,14 @@ impl Config {
         obj.insert(
             "session_idle_timeout".into(),
             serde_json::json!(self.session_idle_timeout),
+        );
+        obj.insert(
+            "prewarm_agents".into(),
+            serde_json::json!(self.prewarm_agents),
+        );
+        obj.insert(
+            "prewarm_sessions".into(),
+            serde_json::json!(self.prewarm_sessions),
         );
         obj.insert("done_sound".into(), serde_json::json!(self.done_sound));
         obj.insert(
@@ -893,6 +919,8 @@ impl Config {
             }
             SettingKind::SkipSessionNaming => on_off(self.skip_session_naming).into(),
             SettingKind::SessionIdleTimeout => self.session_idle_timeout.clone(),
+            SettingKind::PrewarmAgents => on_off(self.prewarm_agents).into(),
+            SettingKind::PrewarmSessions => on_off(self.prewarm_sessions).into(),
             SettingKind::DoneSound => self.done_sound.clone(),
             SettingKind::PrListFilter => self.pr_list_filter.clone(),
             SettingKind::SortProjects => self.sort_projects.clone(),
@@ -950,6 +978,12 @@ impl Config {
             SettingKind::SessionIdleTimeout => {
                 self.session_idle_timeout =
                     cycle_choice(&self.session_idle_timeout, SESSION_IDLE_TIMEOUTS, step).into();
+            }
+            SettingKind::PrewarmAgents => {
+                self.prewarm_agents = !self.prewarm_agents;
+            }
+            SettingKind::PrewarmSessions => {
+                self.prewarm_sessions = !self.prewarm_sessions;
             }
             SettingKind::DoneSound => {
                 self.done_sound = cycle_choice(&self.done_sound, DONE_SOUNDS, step).into();
@@ -1205,12 +1239,12 @@ mod tests {
             // A key the overlay doesn't own survives an ordinary save…
             let mut root: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            root["prewarm_agents"] = serde_json::json!(false);
+            root["hand_added"] = serde_json::json!(false);
             std::fs::write(&path, serde_json::to_vec_pretty(&root).unwrap()).unwrap();
             Config::load().save().unwrap();
             let raw = std::fs::read_to_string(&path).unwrap();
             assert!(
-                raw.contains("prewarm_agents"),
+                raw.contains("hand_added"),
                 "save() patches, keeping foreign keys:\n{raw}"
             );
 
@@ -1219,10 +1253,7 @@ mod tests {
             assert!(reset.animations);
             assert!(reset.keybindings.is_empty());
             let raw = std::fs::read_to_string(&path).unwrap();
-            assert!(
-                !raw.contains("prewarm_agents"),
-                "foreign key survived:\n{raw}"
-            );
+            assert!(!raw.contains("hand_added"), "foreign key survived:\n{raw}");
             let loaded = Config::load();
             assert_eq!(loaded.theme, Config::default().theme);
             assert!(loaded.animations);

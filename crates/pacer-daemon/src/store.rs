@@ -769,7 +769,7 @@ impl Store {
     /// possible: a resume inserts a new row with the old id.
     pub fn agent_ids_by_session_id(&self, session_id: &str) -> Result<Vec<AgentId>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id FROM agents WHERE session_id = ?1")?;
+        let mut stmt = conn.prepare("SELECT id FROM agents WHERE claude_session_id = ?1")?;
         let ids = stmt
             .query_map(params![session_id], |r| r.get::<_, String>(0))?
             .filter_map(|r| r.ok())
@@ -2008,6 +2008,17 @@ mod tests {
 
         assert_eq!(store.load_orphaned_sessions(&project_id).unwrap().len(), 1);
         assert!(store.get_orphaned_session("sid-1").unwrap().is_some());
+    }
+
+    /// The "already running" guard of a resume asks this, and a query that
+    /// errors turns every Project sessions resume into a refusal.
+    #[test]
+    fn agents_are_found_by_their_cli_session_id() {
+        let store = Store::open_in_memory().unwrap();
+        let (_, _, agent_id) = project_with_agent(&store, Some("sid-1"));
+
+        assert_eq!(store.agent_ids_by_session_id("sid-1").unwrap(), vec![agent_id]);
+        assert!(store.agent_ids_by_session_id("sid-2").unwrap().is_empty());
     }
 
     /// The rows hang off the project, so removing the project takes them —

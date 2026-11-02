@@ -658,6 +658,84 @@ mod tests {
         session.kill();
     }
 
+    /// Closing a session must take every process its agent left behind.
+    /// Claude Code stops a Bash task by killing only its top shell, so a
+    /// `vitest` behind `npx` -> `cmd` lives on with its parent gone: no parent
+    /// link leads to it any more, and only the Job Object still holds it.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn killing_a_session_takes_its_orphaned_grandchildren() {
+        use std::time::{Duration, Instant};
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+        /// This test's ping, and whether the process that started it still runs.
+        fn find_ping(system: &mut System, ip: &str) -> Option<(Pid, bool)> {
+            system.refresh_processes_specifics(
+                ProcessesToUpdate::All,
+                true,
+                ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+            );
+            let (pid, ping) = system.processes().iter().find(|(_, p)| {
+                p.name().eq_ignore_ascii_case("ping.exe")
+                    && p.cmd().iter().any(|arg| arg.to_str() == Some(ip))
+            })?;
+            let parent_alive = ping
+                .parent()
+                .is_some_and(|parent| system.process(parent).is_some());
+            Some((*pid, parent_alive))
+        }
+
+        // A loopback address of its own tells this test's ping from any other.
+        let n = std::process::id();
+        let ip = format!(
+            "127.{}.{}.{}",
+            (n >> 16) & 0xff,
+            (n >> 8) & 0xff,
+            n % 250 + 1
+        );
+        // `start /b` hands the ping off and cmd exits, orphaning it.
+        let script = format!(
+            "Start-Process -WindowStyle Hidden cmd.exe -ArgumentList '/c start /b ping -n 600 {ip}'; Start-Sleep 600"
+        );
+        let session = PtySession::spawn(
+            SessionRef::Agent(AgentId::generate()),
+            SpawnSpec {
+                program: "powershell.exe".into(),
+                args: vec!["-NoProfile".into(), "-Command".into(), script],
+                cwd: std::env::temp_dir(),
+                env: vec![],
+                scrub_env: &[],
+                cols: DEFAULT_COLS,
+                rows: DEFAULT_ROWS,
+            },
+        )
+        .unwrap();
+
+        let mut system = System::new();
+        // Generous for the same cold-powershell reason as the ring test above.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let pid = loop {
+            match find_ping(&mut system, &ip) {
+                Some((pid, false)) => break pid,
+                _ if Instant::now() > deadline => panic!("no orphaned ping within 60s"),
+                _ => tokio::time::sleep(Duration::from_millis(200)).await,
+            }
+        };
+
+        session.kill();
+        drop(session);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while find_ping(&mut system, &ip).is_some() {
+            if Instant::now() > deadline {
+                if let Some(ping) = system.process(pid) {
+                    ping.kill();
+                }
+                panic!("the orphaned grandchild outlived its session");
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
     /// The Cloud mirror stops refreshing a pane once its user has typed
     /// into it, so `input_seen` must track keystrokes only — an attach's
     /// resize jiggle happens without anyone touching the keyboard.

@@ -7,6 +7,7 @@
 - Added `]` and `[` to jump to the next and previous session waiting on you, in any workspace.
 - Added an experimental `Key combo display` setting (`show_key_combos`) that shows each key you press bottom-left with the action it ran.
 - Added a `Draft pull requests` setting under Appearance (`hide_draft_prs`) that hides draft pull requests and GitLab draft merge requests from the PRs panel and `/`.
+- Added `Prewarm agents` and `Prewarm sessions` settings under Sessions (`prewarm_agents`, `prewarm_sessions`) to stop pacer starting idle processes ahead of time and save memory.
 - Added five color themes: `lavender`, `coral`, `slate`, `sand` and `mono`.
 - Added renaming a session's row when you `/rename` it inside Claude Code.
 - Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
