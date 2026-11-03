@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "rules": {
+    "unicorn/no-invalid-fetch-options": "off"
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/src/**"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          { "name": "fetch", "message": "Сеть только через @core/client-sdk." },
+          { "name": "WebSocket", "message": "Сеть только через @core/client-sdk." }
+        ]
+      }
+    }
+  ]
+}
