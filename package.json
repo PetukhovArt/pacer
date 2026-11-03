@@ -11,20 +11,20 @@
     "build:tokens": "pnpm --filter @ui/tokens build",
     "typecheck": "tsc -p . && pnpm -r typecheck",
     "e2e": "tsx scripts/e2e.ts",
-    "verify": "pnpm build:tokens && pnpm typecheck && pnpm e2e"
+    "verify": "pnpm build:tokens && pnpm typecheck && pnpm e2e",
+    "lint": "oxlint --deny-warnings",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@core/client-sdk": "workspace:*",
-    "@electric-sql/pglite": "^0.5.14",
-    "@fastify/websocket": "^11.3.5",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
-    "@veyra/protocol": "workspace:*",
-    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
+    "husky": "^9.1.7",
+    "knip": "^6.44.1",
+    "oxlint": "^1.90.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vue-tsc": "^3.3.14",
-    "ws": "^8.22.1"
+    "vue-tsc": "^3.3.14"
   }
 }
