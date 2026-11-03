@@ -1,14 +1,17 @@
 import { exec, execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join, relative, resolve } from 'node:path';
+import { delimiter, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import ts from 'typescript';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const lines = (text) => text.split(/\r?\n/).filter(Boolean);
 const root = git('rev-parse', '--show-toplevel').trim();
-const args = process.argv.slice(2).map((file) => relative(root, resolve(file)).replaceAll('\\', '/'));
+const args = process.argv
+  .slice(2)
+  .map((file) => relative(root, resolve(file)).replaceAll('\\', '/'))
+  .filter((file) => !file.startsWith('../') && !isAbsolute(file));
 process.chdir(root);
 process.env.PATH = [join(root, 'node_modules', '.bin'), join(homedir(), '.cargo', 'bin'), process.env.PATH].join(delimiter);
 
