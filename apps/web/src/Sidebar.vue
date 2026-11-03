@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { WorkspaceInfo } from '@core/client-sdk';
-import type { Task } from '@veyra/protocol';
-import { Bot, ListTodo, LogOut, Moon, Plug, Search, Sun } from 'lucide-vue-next';
-import { useClient, useClientState } from '@core/vue-bindings';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { ListTodo, Moon, Search, Sun } from 'lucide-vue-next';
+import { useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
 import { openTask, view } from './nav';
 import { priorityRank } from './priority';
 
-defineProps<{ workspaces: WorkspaceInfo[]; dark: boolean }>();
-const emit = defineEmits<{ switch: [id: string]; theme: []; runner: [] }>();
+defineProps<{ dark: boolean }>();
+const emit = defineEmits<{ switch: [id: string]; theme: [] }>();
 
-const client = useClient();
 const state = useClientState();
 const query = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
@@ -19,12 +16,7 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const selectedId = computed(() => (view.value.kind === 'task' ? view.value.id : null));
 const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
 
-function isMine(task: Task) {
-  const trackerUser = workspace.value?.trackerUser;
-  return task.assigneeId === state.value.me?.id || (!!trackerUser && task.assigneeRef === trackerUser);
-}
-
-const mine = computed(() => state.value.tasks.filter((t) => isMine(t) && t.statusCategory !== 'done'));
+const mine = computed(() => state.value.tasks.filter((t) => t.assigneeId === state.value.me.id && t.statusCategory !== 'done'));
 
 const channels = computed(() => {
   const text = query.value.trim().toLowerCase();
@@ -33,53 +25,6 @@ const channels = computed(() => {
     : [...mine.value, ...state.value.tasks.filter((t) => t.id === selectedId.value && !mine.value.includes(t))];
   return [...list].sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.externalRef.localeCompare(b.externalRef, undefined, { numeric: true }));
 });
-
-const unread = ref(new Set<string>());
-const seen = new Map<string, number>();
-
-watch(
-  () => state.value.events,
-  (events) => {
-    const next = new Set(unread.value);
-    for (const [taskId, list] of events) {
-      const before = seen.get(taskId);
-      seen.set(taskId, list.length);
-      if (before !== undefined && list.length > before && taskId !== selectedId.value) next.add(taskId);
-    }
-    if (next.size !== unread.value.size) unread.value = next;
-  },
-);
-
-watch(selectedId, (id) => {
-  if (!id || !unread.value.has(id)) return;
-  const next = new Set(unread.value);
-  next.delete(id);
-  unread.value = next;
-});
-
-const loaded = new Set<string>();
-watch(
-  mine,
-  (tasks) => {
-    for (const task of tasks) {
-      if (loaded.has(task.id) || state.value.fields.has(task.id)) continue;
-      loaded.add(task.id);
-      void client.loadTask(task.id).catch(() => loaded.delete(task.id));
-    }
-  },
-  { immediate: true },
-);
-watch(
-  () => state.value.workspaceId,
-  () => loaded.clear(),
-);
-
-function working(task: Task) {
-  return task.delegateIds.some((id) => {
-    const actor = state.value.actors.get(id);
-    return actor?.kind === 'agent' && actor.status === 'running';
-  });
-}
 
 function onSearchKey(event: KeyboardEvent) {
   if (event.key === 'Escape') query.value = '';
@@ -110,14 +55,10 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
         <ListTodo :size="16" />
         <span>Задачи</span>
       </button>
-      <button class="item" :data-active="view.kind === 'agents'" data-testid="open-agents" @click="view = { kind: 'agents' }">
-        <Bot :size="16" />
-        <span>Мои агенты</span>
-      </button>
     </div>
 
     <div class="sections">
-      <section v-for="w in workspaces.length ? workspaces : workspace ? [workspace] : []" :key="w.id">
+      <section v-for="w in state.workspaces" :key="w.id">
         <button
           class="group-label"
           :aria-expanded="w.id === state.workspaceId"
@@ -133,7 +74,7 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
             v-for="task in channels"
             :key="task.id"
             class="item channel"
-            :class="{ unread: unread.has(task.id) }"
+            :class="{ unread: state.unread.has(task.id) }"
             :data-active="task.id === selectedId"
             :aria-current="task.id === selectedId ? 'page' : undefined"
             :title="`${task.externalRef} ${task.title}`"
@@ -142,8 +83,7 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
           >
             <span class="key">{{ task.externalRef }}</span>
             <span class="name">{{ task.title }}</span>
-            <span v-if="working(task)" class="working">агент</span>
-            <span v-if="unread.has(task.id)" class="unread-dot" :data-testid="`channel-unread-${task.externalRef}`"><span class="sr">новое</span></span>
+            <span v-if="state.unread.has(task.id)" class="unread-dot" :data-testid="`channel-unread-${task.externalRef}`"><span class="sr">новое</span></span>
           </button>
           <p v-if="!channels.length" class="empty">{{ query ? 'Ничего не найдено' : 'На вас нет открытых задач' }}</p>
         </template>
@@ -152,19 +92,17 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
 
     <footer>
       <span class="me">
-        <Avatar v-if="state.me" :id="state.me.id" :name="state.me.name" />
+        <Avatar :id="state.me.id" :name="state.me.name" />
         <span class="presence vr-dot" :data-online="state.connected" :title="state.connected ? 'в сети' : 'нет связи'" />
       </span>
       <span class="who">
-        <strong>{{ state.me?.name }}</strong>
+        <strong>{{ state.me.name }}</strong>
         <span>{{ workspace?.name }}</span>
       </span>
       <button class="icon" :title="dark ? 'Светлая тема' : 'Тёмная тема'" :aria-label="dark ? 'Светлая тема' : 'Тёмная тема'" data-testid="toggle-theme" @click="emit('theme')">
         <Sun v-if="dark" :size="16" />
         <Moon v-else :size="16" />
       </button>
-      <button class="icon" title="Подключить runner" aria-label="Подключить runner" data-testid="connect-runner" @click="emit('runner')"><Plug :size="16" /></button>
-      <button class="icon" title="Выйти" aria-label="Выйти" data-testid="logout" @click="client.logout()"><LogOut :size="16" /></button>
     </footer>
   </nav>
 </template>
@@ -296,17 +234,6 @@ section + section {
 
 .channel.unread .name {
   font-weight: 600;
-}
-
-.working {
-  flex: none;
-  padding: 2px 6px;
-  font-size: var(--vr-font-size-2xs);
-  font-weight: 500;
-  line-height: 1;
-  border-radius: var(--vr-radius-full);
-  color: var(--vr-color-accent);
-  background: var(--vr-color-chip-bg);
 }
 
 .unread-dot {

@@ -2,16 +2,16 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { GitMerge, Wrench } from 'lucide-vue-next';
-import type { VeyraEvent } from '@veyra/protocol';
+import { Wrench } from 'lucide-vue-next';
+import type { FeedEvent } from '@core/client-sdk';
 import Avatar from '../Avatar.vue';
 import type { TaskContext } from './task';
 
 const props = defineProps<{ ctx: TaskContext }>();
-const { client, events, agentOf } = props.ctx;
+const { client, events } = props.ctx;
 
-type ToolCall = Extract<VeyraEvent, { type: 'agent.tool_call' }>;
-type Item = { id: string; actorId: string; at: string; head: boolean } & ({ kind: 'event'; event: VeyraEvent } | { kind: 'tools'; calls: ToolCall[] });
+type ToolCall = Extract<FeedEvent, { type: 'agent.tool_call' }>;
+type Item = { id: string; actorId: string; at: string; head: boolean } & ({ kind: 'event'; event: FeedEvent } | { kind: 'tools'; calls: ToolCall[] });
 
 const GROUP_MS = 5 * 60_000;
 
@@ -38,8 +38,10 @@ function time(at: string) {
   return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function describe(event: VeyraEvent): string {
+function describe(event: FeedEvent): string {
   switch (event.type) {
+    case 'chat.message':
+      return event.text;
     case 'agent.message':
       return event.text;
     case 'agent.tool_call':
@@ -50,31 +52,19 @@ function describe(event: VeyraEvent): string {
       return `статус: ${event.status}${event.detail ? ` — ${event.detail}` : ''}`;
     case 'agent.cost':
       return `стоимость $${event.usd.toFixed(4)}`;
-    case 'pin.created':
-      return `закрепил [${event.pin.kind}]: ${event.pin.text}`;
-    case 'task.assigned':
-      return 'взял задачу';
-    case 'agent.started':
-      return 'запустил агента';
-    case 'task.updated':
-      return `трекер: ${event.title} (${event.status})`;
-    case 'task.mr':
-      return `MR ${event.state}`;
-    case 'chat.message':
-      return event.message.text;
-    case 'agent.reply':
-      return event.text;
     case 'agent.session':
       return `сессия ${event.sessionId}`;
     case 'agent.step':
       return `jig · ${event.unit}: ${event.status}`;
     case 'agent.todos':
       return `план: ${event.items.filter((i) => i.status === 'completed').length}/${event.items.length}`;
+    default:
+      return event satisfies never;
   }
 }
 
-function isSystem(event: VeyraEvent) {
-  return !['chat.message', 'agent.message', 'agent.reply', 'agent.started', 'task.mr'].includes(event.type);
+function isAgent(item: Item) {
+  return item.kind === 'tools' || item.event.type !== 'chat.message';
 }
 
 const scroller = ref<HTMLElement | null>(null);
@@ -98,11 +88,10 @@ onMounted(toBottom);
 
 <template>
   <div ref="scroller" class="scroller">
-    <slot />
     <p v-if="!items.length" class="vr-muted intro">Здесь появятся сообщения команды и ход работы агентов.</p>
     <ol class="feed" data-testid="feed">
       <li v-for="item in items" :key="item.id" class="row" :class="{ head: item.head }" :data-kind="item.kind === 'event' ? item.event.type : 'tools'">
-        <Avatar v-if="item.head" :id="item.actorId" :name="client.actorName(item.actorId)" :agent="!!agentOf(item.actorId)" />
+        <Avatar v-if="item.head" :id="item.actorId" :name="client.actorName(item.actorId)" :agent="isAgent(item)" />
         <span v-else class="gutter">{{ time(item.at) }}</span>
         <div class="body">
           <div v-if="item.head" class="author">
@@ -117,23 +106,7 @@ onMounted(toBottom);
             </div>
           </details>
           <div v-else-if="item.event.type === 'agent.message'" class="markdown" v-html="markdown(item.event.text)" />
-          <p v-else-if="item.event.type === 'agent.reply'" class="text">
-            <span class="vr-chip">@{{ client.actorName(item.event.agentId) }}</span> {{ item.event.text }}
-          </p>
-          <p v-else-if="item.event.type === 'agent.started'" class="text">
-            <span class="vr-chip">запуск агента</span> {{ item.event.prompt }}
-          </p>
-          <template v-else-if="item.event.type === 'task.mr'">
-            <p class="text system">{{ describe(item.event) }}</p>
-            <a class="link-card" :href="item.event.url" target="_blank" rel="noopener">
-              <span class="link-icon"><GitMerge :size="16" /></span>
-              <span class="link-text">
-                <span class="vr-muted">GitLab · MR</span>
-                <strong>{{ item.event.title }}</strong>
-              </span>
-            </a>
-          </template>
-          <p v-else class="text" :class="{ system: isSystem(item.event) }">{{ describe(item.event) }}</p>
+          <p v-else class="text" :class="{ system: item.event.type !== 'chat.message' }">{{ describe(item.event) }}</p>
         </div>
       </li>
     </ol>
@@ -209,47 +182,10 @@ time {
   color: var(--vr-color-text-muted);
 }
 
-.link-card {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--vr-space-3);
-  max-width: 360px;
-  margin-top: var(--vr-space-2);
-  padding: var(--vr-space-2) var(--vr-space-3);
-  color: inherit;
-  text-decoration: none;
-  border: 1px solid var(--vr-color-border);
-  border-radius: var(--vr-radius-xl);
-}
 
-.link-card:hover {
-  background: var(--vr-color-surface-muted);
-}
 
-.link-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  border-radius: var(--vr-radius-md);
-  background: var(--vr-color-surface-muted);
-}
 
-.link-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  font-size: var(--vr-font-size-xs);
-  line-height: 16px;
-}
 
-.link-text strong {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 
 .tools summary {
   display: flex;

@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import type { Task } from '@veyra/protocol';
-import { RefreshCw } from 'lucide-vue-next';
 import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
 import { useClient, useClientState } from '@core/vue-bindings';
-import Avatar from '../Avatar.vue';
 import { openTask } from '../nav';
 import { priorityRank } from '../priority';
 import TaskMeta from './TaskMeta.vue';
@@ -17,7 +15,7 @@ const defaults = (): Filters => ({ releases: [], statuses: [], priorities: [], l
 
 const client = useClient();
 const state = useClientState();
-const storageKey = () => `veyra.taskFilters.${state.value.me?.id}.${state.value.workspaceId ?? ''}`;
+const storageKey = () => `veyra.taskFilters.${state.value.me.id}.${state.value.workspaceId ?? ''}`;
 
 function load(): Filters {
   try {
@@ -74,25 +72,18 @@ function byPriority(a: Task, b: Task) {
   return priorityRank(a.priority) - priorityRank(b.priority) || a.externalRef.localeCompare(b.externalRef, undefined, { numeric: true });
 }
 
-const trackerUser = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.trackerUser ?? null);
-
 const assigneeOptions = computed(() => {
   const ids = new Set(state.value.tasks.flatMap((t) => (t.assigneeId ? [t.assigneeId] : [])));
-  for (const actor of state.value.actors.values()) if (actor.kind === 'human') ids.add(actor.id);
-  const people = [...ids].map((id) => ({ label: client.actorName(id), value: `actor:${id}` }));
-  const refs = new Map(state.value.tasks.flatMap((t) => (t.assigneeRef ? [[t.assigneeRef, t.assigneeName ?? t.assigneeRef] as const] : [])));
-  const trackerPeople = [...refs].map(([ref, name]) => ({ label: name, value: `ref:${ref}` }));
-  const all = [...people, ...trackerPeople].sort((a, b) => a.label.localeCompare(b.label));
+  const all = [...ids].map((id) => ({ label: client.actorName(id), value: `actor:${id}` })).sort((a, b) => a.label.localeCompare(b.label));
   return [{ label: 'Все', value: 'all' }, { label: 'Мои', value: 'mine' }, { label: 'Не назначены', value: 'unassigned' }, ...all];
 });
 
 function isMine(task: Task) {
-  return task.assigneeId === state.value.me?.id || (!!trackerUser.value && task.assigneeRef === trackerUser.value);
+  return task.assigneeId === state.value.me.id;
 }
 
 function assigneeLabel(task: Task) {
-  if (task.assigneeId) return client.actorName(task.assigneeId);
-  return task.assigneeName ?? 'не назначена';
+  return task.assigneeId ? client.actorName(task.assigneeId) : 'не назначена';
 }
 
 function isClosed(task: Task) {
@@ -106,8 +97,7 @@ function matches(task: Task) {
   if (filters.priorities.length && !filters.priorities.includes(task.priority ?? NO_PRIORITY)) return false;
   if (filters.labels.length && !filters.labels.some((l) => task.labels?.includes(l))) return false;
   if (filters.assignee === 'mine' && !isMine(task)) return false;
-  if (filters.assignee === 'unassigned' && (task.assigneeId || task.assigneeRef)) return false;
-  if (filters.assignee.startsWith('ref:') && task.assigneeRef !== filters.assignee.slice(4)) return false;
+  if (filters.assignee === 'unassigned' && task.assigneeId) return false;
   if (filters.assignee.startsWith('actor:') && task.assigneeId !== filters.assignee.slice(6)) return false;
   const text = filters.text.trim().toLowerCase();
   return !text || task.externalRef.toLowerCase().includes(text) || task.title.toLowerCase().includes(text);
@@ -130,51 +120,7 @@ const mrCounts = computed(() => {
 });
 
 function mrCount(task: Task) {
-  return mrCounts.value.get(task.externalRef) ?? 0;
-}
-
-function agentStatus(id: string) {
-  const actor = state.value.actors.get(id);
-  return actor?.kind === 'agent' ? actor.status : null;
-}
-
-
-const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
-const now = ref(Date.now());
-const ticker = setInterval(() => (now.value = Date.now()), 30_000);
-onUnmounted(() => clearInterval(ticker));
-const syncing = ref(false);
-
-function ago(at: string) {
-  const minutes = Math.floor((now.value - new Date(at).getTime()) / 60_000);
-  if (minutes < 1) return 'только что';
-  if (minutes < 60) return `${minutes} мин назад`;
-  return `${Math.floor(minutes / 60)} ч назад`;
-}
-
-function failure(error: string | undefined) {
-  return `${error ?? 'ошибка'}${error === 'timeout' ? ' — проверь VPN' : ''}`;
-}
-
-const syncLine = computed(() => {
-  const w = workspace.value;
-  if (!w?.trackerKind) return null;
-  const kind = w.trackerKind === 'jira' ? 'Jira' : 'GitLab';
-  const tracker = w.sync?.tracker;
-  const mr = w.sync?.mergeRequests;
-  const sameFailure = tracker && !tracker.ok && mr && !mr.ok && mr.error === tracker.error;
-  const mrError = mr && !mr.ok && !sameFailure ? ` · MR: ${failure(mr.error)}` : '';
-  if (!tracker) return { ok: !mrError, text: `${kind} · синхронизация…${mrError}` };
-  if (!tracker.ok) return { ok: false, text: `${kind} недоступен: ${failure(tracker.error)}${mrError}`, at: tracker.at };
-  return { ok: !mrError, text: `${kind} · синхр. ${ago(tracker.at)}${mrError}`, at: tracker.at };
-});
-
-async function syncNow() {
-  const id = state.value.workspaceId ?? workspace.value?.id;
-  if (!id || syncing.value) return;
-  syncing.value = true;
-  await client.syncWorkspace(id).catch(() => undefined);
-  syncing.value = false;
+  return mrCounts.value.get(task.id) ?? 0;
 }
 </script>
 
@@ -183,10 +129,6 @@ async function syncNow() {
     <header>
       <h1>Задачи</h1>
       <span class="vr-muted" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }}</span>
-      <span v-if="syncLine" class="sync" :class="{ failed: !syncLine.ok }" data-testid="sync-status" :title="syncLine.at ? new Date(syncLine.at).toLocaleString() : undefined">
-        {{ syncLine.text }}
-        <button class="icon" :disabled="syncing" aria-label="Обновить" title="Обновить" data-testid="sync-now" @click="syncNow"><RefreshCw :size="14" :class="{ spin: syncing }" /></button>
-      </span>
     </header>
     <div class="filters">
       <VMultiSelect
@@ -255,10 +197,6 @@ async function syncNow() {
                 <span v-if="mrCount(task)" class="vr-chip" :title="`Merge requests: ${mrCount(task)}`" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
                 <span>{{ assigneeLabel(task) }}</span>
                 <span>{{ task.status }}</span>
-                <span v-for="id in task.delegateIds" :key="id" class="delegate" :title="`${client.actorName(id)}: ${agentStatus(id) ?? ''}`">
-                  <Avatar :id="id" :name="client.actorName(id)" agent small />
-                  <span class="vr-dot" :data-status="agentStatus(id)" />
-                </span>
               </span>
             </button>
           </li>
@@ -295,42 +233,6 @@ h1 {
   font-size: var(--vr-font-size-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
-}
-
-.sync {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--vr-space-1);
-  margin-left: auto;
-  font-size: var(--vr-font-size-xs);
-  color: var(--vr-color-text-muted);
-}
-
-.sync.failed {
-  color: var(--vr-color-danger);
-}
-
-.icon {
-  display: inline-flex;
-  padding: var(--vr-space-1);
-  color: inherit;
-  background: none;
-  border: 0;
-  border-radius: var(--vr-radius-sm);
-}
-
-.icon:hover {
-  background: var(--vr-color-surface-muted);
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .filters {
@@ -379,20 +281,6 @@ h2 {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-}
-
-.delegate {
-  position: relative;
-  display: inline-flex;
-}
-
-.delegate .vr-dot {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 7px;
-  height: 7px;
-  box-shadow: 0 0 0 1.5px var(--vr-color-surface);
 }
 
 .empty {

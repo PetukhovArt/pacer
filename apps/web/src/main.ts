@@ -3,11 +3,13 @@ import { VeyraClient } from '@core/client-sdk';
 import { installClient } from '@core/vue-bindings';
 import { installUiKit } from '@ui/kit';
 import './app.css';
-import App from './App.vue';
+import WorkspaceView from './WorkspaceView.vue';
 
-const app = createApp(App);
+if (!__VEYRA_DEV_KEY__) throw new Error('Нет ключа пользователя: вход появится в следующих этапах');
+const app = createApp(WorkspaceView);
 installUiKit(app);
-const client = new VeyraClient(location.origin);
+const client = new VeyraClient(__VEYRA_RELAY__, __VEYRA_DEV_KEY__);
 installClient(app, client);
-void client.setWorkspace(localStorage.getItem('veyra.workspace'));
-void client.restore().finally(() => app.mount('#app'));
+client.setWorkspace(localStorage.getItem('veyra.workspace'));
+client.start();
+app.mount('#app');
