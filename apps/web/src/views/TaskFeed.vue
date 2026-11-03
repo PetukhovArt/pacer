@@ -7,8 +7,8 @@ import type { FeedEvent } from '@core/client-sdk';
 import Avatar from '../Avatar.vue';
 import type { TaskContext } from './task';
 
-const props = defineProps<{ ctx: TaskContext }>();
-const { client, events } = props.ctx;
+const props = defineProps<{ ctx: Pick<TaskContext, 'client' | 'state' | 'events'> }>();
+const { client, state, events } = props.ctx;
 
 type ToolCall = Extract<FeedEvent, { type: 'agent.tool_call' }>;
 type Item = { id: string; actorId: string; at: string; head: boolean } & ({ kind: 'event'; event: FeedEvent } | { kind: 'tools'; calls: ToolCall[] });
@@ -91,7 +91,7 @@ onMounted(toBottom);
     <p v-if="!items.length" class="vr-muted intro">Здесь появятся сообщения команды и ход работы агентов.</p>
     <ol class="feed" data-testid="feed">
       <li v-for="item in items" :key="item.id" class="row" :class="{ head: item.head }" :data-kind="item.kind === 'event' ? item.event.type : 'tools'">
-        <Avatar v-if="item.head" :id="item.actorId" :name="client.actorName(item.actorId)" :agent="isAgent(item)" />
+        <Avatar v-if="item.head" :id="item.actorId" :name="client.actorName(item.actorId)" :picture="state.profiles.get(item.actorId)?.picture" :agent="isAgent(item) || state.profiles.get(item.actorId)?.bot" />
         <span v-else class="gutter">{{ time(item.at) }}</span>
         <div class="body">
           <div v-if="item.head" class="author">

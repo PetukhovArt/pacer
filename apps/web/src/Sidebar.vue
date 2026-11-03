@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ListTodo, Moon, Search, Sun } from 'lucide-vue-next';
-import { useClientState } from '@core/vue-bindings';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { Hash, ListTodo, Moon, Plus, Search, Sun } from 'lucide-vue-next';
+import { useClient, useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
-import { openTask, view } from './nav';
+import { openTask, openTopic, view } from './nav';
 import { priorityRank } from './priority';
 
 defineProps<{ dark: boolean }>();
 const emit = defineEmits<{ switch: [id: string]; theme: [] }>();
 
+const client = useClient();
 const state = useClientState();
 const query = ref('');
+const creating = ref(false);
+const topicName = ref('');
+const topicError = ref('');
+const topicInput = ref<HTMLInputElement | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
 
 const selectedId = computed(() => (view.value.kind === 'task' ? view.value.id : null));
+const selectedTopicId = computed(() => (view.value.kind === 'topic' ? view.value.id : null));
 const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
 
 const mine = computed(() => state.value.tasks.filter((t) => t.assigneeId === state.value.me.id && t.statusCategory !== 'done'));
@@ -29,6 +35,27 @@ const channels = computed(() => {
 function onSearchKey(event: KeyboardEvent) {
   if (event.key === 'Escape') query.value = '';
   if (event.key === 'Enter' && channels.value[0]) openTask(channels.value[0].id);
+}
+
+async function startTopic() {
+  creating.value = true;
+  topicError.value = '';
+  await nextTick();
+  topicInput.value?.focus();
+}
+
+async function createTopic() {
+  const name = topicName.value.trim();
+  if (!name) return;
+  topicError.value = '';
+  try {
+    const topic = await client.createTopic(name);
+    topicName.value = '';
+    creating.value = false;
+    openTopic(topic.id);
+  } catch (e) {
+    topicError.value = e instanceof Error ? e.message : String(e);
+  }
 }
 
 function onGlobalKey(event: KeyboardEvent) {
@@ -70,6 +97,30 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
           <span>{{ w.name }}</span>
         </button>
         <template v-if="w.id === state.workspaceId">
+          <div class="subhead">
+            <span>Топики</span>
+            <button class="icon add" title="Новый топик" aria-label="Новый топик" data-testid="topic-add" @click="startTopic"><Plus :size="14" /></button>
+          </div>
+          <form v-if="creating" class="new-topic" @submit.prevent="createTopic">
+            <Hash :size="14" />
+            <input ref="topicInput" v-model="topicName" placeholder="название топика" aria-label="Название топика" data-testid="topic-name" @keydown.esc="creating = false" />
+          </form>
+          <p v-if="topicError" class="empty" role="alert">{{ topicError }}</p>
+          <button
+            v-for="topic in state.topics"
+            :key="topic.id"
+            class="item channel"
+            :class="{ unread: state.unread.has(topic.id) }"
+            :data-active="topic.id === selectedTopicId"
+            :aria-current="topic.id === selectedTopicId ? 'page' : undefined"
+            :data-testid="`topic-${topic.name}`"
+            @click="openTopic(topic.id)"
+          >
+            <Hash :size="14" class="key" />
+            <span class="name">{{ topic.name }}</span>
+            <span v-if="state.unread.has(topic.id)" class="unread-dot" :data-testid="`topic-unread-${topic.name}`"><span class="sr">новое</span></span>
+          </button>
+          <div class="subhead"><span>Задачи</span></div>
           <button
             v-for="task in channels"
             :key="task.id"
@@ -257,6 +308,43 @@ section + section {
   padding: var(--vr-space-1) var(--vr-space-2);
   font-size: var(--vr-font-size-xs);
   color: var(--vr-color-nav-muted);
+}
+
+.subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--vr-size-row);
+  padding: 0 var(--vr-space-2);
+  margin-top: var(--vr-space-1);
+  font-size: var(--vr-font-size-2xs);
+  color: var(--vr-color-nav-muted);
+}
+
+.icon.add {
+  width: 20px;
+  height: 20px;
+}
+
+.new-topic {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-2);
+  height: var(--vr-size-row);
+  padding: 0 var(--vr-space-2);
+  border-radius: var(--vr-radius-md);
+  background: var(--vr-color-nav-hover);
+  color: var(--vr-color-nav-muted);
+}
+
+.new-topic input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--vr-color-text);
+  background: none;
+  border: 0;
+  outline: none;
 }
 
 footer {
