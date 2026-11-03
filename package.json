@@ -8,6 +8,7 @@
     "dev:web": "pnpm --filter @veyra/web dev",
     "dev:desktop": "pnpm --filter @veyra/desktop dev",
     "dev:relay": "node scripts/dev-relay.mjs",
+    "dev:connect": "cargo run -q -p veyra-connect --",
     "runner": "pnpm --filter @veyra/runner start",
     "build:tokens": "pnpm --filter @ui/tokens build",
     "typecheck": "tsc -p . && pnpm -r typecheck",
