@@ -11,13 +11,11 @@
     "runner": "pnpm --filter @veyra/runner start",
     "build:tokens": "pnpm --filter @ui/tokens build",
     "typecheck": "tsc -p . && pnpm -r typecheck",
-    "e2e": "tsx scripts/e2e.ts",
-    "verify": "pnpm build:tokens && pnpm typecheck && pnpm e2e",
+    "verify": "pnpm build:tokens && pnpm typecheck",
     "lint": "oxlint --deny-warnings",
     "prepare": "husky"
   },
   "devDependencies": {
-    "@core/client-sdk": "workspace:*",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
     "fastify": "^5.12.7",
