@@ -17,6 +17,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
+      fastify:
+        specifier: ^5.12.7
+        version: 5.12.7
       husky:
         specifier: ^9.1.7
         version: 9.1.7
