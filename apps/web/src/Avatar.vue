@@ -5,7 +5,7 @@ const props = defineProps<{ id: string; name: string; agent?: boolean; small?: b
 
 const initials = computed(() =>
   props.name
-    .split(/[\s._-]+/)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]!.toUpperCase())

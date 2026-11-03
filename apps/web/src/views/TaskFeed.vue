@@ -110,7 +110,7 @@ onMounted(toBottom);
             <time :datetime="item.at">{{ time(item.at) }}</time>
           </div>
           <details v-if="item.kind === 'tools'" class="tools">
-            <summary><Wrench :size="12" /> инструменты: {{ item.calls.length }} <span class="last">{{ item.calls[item.calls.length - 1]!.tool }} {{ item.calls[item.calls.length - 1]!.summary }}</span></summary>
+            <summary><Wrench :size="12" /><span class="count">инструменты: {{ item.calls.length }}</span><span class="last">{{ item.calls[item.calls.length - 1]!.tool }} {{ item.calls[item.calls.length - 1]!.summary }}</span></summary>
             <div v-for="call in item.calls" :key="call.id" class="tool-call">
               <code class="tool-name">{{ call.tool }}</code>
               <span class="tool-summary" :title="call.summary">{{ call.summary }}</span>
@@ -258,6 +258,11 @@ time {
   min-width: 0;
   color: var(--vr-color-text-muted);
   list-style: none;
+}
+
+.tools .count {
+  flex: none;
+  margin-right: var(--vr-space-1);
 }
 
 .tools .last {
