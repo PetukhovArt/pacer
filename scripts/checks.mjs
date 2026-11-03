@@ -90,6 +90,12 @@ const run = async (command) => {
 const quoted = (list) => list.map((file) => `"${file}"`).join(' ');
 const lintable = files.filter((file) => /\.(vue|[cm]?[jt]s)$/.test(file));
 const rust = files.filter((file) => file.endsWith('.rs'));
+const cargoInput = files.filter((file) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|(^|\/)rust-toolchain\.toml$/.test(file));
+const workspaceTouched = cargoInput.some((file) => !file.includes('/'));
+const tauriTouched = cargoInput.some((file) => file === 'rust-toolchain.toml' || file.startsWith('apps/desktop/src-tauri/'));
+const packageOf = (dir) => readFileSync(`crates/${dir}/Cargo.toml`, 'utf8').match(/^name\s*=\s*"([^"]+)"/m)[1];
+const crateDirs = [...new Set(cargoInput.map((file) => file.match(/^crates\/([^/]+)\//)?.[1]).filter((dir) => dir && existsSync(`crates/${dir}/Cargo.toml`)))];
+const crateClippy = workspaceTouched ? '--workspace' : crateDirs.map((dir) => `-p ${packageOf(dir)}`).join(' ');
 
 const checks = [
   ['comments', 'удали комментарий: смысл выражай именем, типом или правилом линтера; разрешён только /// <reference>', async () => scan(() => true, (file, text) => commentsOf(file, text).filter(([, raw]) => !/^\/\/\/\s*<reference\s/.test(raw)))],
@@ -98,8 +104,8 @@ const checks = [
   ['oxlint', 'исправь предупреждения oxlint, не отключай правило', async () => (lintable.length ? run(`oxlint --deny-warnings ${quoted(lintable)}`) : [])],
   ['knip', 'удали неиспользуемый export, файл или зависимость', () => run('knip')],
   ['types', 'исправь ошибки типов', async () => [...(await run('pnpm -r --filter "...[HEAD]" --filter "!veyra" --if-present typecheck')), ...(files.some((file) => file.startsWith('scripts/')) ? await run('tsc -p .') : [])]],
-  ['rustfmt', 'отформатируй: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml', async () => (rust.length ? run(`rustfmt --check --edition 2021 ${quoted(rust)}`) : [])],
-  ['clippy', 'исправь замечания clippy, не глуши их через allow', async () => (files.some((file) => /\.rs$|Cargo\.(toml|lock)$/.test(file)) ? run('cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -- -D warnings') : [])],
+  ['rustfmt', 'отформатируй: cargo fmt --all или cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml', async () => (await Promise.all(Array.from({ length: Math.ceil(rust.length / 50) }, (_, i) => run(`rustfmt --check --edition 2021 ${quoted(rust.slice(i * 50, i * 50 + 50))}`)))).flat()],
+  ['clippy', 'исправь замечания clippy, не глуши их через allow', async () => [...(tauriTouched ? await run('cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -- -D warnings') : []), ...(crateClippy ? await run(`cargo clippy ${crateClippy} -- -D warnings`) : [])]],
 ];
 
 const results = await Promise.all(checks.map(async ([name, fix, check]) => [name, fix, await check()]));
