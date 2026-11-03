@@ -20,7 +20,7 @@ defineProps<{ task: Task }>();
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--vr-space-1);
 }
 
 .priority,
@@ -29,10 +29,12 @@ defineProps<{ task: Task }>();
   align-items: center;
   gap: 2px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: var(--vr-font-size-2xs);
+  font-weight: 500;
   line-height: 18px;
-  border-radius: 9px;
-  border: 1px solid var(--vr-color-border);
+  border-radius: var(--vr-radius-full);
+  color: var(--vr-color-text-muted);
+  background: var(--vr-color-surface-muted);
 }
 
 .priority img {
@@ -41,27 +43,15 @@ defineProps<{ task: Task }>();
 }
 
 .priority[data-level='blocker'] {
-  color: #fff;
-  background: #c62828;
-  border-color: #c62828;
+  color: var(--vr-color-accent-contrast);
+  background: var(--vr-color-danger);
 }
 
 .priority[data-level='high'] {
-  color: #c62828;
-  border-color: #c62828;
+  color: var(--vr-color-danger);
 }
 
 .priority[data-level='medium'] {
-  color: #ef6c00;
-  border-color: #ef6c00;
-}
-
-.priority[data-level='low'],
-.priority[data-level='trivial'] {
-  color: var(--vr-color-text-muted);
-}
-
-.label {
-  background: var(--vr-color-surface-muted);
+  color: var(--vr-color-conflict);
 }
 </style>

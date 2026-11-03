@@ -13,9 +13,8 @@
     "@core/vue-bindings": "workspace:*",
     "@ui/kit": "workspace:*",
     "@veyra/protocol": "workspace:*",
-    "dockview-core": "^8.8.3",
-    "dockview-vue": "^8.8.3",
     "dompurify": "^3.4.17",
+    "lucide-vue-next": "^1.0.0",
     "marked": "^18.1.2",
     "vue": "^3.5.44"
   },

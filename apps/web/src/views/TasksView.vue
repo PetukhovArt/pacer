@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
-import type { IDockviewPanelProps } from 'dockview-core';
 import type { Task } from '@veyra/protocol';
+import { RefreshCw } from 'lucide-vue-next';
 import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
 import { useClient, useClientState } from '@core/vue-bindings';
-import { openTask } from '../open-task';
+import Avatar from '../Avatar.vue';
+import { openTask } from '../nav';
 import { priorityRank } from '../priority';
 import TaskMeta from './TaskMeta.vue';
 
@@ -14,14 +15,11 @@ const NO_RELEASE = 'none';
 const NO_PRIORITY = 'none';
 const defaults = (): Filters => ({ releases: [], statuses: [], priorities: [], labels: [], assignee: 'all', text: '', hideClosed: true });
 
-const props = defineProps<{ params: IDockviewPanelProps }>();
 const client = useClient();
 const state = useClientState();
 const storageKey = () => `veyra.taskFilters.${state.value.me?.id}.${state.value.workspaceId ?? ''}`;
 
 function load(): Filters {
-  const saved = props.params.params as { filters?: Partial<Filters>; workspaceId?: string | null } | undefined;
-  if (saved?.filters && saved.workspaceId === state.value.workspaceId) return { ...defaults(), ...saved.filters };
   try {
     return { ...defaults(), ...(JSON.parse(localStorage.getItem(storageKey()) ?? '{}') as Partial<Filters>) };
   } catch {
@@ -51,7 +49,6 @@ watch(
   (value) => {
     const snapshot = { ...value, releases: [...value.releases], statuses: [...value.statuses], priorities: [...value.priorities], labels: [...value.labels] };
     localStorage.setItem(storageKey(), JSON.stringify(snapshot));
-    props.params.api.updateParameters({ filters: snapshot, workspaceId: state.value.workspaceId });
   },
   { deep: true },
 );
@@ -77,7 +74,7 @@ function byPriority(a: Task, b: Task) {
   return priorityRank(a.priority) - priorityRank(b.priority) || a.externalRef.localeCompare(b.externalRef, undefined, { numeric: true });
 }
 
-const trackerUser =computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.trackerUser ?? null);
+const trackerUser = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.trackerUser ?? null);
 
 const assigneeOptions = computed(() => {
   const ids = new Set(state.value.tasks.flatMap((t) => (t.assigneeId ? [t.assigneeId] : [])));
@@ -108,7 +105,7 @@ function matches(task: Task) {
   if (filters.statuses.length && !filters.statuses.includes(task.status)) return false;
   if (filters.priorities.length && !filters.priorities.includes(task.priority ?? NO_PRIORITY)) return false;
   if (filters.labels.length && !filters.labels.some((l) => task.labels?.includes(l))) return false;
-  if (filters.assignee === 'mine'&& !isMine(task)) return false;
+  if (filters.assignee === 'mine' && !isMine(task)) return false;
   if (filters.assignee === 'unassigned' && (task.assigneeId || task.assigneeRef)) return false;
   if (filters.assignee.startsWith('ref:') && task.assigneeRef !== filters.assignee.slice(4)) return false;
   if (filters.assignee.startsWith('actor:') && task.assigneeId !== filters.assignee.slice(6)) return false;
@@ -141,25 +138,6 @@ function agentStatus(id: string) {
   return actor?.kind === 'agent' ? actor.status : null;
 }
 
-function open(task: Task) {
-  openTask(props.params.containerApi, task);
-}
-
-const selectedId = ref<string | null>(null);
-
-function trackActive(panelId: string | undefined) {
-  if (panelId?.startsWith('task:')) selectedId.value = panelId.slice(5);
-}
-
-trackActive(props.params.containerApi.activePanel?.id);
-const activeSub = props.params.containerApi.onDidActivePanelChange((event) => trackActive(event.panel?.id));
-const removeSub = props.params.containerApi.onDidRemovePanel((panel) => {
-  if (panel.id === `task:${selectedId.value}`) selectedId.value = null;
-});
-onUnmounted(() => {
-  activeSub.dispose();
-  removeSub.dispose();
-});
 
 const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
 const now = ref(Date.now());
@@ -201,119 +179,130 @@ async function syncNow() {
 </script>
 
 <template>
-  <div class="tasks">
-    <div class="sticky">
-      <div v-if="syncLine" class="sync" :class="{ failed: !syncLine.ok }" data-testid="sync-status" :title="syncLine.at ? new Date(syncLine.at).toLocaleString() : undefined">
-        <span>{{ syncLine.text }}</span>
-        <VButton label="Обновить" size="small" text :loading="syncing" data-testid="sync-now" @click="syncNow" />
-      </div>
-      <div class="filters">
-        <VMultiSelect
-          v-model="filters.releases"
-          :options="releaseOptions"
-          option-label="label"
-          option-value="value"
-          placeholder="Релиз"
-          filter
-          :max-selected-labels="2"
-          selected-items-label="Выбрано: {0}"
-          size="small"
-          data-testid="filter-release"
-        />
-        <VMultiSelect
-          v-model="filters.statuses"
-          :options="statusOptions"
-          placeholder="Статус"
-          filter
-          :max-selected-labels="2"
-          selected-items-label="Выбрано: {0}"
-          size="small"
-          data-testid="filter-status"
-        />
-        <VMultiSelect
-          v-model="filters.priorities"
-          :options="priorityOptions"
-          option-label="label"
-          option-value="value"
-          placeholder="Приоритет"
-          :max-selected-labels="2"
-          selected-items-label="Выбрано: {0}"
-          size="small"
-          data-testid="filter-priority"
-        />
-        <VMultiSelect
-          v-model="filters.labels"
-          :options="labelOptions"
-          placeholder="Метки"
-          filter
-          :max-selected-labels="2"
-          selected-items-label="Выбрано: {0}"
-          size="small"
-          data-testid="filter-labels"
-        />
-        <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
-        <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
-        <label class="toggle">
-          <VToggleSwitch v-model="filters.hideClosed" data-testid="filter-hide-closed" />
-          Скрыть закрытые
-        </label>
-        <VButton label="Сбросить" size="small" text data-testid="filter-reset" @click="reset" />
-        <span class="vr-muted count" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }} задач</span>
-      </div>
+  <div class="page">
+    <header>
+      <h1>Задачи</h1>
+      <span class="vr-muted" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }}</span>
+      <span v-if="syncLine" class="sync" :class="{ failed: !syncLine.ok }" data-testid="sync-status" :title="syncLine.at ? new Date(syncLine.at).toLocaleString() : undefined">
+        {{ syncLine.text }}
+        <button class="icon" :disabled="syncing" aria-label="Обновить" title="Обновить" data-testid="sync-now" @click="syncNow"><RefreshCw :size="14" :class="{ spin: syncing }" /></button>
+      </span>
+    </header>
+    <div class="filters">
+      <VMultiSelect
+        v-model="filters.releases"
+        :options="releaseOptions"
+        option-label="label"
+        option-value="value"
+        placeholder="Релиз"
+        filter
+        :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
+        size="small"
+        data-testid="filter-release"
+      />
+      <VMultiSelect
+        v-model="filters.statuses"
+        :options="statusOptions"
+        placeholder="Статус"
+        filter
+        :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
+        size="small"
+        data-testid="filter-status"
+      />
+      <VMultiSelect
+        v-model="filters.priorities"
+        :options="priorityOptions"
+        option-label="label"
+        option-value="value"
+        placeholder="Приоритет"
+        :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
+        size="small"
+        data-testid="filter-priority"
+      />
+      <VMultiSelect
+        v-model="filters.labels"
+        :options="labelOptions"
+        placeholder="Метки"
+        filter
+        :max-selected-labels="2"
+        selected-items-label="Выбрано: {0}"
+        size="small"
+        data-testid="filter-labels"
+      />
+      <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
+      <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
+      <label class="toggle">
+        <VToggleSwitch v-model="filters.hideClosed" data-testid="filter-hide-closed" />
+        Скрыть закрытые
+      </label>
+      <VButton label="Сбросить" size="small" text data-testid="filter-reset" @click="reset" />
     </div>
-    <section v-for="group in groups" :key="group.id">
-      <h3>{{ group.name }}</h3>
-      <button
-        v-for="task in group.tasks"
-        :key="task.id"
-        class="task"
-        :class="{ selected: task.id === selectedId }"
-        :aria-current="task.id === selectedId ? 'true' : undefined"
-        :data-testid="`task-${task.externalRef}`"
-        @click="open(task)"
-      >
-        <span class="ref">{{ task.externalRef }}</span>
-        <span class="title" :title="task.title">{{ task.title }}</span>
-        <span class="vr-muted meta">
-          <TaskMeta :task="task" />
-          <span v-if="mrCount(task)" class="mr-count" :title="`Merge requests: ${mrCount(task)}`" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
-          {{ assigneeLabel(task) }} · {{ task.status }}
-          <span v-for="id in task.delegateIds" :key="id" class="vr-dot" :data-status="agentStatus(id)" :title="client.actorName(id)" />
-        </span>
-      </button>
-    </section>
-    <div v-if="!visible.length" class="empty" data-testid="tasks-empty">
-      <template v-if="state.tasks.length">
-        <span>Нет задач по фильтрам</span>
-        <VButton label="Сбросить" size="small" text data-testid="empty-reset" @click="reset" />
-      </template>
-      <span v-else class="vr-muted">Задач пока нет</span>
+    <div class="body">
+      <section v-for="group in groups" :key="group.id">
+        <h2>{{ group.name }}</h2>
+        <ul class="vr-list">
+          <li v-for="task in group.tasks" :key="task.id">
+            <button class="vr-row" :data-testid="`task-${task.externalRef}`" @click="openTask(task.id)">
+              <span class="line">
+                <strong class="ref">{{ task.externalRef }}</strong>
+                <span class="title" :title="task.title">{{ task.title }}</span>
+              </span>
+              <span class="vr-row-meta">
+                <TaskMeta :task="task" />
+                <span v-if="mrCount(task)" class="vr-chip" :title="`Merge requests: ${mrCount(task)}`" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
+                <span>{{ assigneeLabel(task) }}</span>
+                <span>{{ task.status }}</span>
+                <span v-for="id in task.delegateIds" :key="id" class="delegate" :title="`${client.actorName(id)}: ${agentStatus(id) ?? ''}`">
+                  <Avatar :id="id" :name="client.actorName(id)" agent small />
+                  <span class="vr-dot" :data-status="agentStatus(id)" />
+                </span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </section>
+      <div v-if="!visible.length" class="empty" data-testid="tasks-empty">
+        <template v-if="state.tasks.length">
+          <span>Нет задач по фильтрам</span>
+          <VButton label="Сбросить" size="small" text data-testid="empty-reset" @click="reset" />
+        </template>
+        <span v-else class="vr-muted">Задач пока нет</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.tasks {
-  height: 100%;
-  overflow: auto;
-  padding: var(--vr-space-3);
-  background: var(--vr-color-surface);
-  color: var(--vr-color-text);
-  box-sizing: border-box;
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.sticky {
-  position: sticky;
-  top: calc(-1 * var(--vr-space-3));
-  z-index: 1;
-  background: var(--vr-color-surface);
+header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vr-space-2);
+  padding: var(--vr-space-4) var(--vr-space-5) var(--vr-space-2);
+}
+
+h1 {
+  margin: 0;
+  font-size: var(--vr-font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .sync {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--vr-space-2);
-  font-size: 12px;
+  gap: var(--vr-space-1);
+  margin-left: auto;
+  font-size: var(--vr-font-size-xs);
   color: var(--vr-color-text-muted);
 }
 
@@ -321,59 +310,67 @@ async function syncNow() {
   color: var(--vr-color-danger);
 }
 
+.icon {
+  display: inline-flex;
+  padding: var(--vr-space-1);
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: var(--vr-radius-sm);
+}
+
+.icon:hover {
+  background: var(--vr-color-surface-muted);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--vr-space-2);
-  padding: var(--vr-space-2) 0;
-  background: var(--vr-color-surface);
+  padding: var(--vr-space-2) var(--vr-space-5) var(--vr-space-3);
   border-bottom: 1px solid var(--vr-color-border);
 }
 
 .toggle {
   display: flex;
   align-items: center;
-  gap: var(--vr-space-1);
-  font-size: 12px;
+  gap: var(--vr-space-2);
+  font-size: var(--vr-font-size-xs);
 }
 
-.count {
-  margin-left: auto;
-  font-size: 12px;
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--vr-space-2) var(--vr-space-5) var(--vr-space-5);
 }
 
-h3 {
-  margin: var(--vr-space-2) 0;
-  font-size: 13px;
-  text-transform: uppercase;
-  color: var(--vr-color-text-muted);
+h2 {
+  margin: var(--vr-space-4) 0 var(--vr-space-2);
+  font-size: var(--vr-font-size-xs);
+  font-weight: 600;
 }
 
-.task {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px var(--vr-space-2);
-  width: 100%;
-  padding: var(--vr-space-2);
-  margin-bottom: var(--vr-space-1);
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 1px solid var(--vr-color-border);
-  border-radius: var(--vr-radius-sm);
-  cursor: pointer;
+.line {
+  display: flex;
+  gap: var(--vr-space-2);
+  min-width: 0;
 }
 
-.task:hover {
-  border-color: var(--vr-color-accent);
-}
-
-.task.selected {
-  border-color: var(--vr-color-accent);
-  background: var(--vr-color-surface-muted);
-  box-shadow: inset 3px 0 0 var(--vr-color-accent);
+.ref {
+  flex: none;
+  font-weight: 600;
 }
 
 .title {
@@ -384,33 +381,25 @@ h3 {
   overflow: hidden;
 }
 
+.delegate {
+  position: relative;
+  display: inline-flex;
+}
+
+.delegate .vr-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 7px;
+  height: 7px;
+  box-shadow: 0 0 0 1.5px var(--vr-color-surface);
+}
+
 .empty {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--vr-space-2);
-  padding: var(--vr-space-4);
-}
-
-.ref {
-  font-family: var(--vr-font-mono);
-  color: var(--vr-color-accent);
-}
-
-.mr-count {
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 18px;
-  border-radius: 9px;
-  color: var(--vr-color-accent);
-  border: 1px solid var(--vr-color-accent);
-}
-
-.meta {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: var(--vr-space-1);
-  font-size: 12px;
+  padding: var(--vr-space-6);
 }
 </style>
