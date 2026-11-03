@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, type Directive } from 'vue';
 import { Hash, ListTodo, Moon, Plus, Search, Sun } from 'lucide-vue-next';
 import { useClient, useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
@@ -15,7 +15,7 @@ const query = ref('');
 const creating = ref(false);
 const topicName = ref('');
 const topicError = ref('');
-const topicInput = ref<HTMLInputElement | null>(null);
+const vFocus: Directive<HTMLElement> = { mounted: (el) => el.focus() };
 const searchInput = ref<HTMLInputElement | null>(null);
 
 const selectedId = computed(() => (view.value.kind === 'task' ? view.value.id : null));
@@ -37,11 +37,9 @@ function onSearchKey(event: KeyboardEvent) {
   if (event.key === 'Enter' && channels.value[0]) openTask(channels.value[0].id);
 }
 
-async function startTopic() {
+function startTopic() {
   creating.value = true;
   topicError.value = '';
-  await nextTick();
-  topicInput.value?.focus();
 }
 
 async function createTopic() {
@@ -103,7 +101,7 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
           </div>
           <form v-if="creating" class="new-topic" @submit.prevent="createTopic">
             <Hash :size="14" />
-            <input ref="topicInput" v-model="topicName" placeholder="название топика" aria-label="Название топика" data-testid="topic-name" @keydown.esc="creating = false" />
+            <input v-model="topicName" v-focus placeholder="название топика" aria-label="Название топика" data-testid="topic-name" @keydown.esc="creating = false" />
           </form>
           <p v-if="topicError" class="empty" role="alert">{{ topicError }}</p>
           <button
