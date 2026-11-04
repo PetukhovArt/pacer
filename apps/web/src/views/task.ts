@@ -11,18 +11,24 @@ export function useTask(taskId: string) {
   const task = computed(() => state.value.tasks.find((t) => t.id === taskId));
   const events = computed(() => state.value.events.get(taskId) ?? []);
   const mergeRequests = computed(() => state.value.mergeRequests.filter((m) => m.taskRefs.includes(taskId)));
-  const agents = computed(() => [...new Set(events.value.flatMap((e) => (e.type === 'chat.message' ? [] : [e.actorId])))]);
+  const keyOf = (e: FeedEvent) => (e.type === 'chat.message' ? null : (e.job?.id ?? e.actorId));
+  const agents = computed(() => [...new Set(events.value.flatMap((e) => keyOf(e) ?? []))]);
 
-  function lastOf<T extends FeedEvent['type']>(actorId: string, type: T) {
-    return events.value.findLast((e): e is Extract<FeedEvent, { type: T }> => e.actorId === actorId && e.type === type) ?? null;
+  function agentOf(key: string) {
+    const first = events.value.find((e) => keyOf(e) === key);
+    return first && first.type !== 'chat.message' ? { actorId: first.actorId, job: first.job } : null;
   }
 
-  function statusOf(actorId: string) {
-    return lastOf(actorId, 'agent.status')?.status ?? 'running';
+  function lastOf<T extends FeedEvent['type']>(key: string, type: T) {
+    return events.value.findLast((e): e is Extract<FeedEvent, { type: T }> => keyOf(e) === key && e.type === type) ?? null;
   }
 
-  function worktreeOf(actorId: string) {
-    return events.value.findLast((e): e is Extract<FeedEvent, { type: 'agent.status' }> => e.actorId === actorId && e.type === 'agent.status' && e.status === 'running')?.detail ?? '';
+  function statusOf(key: string) {
+    return lastOf(key, 'agent.status')?.status ?? 'running';
+  }
+
+  function worktreeOf(key: string) {
+    return events.value.findLast((e): e is Extract<FeedEvent, { type: 'agent.status' }> => keyOf(e) === key && e.type === 'agent.status' && e.status === 'running')?.detail ?? '';
   }
 
   async function run(action: () => Promise<unknown>) {
@@ -30,7 +36,7 @@ export function useTask(taskId: string) {
     await action().catch((e: unknown) => (error.value = e instanceof Error ? e.message : String(e)));
   }
 
-  return { client, state, error, task, events, mergeRequests, agents, lastOf, statusOf, worktreeOf, run };
+  return { client, state, error, task, events, mergeRequests, agents, agentOf, lastOf, statusOf, worktreeOf, run };
 }
 
 export type TaskContext = ReturnType<typeof useTask>;

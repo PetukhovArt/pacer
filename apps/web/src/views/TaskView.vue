@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { ChevronRight, ExternalLink, GitMerge } from 'lucide-vue-next';
-import { VMessage } from '@ui/kit';
+import { computed, ref } from 'vue';
+import { Bot, ChevronRight, ExternalLink, GitMerge, MessageSquare, Square } from 'lucide-vue-next';
+import { VButton, VMessage, VSelect } from '@ui/kit';
 import Avatar from '../Avatar.vue';
 import Composer from '../Composer.vue';
 import { view } from '../nav';
@@ -11,10 +11,34 @@ import { useTask } from './task';
 
 const props = defineProps<{ taskId: string }>();
 const ctx = useTask(props.taskId);
-const { client, state, error, task, mergeRequests, agents, lastOf, statusOf, worktreeOf, run } = ctx;
+const { client, state, error, task, mergeRequests, agents, agentOf, lastOf, statusOf, worktreeOf, run } = ctx;
 
 const tab = ref<'feed' | 'agents' | 'mr'>('feed');
+const mode = ref<'chat' | 'agent'>('chat');
 const chatText = ref('');
+const prompt = ref('');
+
+const agentKinds = client.runner?.agents ?? [];
+const agentKind = ref(agentKinds[0] ?? null);
+const projects = computed(() => client.runner?.projects.filter((p) => p.workspace === state.value.workspaceId) ?? []);
+const pickedProject = ref<string | null>(null);
+const projectId = computed({
+  get: () => (projects.value.some((p) => p.id === pickedProject.value) ? pickedProject.value : (projects.value[0]?.id ?? null)),
+  set: (id: string | null) => (pickedProject.value = id),
+});
+
+async function startAgent() {
+  const agent = agentKind.value;
+  const project = projectId.value;
+  if (!agent || !project) {
+    error.value = client.runner ? 'Выберите агента и проект' : 'Раннер не найден: запустите veyra-runner и перезапустите vite';
+    return;
+  }
+  await run(async () => {
+    await client.startAgent(props.taskId, { agent, projectId: project, prompt: prompt.value.trim() });
+    prompt.value = '';
+  });
+}
 
 const todoIcons = { completed: '☑', in_progress: '◐', pending: '☐' } as const;
 
@@ -65,10 +89,22 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
           <ul class="vr-list" data-testid="activities">
             <li v-for="id in agents" :key="id" class="activity" :data-testid="`activity-${statusOf(id)}`">
               <div class="who">
-                <Avatar :id="id" :name="client.actorName(id)" agent small />
-                <strong>{{ client.actorName(id) }}</strong>
+                <Avatar :id="agentOf(id)?.actorId ?? id" :name="client.actorName(agentOf(id)?.actorId ?? id)" agent small />
+                <strong>{{ agentOf(id)?.job?.agent || client.actorName(agentOf(id)?.actorId ?? id) }}</strong>
                 <span class="vr-dot" :data-status="statusOf(id)" />
                 <span class="vr-muted">{{ statusOf(id) }}</span>
+                <VButton
+                  v-if="statusOf(id) === 'running' && agentOf(id)?.job"
+                  class="stop"
+                  size="small"
+                  severity="danger"
+                  text
+                  label="Остановить"
+                  data-testid="agent-stop"
+                  @click="run(() => client.stopAgent(taskId, id))"
+                >
+                  <template #icon><Square :size="12" /></template>
+                </VButton>
               </div>
               <div v-if="worktreeOf(id)" class="vr-row-meta" data-testid="agent-session">
                 <code class="vr-code" data-testid="agent-session-worktree">{{ worktreeOf(id) }}</code>
@@ -108,6 +144,7 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
 
         <div v-if="tab === 'feed'" class="dock">
           <Composer
+            v-if="mode === 'chat'"
             v-model="chatText"
             :placeholder="`Сообщение в ${task.externalRef}`"
             label="Сообщение в чат"
@@ -115,7 +152,34 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
             send-testid="chat-send"
             send-label="Отправить"
             @submit="sendChat"
-          />
+          >
+            <button type="button" class="mode" aria-pressed="true" title="Сообщение команде"><MessageSquare :size="16" /></button>
+            <button type="button" class="mode" aria-pressed="false" title="Задание агенту" data-testid="composer-agent" @click="mode = 'agent'"><Bot :size="16" /></button>
+          </Composer>
+          <Composer
+            v-else
+            v-model="prompt"
+            placeholder="Что сделать агенту"
+            label="Задание агенту"
+            testid="agent-prompt"
+            send-testid="agent-start"
+            send-label="Запустить агента"
+            @submit="startAgent"
+          >
+            <button type="button" class="mode" aria-pressed="false" title="Сообщение команде" data-testid="composer-chat" @click="mode = 'chat'"><MessageSquare :size="16" /></button>
+            <button type="button" class="mode" aria-pressed="true" title="Задание агенту"><Bot :size="16" /></button>
+            <VSelect v-model="agentKind" :options="agentKinds" size="small" placeholder="Агент" aria-label="Агент" data-testid="agent-kind" />
+            <VSelect
+              v-model="projectId"
+              :options="projects"
+              option-label="name"
+              option-value="id"
+              size="small"
+              placeholder="Проект"
+              aria-label="Проект агента"
+              data-testid="agent-project"
+            />
+          </Composer>
         </div>
       </div>
       <TaskSide :ctx="ctx" />
@@ -270,6 +334,29 @@ a.key:hover {
 
 .dock {
   padding: 0 var(--vr-space-4) var(--vr-space-4);
+}
+
+.stop {
+  margin-left: auto;
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--vr-color-text-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--vr-radius-md);
+}
+
+.mode:hover,
+.mode[aria-pressed='true'] {
+  color: var(--vr-color-text);
+  background: var(--vr-color-surface-muted);
 }
 
 
