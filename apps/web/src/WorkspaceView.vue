@@ -6,6 +6,7 @@ import Sidebar from './Sidebar.vue';
 import { view, type View } from './nav';
 import TasksView from './views/TasksView.vue';
 import TaskView from './views/TaskView.vue';
+import TopicView from './views/TopicView.vue';
 
 const client = useClient();
 const state = useClientState();
@@ -22,7 +23,7 @@ watch(view, (value) => localStorage.setItem(viewKey, JSON.stringify(value)));
 
 function switchWorkspace(id: string) {
   localStorage.setItem(WORKSPACE_KEY, id);
-  if (view.value.kind === 'task') view.value = { kind: 'tasks' };
+  if (view.value.kind !== 'tasks') view.value = { kind: 'tasks' };
   client.setWorkspace(id);
 }
 
@@ -37,6 +38,7 @@ function toggleTheme() {
     <Sidebar :dark="dark" @switch="switchWorkspace" @theme="toggleTheme" />
     <main class="card">
       <TaskView v-if="view.kind === 'task'" :key="view.id" :task-id="view.id" />
+      <TopicView v-else-if="view.kind === 'topic'" :key="view.id" :topic-id="view.id" />
       <TasksView v-else />
     </main>
   </div>

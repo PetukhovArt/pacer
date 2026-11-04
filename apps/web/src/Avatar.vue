@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-const props = defineProps<{ id: string; name: string; agent?: boolean; small?: boolean }>();
+const props = defineProps<{ id: string; name: string; agent?: boolean; small?: boolean; picture?: string | null }>();
 
 const initials = computed(() =>
   props.name
@@ -16,7 +16,8 @@ const tone = computed(() => ([...props.id].reduce((sum, char) => sum + char.char
 </script>
 
 <template>
-  <span class="avatar" :class="{ agent, small }" :data-tone="tone" aria-hidden="true">{{ initials }}</span>
+  <img v-if="picture" class="avatar" :class="{ agent, small }" :src="picture" alt="" />
+  <span v-else class="avatar" :class="{ agent, small }" :data-tone="tone" aria-hidden="true">{{ initials }}</span>
 </template>
 
 <style scoped>
@@ -28,6 +29,7 @@ const tone = computed(() => ([...props.id].reduce((sum, char) => sum + char.char
   width: var(--vr-size-avatar);
   height: var(--vr-size-avatar);
   border-radius: 50%;
+  object-fit: cover;
   font-size: var(--vr-font-size-xs);
   font-weight: 600;
   line-height: 1;
