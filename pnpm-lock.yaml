@@ -55,6 +55,15 @@ importers:
         specifier: ^26.6.6
         version: 26.6.6
 
+  apps/model-router:
+    dependencies:
+      undici:
+        specifier: ^7.16.0
+        version: 7.30.2
+      yaml:
+        specifier: ^2.8.1
+        version: 2.9.1
+
   apps/runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -2317,6 +2326,10 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
+  undici@7.30.2:
+    resolution: {integrity: sha512-mLyPQnHwUxaM/rideoK/+KL8DaAJLRl4aBCfmX444aCSLnIaomqPLtNRe2jdCYcsk5wZzXrDIQC8ZeYNRAYyIA==}
+    engines: {node: '>=20.18.1'}
+
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
@@ -4352,6 +4365,8 @@ snapshots:
   unbash@6.0.3: {}
 
   undici-types@8.9.0: {}
+
+  undici@7.30.2: {}
 
   unpipe@1.0.0: {}
 
