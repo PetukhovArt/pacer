@@ -11,12 +11,12 @@ use pacer_core::{
     TerminalTab, Workspace, WorkspaceId, Worktree, PROTOCOL_VERSION,
 };
 use serde::Serialize;
-use tauri::ipc::Channel;
-use tauri::State;
 use tokio::io::{BufReader, BufWriter, ReadHalf, WriteHalf};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::task::AbortHandle;
+
+use crate::sink::BoxSink;
 
 const OFFLINE_RETRY: Duration = Duration::from_secs(1);
 const INCOMPATIBLE_RETRY: Duration = Duration::from_secs(5);
@@ -81,7 +81,7 @@ pub struct Pacer(UnboundedSender<Msg>);
 impl Pacer {
     pub fn spawn() -> Self {
         let (tx, rx) = unbounded_channel();
-        tauri::async_runtime::spawn(Actor::new(tx.clone()).run(rx));
+        tokio::spawn(Actor::new(tx.clone()).run(rx));
         Self(tx)
     }
 
@@ -90,18 +90,22 @@ impl Pacer {
     }
 }
 
-#[tauri::command]
-pub fn pacer_watch(pacer: State<'_, Pacer>, on_event: Channel<WatchEvent>) {
+impl Drop for Pacer {
+    fn drop(&mut self) {
+        let _ = self.0.send(Msg::Stop);
+    }
+}
+
+pub fn pacer_watch(pacer: &Pacer, on_event: BoxSink<WatchEvent>) {
     pacer.send(Command::Watch(on_event));
 }
 
-#[tauri::command]
 pub fn pacer_attach(
-    pacer: State<'_, Pacer>,
+    pacer: &Pacer,
     session: SessionRef,
     cols: u16,
     rows: u16,
-    on_event: Channel<SessionEvent>,
+    on_event: BoxSink<SessionEvent>,
 ) {
     pacer.send(Command::Attach {
         session,
@@ -111,16 +115,14 @@ pub fn pacer_attach(
     });
 }
 
-#[tauri::command]
-pub fn pacer_input(pacer: State<'_, Pacer>, session: SessionRef, data: String) {
+pub fn pacer_input(pacer: &Pacer, session: SessionRef, data: String) {
     pacer.send(Command::Input {
         session,
         data: data.into_bytes(),
     });
 }
 
-#[tauri::command]
-pub fn pacer_resize(pacer: State<'_, Pacer>, session: SessionRef, cols: u16, rows: u16) {
+pub fn pacer_resize(pacer: &Pacer, session: SessionRef, cols: u16, rows: u16) {
     pacer.send(Command::Resize {
         session,
         cols,
@@ -128,18 +130,15 @@ pub fn pacer_resize(pacer: State<'_, Pacer>, session: SessionRef, cols: u16, row
     });
 }
 
-#[tauri::command]
-pub fn pacer_detach(pacer: State<'_, Pacer>, session: SessionRef) {
+pub fn pacer_detach(pacer: &Pacer, session: SessionRef) {
     pacer.send(Command::Detach { session });
 }
 
-#[tauri::command]
-pub fn pacer_mark_seen(pacer: State<'_, Pacer>, agent: AgentId) {
+pub fn pacer_mark_seen(pacer: &Pacer, agent: AgentId) {
     pacer.send(Command::MarkSeen { agent });
 }
 
-#[tauri::command]
-pub async fn pacer_call(pacer: State<'_, Pacer>, mut request: serde_json::Value) -> CallResult {
+pub async fn pacer_call(pacer: &Pacer, mut request: serde_json::Value) -> CallResult {
     if let Some(serde_json::Value::Object(fields)) = request
         .as_object_mut()
         .and_then(|tagged| tagged.values_mut().next())
@@ -157,15 +156,16 @@ enum Msg {
     Command(Command),
     Link { epoch: u64, event: LinkEvent },
     CallTimedOut(u64),
+    Stop,
 }
 
 enum Command {
-    Watch(Channel<WatchEvent>),
+    Watch(BoxSink<WatchEvent>),
     Attach {
         session: SessionRef,
         cols: u16,
         rows: u16,
-        channel: Channel<SessionEvent>,
+        channel: BoxSink<SessionEvent>,
     },
     Input {
         session: SessionRef,
@@ -233,7 +233,7 @@ impl From<io::Error> for Failure {
 }
 
 struct Attachment {
-    channel: Channel<SessionEvent>,
+    channel: BoxSink<SessionEvent>,
     next_seq: Option<u64>,
     replaying: bool,
     cols: u16,
@@ -284,7 +284,7 @@ impl Attachment {
 
 struct Actor {
     inbox: UnboundedSender<Msg>,
-    watcher: Option<Channel<WatchEvent>>,
+    watcher: Option<BoxSink<WatchEvent>>,
     shown: Option<(ConnectionState, Option<String>)>,
     attachments: HashMap<SessionRef, Attachment>,
     epoch: u64,
@@ -315,6 +315,10 @@ impl Actor {
                 Msg::Command(command) => self.command(command),
                 Msg::Link { epoch, event } if epoch == self.epoch => self.link(event),
                 Msg::Link { .. } => {}
+                Msg::Stop => {
+                    self.drop_link();
+                    return;
+                }
                 Msg::CallTimedOut(req_id) => {
                     if let Some(reply) = self.pending.remove(&req_id) {
                         let _ = reply.send(Err(format!(

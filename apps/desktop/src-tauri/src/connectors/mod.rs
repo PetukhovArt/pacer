@@ -6,8 +6,8 @@ mod github;
 mod gitlab;
 mod http;
 pub mod jira;
-mod secrets;
-mod types;
+pub mod secrets;
+pub mod types;
 
 use std::collections::HashMap;
 use std::fs;
@@ -19,7 +19,6 @@ use base64::Engine;
 use futures_util::future::join_all;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use tauri::State;
 
 use http::{Api, ApiError, ApiResult};
 use types::{AuthMode, Kind, Person, Status};
@@ -319,13 +318,11 @@ impl Connectors {
     }
 }
 
-#[tauri::command]
-pub async fn connectors_list(state: State<'_, Connectors>) -> Result<Vec<ConnectorView>, String> {
+pub async fn connectors_list(state: &Connectors) -> Result<Vec<ConnectorView>, String> {
     Ok(state.views())
 }
 
-#[tauri::command]
-pub async fn connectors_check(state: State<'_, Connectors>) -> Result<Vec<ConnectorView>, String> {
+pub async fn connectors_check(state: &Connectors) -> Result<Vec<ConnectorView>, String> {
     let records = state.records();
     let results = join_all(records.iter().map(|record| state.check_record(record))).await;
     for (record, result) in records.iter().zip(results.iter()) {
@@ -334,8 +331,7 @@ pub async fn connectors_check(state: State<'_, Connectors>) -> Result<Vec<Connec
     Ok(state.views())
 }
 
-#[tauri::command]
-pub async fn connectors_detect(state: State<'_, Connectors>) -> Result<Vec<Detected>, String> {
+pub async fn connectors_detect(state: &Connectors) -> Result<Vec<Detected>, String> {
     let existing = state.records();
     let known = |kind: Kind, base_url: &str| {
         let host = cli::host_port(base_url);
@@ -355,9 +351,8 @@ pub async fn connectors_detect(state: State<'_, Connectors>) -> Result<Vec<Detec
         .collect())
 }
 
-#[tauri::command]
 pub async fn connector_add(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     kind: Kind,
     base_url: String,
     label: Option<String>,
@@ -430,9 +425,8 @@ pub async fn connector_add(
     Ok(view(&record, inner.health.get(&record.id)))
 }
 
-#[tauri::command]
 pub async fn connector_update(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     id: String,
     label: Option<String>,
     token: Option<String>,
@@ -484,8 +478,7 @@ pub async fn connector_update(
     Ok(view(&record, inner.health.get(&id)))
 }
 
-#[tauri::command]
-pub async fn connector_remove(state: State<'_, Connectors>, id: String) -> Result<(), String> {
+pub async fn connector_remove(state: &Connectors, id: String) -> Result<(), String> {
     let mut records = state.records();
     let before = records.len();
     records.retain(|record| record.id != id);
@@ -522,12 +515,7 @@ fn asset_allowed(kind: Kind, base_host: &str, host: &str) -> bool {
             || host == "githubusercontent.com")
 }
 
-#[tauri::command]
-pub async fn connector_asset(
-    state: State<'_, Connectors>,
-    id: String,
-    url: String,
-) -> Result<Asset, String> {
+pub async fn connector_asset(state: &Connectors, id: String, url: String) -> Result<Asset, String> {
     let ctx = state
         .ctx(
             &id,

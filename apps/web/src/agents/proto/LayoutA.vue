@@ -16,6 +16,9 @@ import MarkdownPicker from './MarkdownPicker.vue';
 import NavNotices from './NavNotices.vue';
 import QuickSwitcher from './QuickSwitcher.vue';
 import SidePane from '../../SidePane.vue';
+import BackBar from '../../mobile/BackBar.vue';
+import TerminalKeys from '../../mobile/TerminalKeys.vue';
+import { useIsMobile } from '../../mobile/useIsMobile';
 import { listWorktreeMarkdown, type MarkdownEntry } from './markdownFiles';
 import { rollupOf, workspaceSessions, type Rollup } from './nav';
 import { provideQuickOpen } from './quickOpen';
@@ -44,6 +47,9 @@ const state = useAgentsDock({
   },
 });
 const { pacer, activeKey, paths } = state;
+const mobile = useIsMobile();
+const mobileDetail = shallowRef(false);
+const activeSession = computed(() => (activeKey.value ? pacer?.sessions.value.get(activeKey.value) : undefined));
 
 const switching = shallowRef(false);
 const entries = computed(() => [...paths.value.values()]);
@@ -64,6 +70,11 @@ watch(switching, async (on) => {
 function pick(session: SessionNode) {
   switching.value = false;
   state.open(session);
+}
+
+function openTreeFile(path: string, worktreeId: string) {
+  state.openFile(path, { worktreeId });
+  mobileDetail.value = mobile.value;
 }
 
 function pickFile(path: string) {
@@ -189,6 +200,7 @@ function onGroupClick(row: GroupRow) {
 function openSession(session: SessionNode) {
   setCursor(session.key);
   state.open(session);
+  mobileDetail.value = mobile.value;
   tree.value?.focus();
 }
 
@@ -254,8 +266,8 @@ function countOf(row: GroupRow): string {
 </script>
 
 <template>
-  <div class="layout">
-    <SidePane storage-key="veyra.agents.a.width" :default-width="300">
+  <div class="layout" :data-mobile="mobile" :data-detail="mobileDetail">
+    <SidePane class="tree-pane" storage-key="veyra.agents.a.width" :default-width="300">
       <div class="head">
         <span>{{ t('agents.layouts.explorer') }}</span>
         <span class="head-actions">
@@ -317,7 +329,7 @@ function countOf(row: GroupRow): string {
               </button>
               <template v-if="row.kind === 'worktree'">
                 <WorktreeBadge v-if="row.path" :path="row.path" :branch="row.label" @open="openReview" />
-                <MarkdownPicker v-if="row.path" :root="row.path" @open="state.openFile($event, { worktreeId: row.entityId })" />
+                <MarkdownPicker v-if="row.path" :root="row.path" @open="openTreeFile($event, row.entityId)" />
                 <button class="add" :title="t('agents.newSession.action')" :aria-label="t('agents.newSession.action')" data-testid="worktree-new-session" @click="state.creatingIn.value = row.entityId"><Plus :size="14" /></button>
               </template>
               <WorkspaceActions v-else-if="row.kind === 'workspace'" class="node-actions" :workspace-id="row.entityId" />
@@ -328,7 +340,9 @@ function countOf(row: GroupRow): string {
         </div>
       </div>
     </SidePane>
-    <DockArea :active-key="activeKey" :paths="paths" group-labels @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })" />
+    <BackBar v-if="mobile && mobileDetail" :title="activeSession?.name" @back="mobileDetail = false" />
+    <DockArea class="dock-slot" :active-key="activeKey" :paths="paths" group-labels @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })" />
+    <TerminalKeys v-if="mobile && mobileDetail && activeSession" :session="activeSession.ref" />
     <Transition name="qs">
       <QuickSwitcher v-if="switching" :entries="entries" :files="switcherFiles" :file-scope="state.activeWorktree.value?.branch" @select="pick" @select-file="pickFile" @close="switching = false" />
     </Transition>
@@ -342,6 +356,27 @@ function countOf(row: GroupRow): string {
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+.layout[data-mobile='true'] {
+  flex-direction: column;
+}
+
+.layout[data-mobile='true'] > .tree-pane {
+  flex: 1;
+  width: 100% !important;
+  max-width: none;
+  border-right: 0;
+  min-height: 0;
+}
+
+.layout[data-mobile='true'] > .tree-pane :deep(.resize-handle) {
+  display: none;
+}
+
+.layout[data-mobile='true'][data-detail='true'] > .tree-pane,
+.layout[data-mobile='true'][data-detail='false'] > .dock-slot {
+  display: none;
 }
 
 .head {

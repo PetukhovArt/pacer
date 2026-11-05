@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../bridge';
+export { openUrl } from '../bridge';
 import { shallowRef, type ShallowRef } from 'vue';
 
 export type ConnectorKind = 'github' | 'gitlab' | 'jira' | 'confluence';
@@ -129,14 +130,6 @@ export function describeError(error: unknown): string {
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message;
   return String(error);
-}
-
-export async function openUrl(url: string): Promise<void> {
-  try {
-    await invoke<void>('plugin:opener|open_url', { url });
-  } catch {
-    window.open(url, '_blank', 'noopener');
-  }
 }
 
 export const connectorsList =() => invoke<ConnectorView[]>('connectors_list');

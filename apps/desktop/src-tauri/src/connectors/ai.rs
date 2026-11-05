@@ -7,7 +7,6 @@ use base64::Engine;
 use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::State;
 use tokio::process::Command;
 
 use super::cli::capture;
@@ -612,13 +611,11 @@ fn ensure_installed(spec: &CliSpec) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
-pub async fn ai_list(state: State<'_, Connectors>) -> Result<Vec<AiView>, String> {
+pub async fn ai_list(state: &Connectors) -> Result<Vec<AiView>, String> {
     Ok(ALL.iter().map(|kind| state.ai.snapshot(*kind)).collect())
 }
 
-#[tauri::command]
-pub async fn ai_check(state: State<'_, Connectors>) -> Result<Vec<AiView>, String> {
+pub async fn ai_check(state: &Connectors) -> Result<Vec<AiView>, String> {
     let views = join_all(ALL.iter().map(|kind| check_kind(*kind))).await;
     for view in &views {
         state.ai.put(view);
@@ -626,23 +623,20 @@ pub async fn ai_check(state: State<'_, Connectors>) -> Result<Vec<AiView>, Strin
     Ok(views)
 }
 
-#[tauri::command]
-pub async fn ai_refresh(state: State<'_, Connectors>, kind: AiKind) -> Result<AiView, String> {
+pub async fn ai_refresh(state: &Connectors, kind: AiKind) -> Result<AiView, String> {
     let view = check_kind(kind).await;
     state.ai.put(&view);
     Ok(view)
 }
 
-#[tauri::command]
-pub async fn ai_login(state: State<'_, Connectors>, kind: AiKind) -> Result<(), String> {
+pub async fn ai_login(state: &Connectors, kind: AiKind) -> Result<(), String> {
     let spec = cli_spec(kind)?;
     ensure_installed(&spec)?;
     state.ai.drop_kind(kind);
     open_console(spec.login).await
 }
 
-#[tauri::command]
-pub async fn ai_logout(state: State<'_, Connectors>, kind: AiKind) -> Result<(), String> {
+pub async fn ai_logout(state: &Connectors, kind: AiKind) -> Result<(), String> {
     let spec = cli_spec(kind)?;
     ensure_installed(&spec)?;
     state.ai.drop_kind(kind);
@@ -660,12 +654,7 @@ pub async fn ai_logout(state: State<'_, Connectors>, kind: AiKind) -> Result<(),
     }
 }
 
-#[tauri::command]
-pub async fn ai_key_set(
-    state: State<'_, Connectors>,
-    kind: AiKind,
-    key: String,
-) -> Result<AiView, String> {
+pub async fn ai_key_set(state: &Connectors, kind: AiKind, key: String) -> Result<AiView, String> {
     if kind.key().is_none() {
         return Err(format!("{}: вход через CLI, ключ не нужен", kind.label()));
     }
@@ -683,8 +672,7 @@ pub async fn ai_key_set(
     Ok(view)
 }
 
-#[tauri::command]
-pub async fn ai_key_remove(state: State<'_, Connectors>, kind: AiKind) -> Result<(), String> {
+pub async fn ai_key_remove(state: &Connectors, kind: AiKind) -> Result<(), String> {
     if kind.key().is_none() {
         return Err(format!("{}: ключ не используется", kind.label()));
     }
@@ -693,8 +681,7 @@ pub async fn ai_key_remove(state: State<'_, Connectors>, kind: AiKind) -> Result
     Ok(())
 }
 
-#[tauri::command]
-pub async fn ai_env(state: State<'_, Connectors>) -> Result<HashMap<String, String>, String> {
+pub async fn ai_env(state: &Connectors) -> Result<HashMap<String, String>, String> {
     let mut env = HashMap::new();
     for kind in ALL {
         let Some(spec) = kind.key() else { continue };

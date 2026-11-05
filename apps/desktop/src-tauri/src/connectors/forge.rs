@@ -1,6 +1,5 @@
 use futures_util::future::join_all;
 use reqwest::Url;
-use tauri::State;
 
 use super::http::ApiResult;
 use super::types::{
@@ -24,10 +23,9 @@ async fn inbox_of(state: &Connectors, id: &str) -> Result<Vec<InboxItem>, String
     items.map_err(String::from)
 }
 
-#[tauri::command]
-pub async fn forge_inbox(state: State<'_, Connectors>) -> Result<Inbox, String> {
+pub async fn forge_inbox(state: &Connectors) -> Result<Inbox, String> {
     let records = state.forge_records();
-    let results = join_all(records.iter().map(|record| inbox_of(&state, &record.id))).await;
+    let results = join_all(records.iter().map(|record| inbox_of(state, &record.id))).await;
     let mut items = Vec::new();
     let mut errors = Vec::new();
     for (record, result) in records.iter().zip(results) {
@@ -72,9 +70,8 @@ fn base_parts(base_url: &str) -> Option<(String, String)> {
     ))
 }
 
-#[tauri::command]
 pub async fn forge_for_worktree(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     path: String,
     branch: String,
 ) -> Result<Option<ChangeRequestSummary>, String> {
@@ -100,7 +97,7 @@ pub async fn forge_for_worktree(
             .strip_prefix(&format!("{prefix}/"))
             .unwrap_or(&remote_path)
     };
-    let ctx = forge_ctx(&state, &record.id).await?;
+    let ctx = forge_ctx(state, &record.id).await?;
     let summary = match ctx.kind {
         Kind::Github => github::for_branch(&ctx, project, &branch).await,
         _ => gitlab::for_branch(&ctx, project, &branch).await,
@@ -108,14 +105,13 @@ pub async fn forge_for_worktree(
     summary.map_err(String::from)
 }
 
-#[tauri::command]
 pub async fn forge_change_request(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     project: String,
     number: u64,
 ) -> Result<ChangeRequest, String> {
-    let ctx = forge_ctx(&state, &connector).await?;
+    let ctx = forge_ctx(state, &connector).await?;
     match ctx.kind {
         Kind::Github => github::change_request(&ctx, &project, number).await,
         _ => gitlab::change_request(&ctx, &project, number).await,
@@ -123,14 +119,13 @@ pub async fn forge_change_request(
     .map_err(String::from)
 }
 
-#[tauri::command]
 pub async fn forge_diff(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     project: String,
     number: u64,
 ) -> Result<Vec<DiffFile>, String> {
-    let ctx = forge_ctx(&state, &connector).await?;
+    let ctx = forge_ctx(state, &connector).await?;
     match ctx.kind {
         Kind::Github => github::diff(&ctx, &project, number).await,
         _ => gitlab::diff(&ctx, &project, number).await,
@@ -138,14 +133,13 @@ pub async fn forge_diff(
     .map_err(String::from)
 }
 
-#[tauri::command]
 pub async fn forge_discussions(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     project: String,
     number: u64,
 ) -> Result<Vec<Discussion>, String> {
-    let ctx = forge_ctx(&state, &connector).await?;
+    let ctx = forge_ctx(state, &connector).await?;
     match ctx.kind {
         Kind::Github => github::discussions(&ctx, &project, number).await,
         _ => gitlab::discussions(&ctx, &project, number).await,
@@ -153,14 +147,13 @@ pub async fn forge_discussions(
     .map_err(String::from)
 }
 
-#[tauri::command]
 pub async fn forge_pipeline(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     project: String,
     number: u64,
 ) -> Result<Option<Pipeline>, String> {
-    let ctx = forge_ctx(&state, &connector).await?;
+    let ctx = forge_ctx(state, &connector).await?;
     match ctx.kind {
         Kind::Github => github::pipeline(&ctx, &project, number).await,
         _ => gitlab::pipeline(&ctx, &project, number).await,
@@ -168,15 +161,14 @@ pub async fn forge_pipeline(
     .map_err(String::from)
 }
 
-#[tauri::command]
 pub async fn forge_file(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     project: String,
     r#ref: String,
     path: String,
 ) -> Result<String, String> {
-    let ctx = forge_ctx(&state, &connector).await?;
+    let ctx = forge_ctx(state, &connector).await?;
     match ctx.kind {
         Kind::Github => github::file(&ctx, &project, &r#ref, &path).await,
         _ => gitlab::file(&ctx, &project, &r#ref, &path).await,

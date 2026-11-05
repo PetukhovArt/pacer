@@ -4,14 +4,15 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde::Serialize;
-use tauri::async_runtime::{spawn_blocking, JoinHandle};
-use tauri::ipc::Channel;
+use tokio::task::{spawn_blocking, JoinHandle};
+
+use crate::sink::BoxSink;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 const TEXT_LIMIT: u64 = 20 * 1024 * 1024;
@@ -24,8 +25,24 @@ const EXECUTABLE_EXTENSIONS: [&str; 24] = [
     "wsh", "lnk", "hta", "reg", "jar", "sh", "bash", "command", "app", "pif", "cpl",
 ];
 
-static WATCHES: OnceLock<Mutex<HashMap<u32, JoinHandle<()>>>> = OnceLock::new();
 static NEXT_WATCH: AtomicU32 = AtomicU32::new(1);
+
+#[derive(Default)]
+pub struct FileWatches(Mutex<HashMap<u32, JoinHandle<()>>>);
+
+impl FileWatches {
+    fn slots(&self) -> std::sync::MutexGuard<'_, HashMap<u32, JoinHandle<()>>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl Drop for FileWatches {
+    fn drop(&mut self) {
+        for (_, task) in self.slots().drain() {
+            task.abort();
+        }
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct BinaryFile {
@@ -42,10 +59,6 @@ pub struct FileChanged {
 struct Signature {
     modified: Option<SystemTime>,
     len: u64,
-}
-
-fn watches() -> &'static Mutex<HashMap<u32, JoinHandle<()>>> {
-    WATCHES.get_or_init(Default::default)
 }
 
 fn signature(path: &Path) -> Option<Signature> {
@@ -93,14 +106,12 @@ fn mime_of(path: &Path) -> &'static str {
     }
 }
 
-#[tauri::command]
 pub async fn fs_read_text(path: String) -> Result<String, String> {
     spawn_blocking(move || read_text(Path::new(&path)))
         .await
         .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
 pub async fn fs_read_binary(path: String) -> Result<BinaryFile, String> {
     spawn_blocking(move || {
         let path = PathBuf::from(path);
@@ -114,10 +125,9 @@ pub async fn fs_read_binary(path: String) -> Result<BinaryFile, String> {
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-pub fn fs_watch(path: String, on_event: Channel<FileChanged>) -> u32 {
+pub fn fs_watch(watches: &FileWatches, path: String, on_event: BoxSink<FileChanged>) -> u32 {
     let id = NEXT_WATCH.fetch_add(1, Ordering::Relaxed);
-    let task = tauri::async_runtime::spawn(async move {
+    let task = tokio::spawn(async move {
         let path = PathBuf::from(path);
         let mut seen = signature(&path);
         loop {
@@ -128,24 +138,17 @@ pub fn fs_watch(path: String, on_event: Channel<FileChanged>) -> u32 {
             }
             let Ok(text) = read_text(&path) else { continue };
             seen = current;
-            if on_event.send(FileChanged { text }).is_err() {
+            if !on_event.send(FileChanged { text }) {
                 return;
             }
         }
     });
-    watches()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(id, task);
+    watches.slots().insert(id, task);
     id
 }
 
-#[tauri::command]
-pub fn fs_unwatch(id: u32) {
-    let task = watches()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(&id);
+pub fn fs_unwatch(watches: &FileWatches, id: u32) {
+    let task = watches.slots().remove(&id);
     if let Some(task) = task {
         task.abort();
     }
@@ -180,7 +183,6 @@ fn collect_markdown(root: &Path) -> Vec<String> {
     found
 }
 
-#[tauri::command]
 pub async fn fs_list_markdown(root: String) -> Result<Vec<String>, String> {
     spawn_blocking(move || {
         let root = PathBuf::from(root);
@@ -193,7 +195,6 @@ pub async fn fs_list_markdown(root: String) -> Result<Vec<String>, String> {
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
 pub async fn fs_open_external(path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if !path.exists() {

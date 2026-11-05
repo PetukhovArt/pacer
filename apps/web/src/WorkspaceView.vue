@@ -4,6 +4,8 @@ import { useClient, useClientState } from '@core/vue-bindings';
 import AgentsView from './agents/AgentsView.vue';
 import CommandPalette from './commands/CommandPalette.vue';
 import { paletteOpen } from './commands/context';
+import MobileNav from './mobile/MobileNav.vue';
+import { useIsMobile } from './mobile/useIsMobile';
 import Sidebar from './Sidebar.vue';
 import TitleBar from './TitleBar.vue';
 import { navigate, view, type View } from './nav';
@@ -17,6 +19,7 @@ import TaskView from './views/TaskView.vue';
 import TopicView from './views/TopicView.vue';
 
 const inTauri = '__TAURI_INTERNALS__' in window;
+const mobile = useIsMobile();
 const client = useClient();
 const state = useClientState();
 const WORKSPACE_KEY = 'veyra.workspace';
@@ -39,8 +42,8 @@ function switchWorkspace(id: string) {
 <template>
   <div class="shell">
     <TitleBar v-if="inTauri" />
-    <div class="body">
-      <Sidebar :dark="isDark" @switch="switchWorkspace" @theme="toggleTheme" />
+    <div class="body" :data-mobile="mobile">
+      <Sidebar v-if="!mobile" :dark="isDark" @switch="switchWorkspace" @theme="toggleTheme" />
       <main class="card vt-main">
         <KeepAlive include="AgentsView">
           <AgentsView v-if="view.kind === 'agents'" />
@@ -54,6 +57,7 @@ function switchWorkspace(id: string) {
         </KeepAlive>
       </main>
     </div>
+    <MobileNav v-if="mobile" />
     <Transition name="palette">
       <CommandPalette v-if="paletteOpen" />
     </Transition>
@@ -75,6 +79,16 @@ function switchWorkspace(id: string) {
   grid-template-columns: auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
+}
+
+.body[data-mobile='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.body[data-mobile='true'] .card {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .card {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch, type Component } from 'vue';
-import { ExternalLink, FileJson, History, Keyboard, Palette, Plug, Search, SlidersHorizontal, SquareTerminal } from 'lucide-vue-next';
+import { ExternalLink, FileJson, History, Keyboard, Palette, Plug, Search, SlidersHorizontal, Smartphone, SquareTerminal } from 'lucide-vue-next';
 import { VButton, VInputText, VMessage } from '@ui/kit';
 import ConnectorsPanel from '../connectors/ConnectorsPanel.vue';
 import { useI18n } from '../i18n';
@@ -8,6 +8,7 @@ import { withViewTransition } from '../motion';
 import { requestedSettingsCategory } from '../nav';
 import SettingRow from './SettingRow.vue';
 import KeymapPanel from './KeymapPanel.vue';
+import RemotePanel from './RemotePanel.vue';
 import SettingsJsonEditor from './SettingsJsonEditor.vue';
 import { CATEGORIES, SETTINGS, SETTING_KEYS } from './schema';
 import { useSettings } from './store';
@@ -21,13 +22,14 @@ type CategoryId = (typeof CATEGORIES)[number]['id'];
 const category = shallowRef<CategoryId>('appearance');
 const rawMode = shallowRef(false);
 
-const CATEGORY_ICONS: Record<CategoryId, Component> = { appearance: Palette, terminal: SquareTerminal, sessions: History, connectors: Plug, keymap: Keyboard };
+const CATEGORY_ICONS: Record<CategoryId, Component> = { appearance: Palette, terminal: SquareTerminal, sessions: History, connectors: Plug, remote: Smartphone, keymap: Keyboard };
 
 const normalizedQuery = computed(() => query.value.trim().toLowerCase());
 watch(normalizedQuery, (value) => {
   if (value) rawMode.value = false;
 });
 const showKeymap = computed(() => !normalizedQuery.value && category.value === 'keymap');
+const showRemote = computed(() => !normalizedQuery.value && category.value === 'remote');
 const showConnectors = computed(() => {
   if (!normalizedQuery.value) return category.value === 'connectors';
   const keywords = t('settings.connectorKeywords');
@@ -137,6 +139,9 @@ function onSearchKey(event: KeyboardEvent) {
         <div v-else class="list" :class="{ locked: parseError }" data-testid="settings-list">
           <section v-if="showConnectors" class="group" data-testid="settings-connectors">
             <ConnectorsPanel />
+          </section>
+          <section v-if="showRemote" class="group" data-testid="settings-remote">
+            <RemotePanel />
           </section>
           <section v-for="group in groups" :key="group.id" v-auto-animate class="group">
             <h2 v-if="normalizedQuery">{{ t(group.label) }}</h2>

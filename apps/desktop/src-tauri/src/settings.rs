@@ -7,9 +7,9 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use tauri::async_runtime::JoinHandle;
-use tauri::ipc::Channel;
-use tauri::State;
+use tokio::task::JoinHandle;
+
+use crate::sink::BoxSink;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -47,6 +47,15 @@ impl ConfigFile {
 #[derive(Default)]
 pub struct SettingsWatch(Mutex<HashMap<ConfigFile, JoinHandle<()>>>);
 
+impl Drop for SettingsWatch {
+    fn drop(&mut self) {
+        let slots = self.0.get_mut().unwrap_or_else(|e| e.into_inner());
+        for (_, task) in slots.drain() {
+            task.abort();
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct SettingsChanged {
     text: String,
@@ -58,7 +67,7 @@ struct Signature {
     len: u64,
 }
 
-fn veyra_dir() -> Result<PathBuf, String> {
+pub fn veyra_dir() -> Result<PathBuf, String> {
     let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     std::env::var_os(var)
         .map(|home| PathBuf::from(home).join(".veyra"))
@@ -74,6 +83,13 @@ fn read_text(path: &Path) -> io::Result<String> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(String::new()),
         other => other,
     }
+}
+
+pub fn settings_text() -> String {
+    config_path(ConfigFile::Settings)
+        .ok()
+        .and_then(|path| read_text(&path).ok())
+        .unwrap_or_default()
 }
 
 fn signature(path: &Path) -> Option<Signature> {
@@ -93,13 +109,11 @@ fn write_atomic(dir: &Path, file: ConfigFile, text: &str) -> io::Result<()> {
     })
 }
 
-#[tauri::command]
 pub async fn settings_read(file: Option<ConfigFile>) -> Result<String, String> {
     let path = config_path(file.unwrap_or_default())?;
     read_text(&path).map_err(|e| format!("не удалось прочитать {}: {e}", path.display()))
 }
 
-#[tauri::command]
 pub async fn settings_write(text: String, file: Option<ConfigFile>) -> Result<(), String> {
     let file = file.unwrap_or_default();
     let dir = veyra_dir()?;
@@ -111,14 +125,13 @@ pub async fn settings_write(text: String, file: Option<ConfigFile>) -> Result<()
     })
 }
 
-#[tauri::command]
 pub fn settings_watch(
-    watch: State<'_, SettingsWatch>,
-    on_event: Channel<SettingsChanged>,
+    watch: &SettingsWatch,
+    on_event: BoxSink<SettingsChanged>,
     file: Option<ConfigFile>,
 ) {
     let file = file.unwrap_or_default();
-    let task = tauri::async_runtime::spawn(async move {
+    let task = tokio::spawn(async move {
         let Ok(path) = config_path(file) else { return };
         let mut seen = signature(&path);
         loop {
@@ -129,7 +142,7 @@ pub fn settings_watch(
             }
             let Ok(text) = read_text(&path) else { continue };
             seen = current;
-            if on_event.send(SettingsChanged { text }).is_err() {
+            if !on_event.send(SettingsChanged { text }) {
                 return;
             }
         }
@@ -140,7 +153,6 @@ pub fn settings_watch(
     }
 }
 
-#[tauri::command]
 pub async fn settings_open_external(file: Option<ConfigFile>) -> Result<(), String> {
     let file = file.unwrap_or_default();
     let dir = veyra_dir()?;

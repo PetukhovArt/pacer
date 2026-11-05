@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../bridge';
 import { shallowRef, type ShallowRef } from 'vue';
 import { describeError } from './api';
 

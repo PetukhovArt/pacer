@@ -3,6 +3,7 @@ import { computed, onMounted, shallowRef, type Component } from 'vue';
 import { Bot, Brain, Cpu, ExternalLink, Gem, KeyRound, Sparkles, Waypoints, Zap } from 'lucide-vue-next';
 import { VButton, VInputText, VMessage } from '@ui/kit';
 import { useI18n } from '../i18n';
+import { isDesktop } from '../bridge';
 import { describeError, openUrl } from './api';
 import { useAiAccounts, type AiKind, type AiStatus, type AiView } from './ai';
 
@@ -66,8 +67,8 @@ function expiry(a: AiView): string | null {
 }
 
 const hasKey = (a: AiView) => a.method === 'key' && a.status !== 'signed_out';
-const canLogin = (a: AiView) => a.method === 'cli' && a.status !== 'not_installed' && a.status !== 'signed_in';
-const canLogout = (a: AiView) => a.method === 'cli' && a.status === 'signed_in';
+const canLogin = (a: AiView) => isDesktop && a.method === 'cli' && a.status !== 'not_installed' && a.status !== 'signed_in';
+const canLogout = (a: AiView) => isDesktop && a.method === 'cli' && a.status === 'signed_in';
 const gemini = (a: AiView) => a.kind === 'gemini';
 
 const confirmingLogout = shallowRef<AiKind | null>(null);

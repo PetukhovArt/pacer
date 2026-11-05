@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use tauri::State;
 
 use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{Kind, Person};
@@ -133,9 +132,8 @@ fn names(list: &Value) -> Vec<String> {
         .collect()
 }
 
-#[tauri::command]
 pub async fn jira_search(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     jql: String,
     start: Option<u32>,
@@ -182,9 +180,8 @@ pub async fn jira_search(
     Ok(JiraSearch { total, issues })
 }
 
-#[tauri::command]
 pub async fn jira_issue(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     key: String,
 ) -> Result<JiraIssue, String> {

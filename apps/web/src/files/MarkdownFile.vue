@@ -5,7 +5,7 @@ import { describeError } from '../connectors/api';
 import { highlightLines } from '../content/highlight';
 import RichContent from '../content/RichContent.vue';
 import { t } from '../i18n';
-import { fsOpenExternal, fsReadText, fsWatch } from './api';
+import { canOpenExternal, fsOpenExternal, fsReadText, fsWatch } from './api';
 
 type Mode = 'code' | 'split' | 'preview';
 type Heading = { id: string; level: number; text: string; line: number };
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </span>
-      <button class="mode" :title="t('files.markdown.openExternalTitle')" data-testid="markdown-open-external" @click="openExternal"><ExternalLink :size="14" />{{ t('files.markdown.openExternal') }}</button>
+      <button v-if="canOpenExternal" class="mode" :title="t('files.markdown.openExternalTitle')" data-testid="markdown-open-external" @click="openExternal"><ExternalLink :size="14" />{{ t('files.markdown.openExternal') }}</button>
     </header>
 
     <p v-if="failure" class="status failure" role="alert" data-testid="markdown-failure">{{ failure }}</p>

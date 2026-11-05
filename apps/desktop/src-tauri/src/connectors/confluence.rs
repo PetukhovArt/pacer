@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use tauri::State;
 
 use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{Kind, Person};
@@ -111,9 +110,8 @@ pub async fn whoami(ctx: &Ctx) -> ApiResult<Person> {
     })
 }
 
-#[tauri::command]
 pub async fn confluence_search(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     text: String,
     limit: Option<u32>,
@@ -194,9 +192,8 @@ fn hit_from_content(ctx: &Ctx, item: &Value) -> Option<ConfluenceHit> {
     })
 }
 
-#[tauri::command]
 pub async fn confluence_page(
-    state: State<'_, Connectors>,
+    state: &Connectors,
     connector: String,
     id: String,
 ) -> Result<ConfluencePage, String> {

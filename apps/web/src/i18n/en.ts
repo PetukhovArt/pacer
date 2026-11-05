@@ -11,6 +11,8 @@ import { jira } from './en/jira';
 import { reviews } from './en/reviews';
 import { settings } from './en/settings';
 import { shell } from './en/shell';
+import { mobile } from './en/mobile';
+import { remote } from './en/remote';
 import { tasks } from './en/tasks';
 
-export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files } as const;
+export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files, remote, mobile } as const;

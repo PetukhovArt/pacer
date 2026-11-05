@@ -22,3 +22,6 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "linux-
 futures-util = "0.3"
 url = "2"
 tauri-plugin-opener = "2"
+axum = { version = "0.8", features = ["ws"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+getrandom = "0.3"

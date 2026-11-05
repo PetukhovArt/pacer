@@ -1,4 +1,4 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { createChannel, hasBackend, invoke, isDesktop } from '../bridge';
 
 export type ConfigFile = 'settings' | 'keymap';
 
@@ -11,9 +11,7 @@ export type Backend = {
   openExternal: (() => Promise<void>) | null;
 };
 
-const inTauri = '__TAURI_INTERNALS__' in window;
-
-function tauriBackend(file: ConfigFile): Backend {
+function appBackend(file: ConfigFile): Backend {
   const cacheKey = `veyra.${file}.cache`;
   return {
     cached: () => localStorage.getItem(cacheKey) ?? '',
@@ -21,9 +19,9 @@ function tauriBackend(file: ConfigFile): Backend {
     read: () => invoke<string>('settings_read', { file }),
     write: (text) => invoke<void>('settings_write', { text, file }),
     watch: (onText) => {
-      void invoke<void>('settings_watch', { onEvent: new Channel<{ text: string }>((event) => onText(event.text)), file });
+      void invoke<void>('settings_watch', { onEvent: createChannel<{ text: string }>((event) => onText(event.text)), file });
     },
-    openExternal: () => invoke<void>('settings_open_external', { file }),
+    openExternal: isDesktop ? () => invoke<void>('settings_open_external', { file }) : null,
   };
 }
 
@@ -47,5 +45,5 @@ function browserBackend(file: ConfigFile): Backend {
 }
 
 export function createBackend(file: ConfigFile): Backend {
-  return inTauri ? tauriBackend(file) : browserBackend(file);
+  return hasBackend ? appBackend(file) : browserBackend(file);
 }

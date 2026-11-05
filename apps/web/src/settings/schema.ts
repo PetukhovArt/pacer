@@ -1,7 +1,7 @@
 import type { MessageKey } from '../i18n';
 import { tr } from './translate';
 
-type Category = 'appearance' | 'terminal' | 'sessions' | 'connectors' | 'keymap';
+type Category = 'appearance' | 'terminal' | 'sessions' | 'connectors' | 'remote' | 'keymap';
 type Option = { readonly value: string; readonly label: MessageKey };
 type Base = { readonly label: MessageKey; readonly description: MessageKey; readonly category: Category };
 type BooleanDef = Base & { readonly type: 'boolean'; readonly default: boolean };
@@ -15,6 +15,7 @@ export const CATEGORIES = [
   { id: 'terminal', label: 'settings.category.terminal' },
   { id: 'sessions', label: 'settings.category.sessions' },
   { id: 'connectors', label: 'settings.category.connectors' },
+  { id: 'remote', label: 'remote.category' },
   { id: 'keymap', label: 'settings.category.keymap' },
 ] as const satisfies readonly { readonly id: Category; readonly label: MessageKey }[];
 
@@ -134,6 +135,35 @@ export const SETTINGS = {
     description: 'settings.def.sessionsDefaultEffort.description',
     category: 'sessions',
     placeholder: 'settings.def.sessionsDefaultEffort.placeholder',
+  },
+  'remote.enabled': {
+    type: 'boolean',
+    default: false,
+    label: 'remote.def.enabled.label',
+    description: 'remote.def.enabled.description',
+    category: 'remote',
+  },
+  'remote.bind': {
+    type: 'enum',
+    default: 'localhost',
+    label: 'remote.def.bind.label',
+    description: 'remote.def.bind.description',
+    category: 'remote',
+    options: [
+      { value: 'localhost', label: 'remote.def.bind.localhost' },
+      { value: 'lan', label: 'remote.def.bind.lan' },
+      { value: 'tailscale', label: 'remote.def.bind.tailscale' },
+    ],
+  },
+  'remote.port': {
+    type: 'number',
+    default: 4477,
+    label: 'remote.def.port.label',
+    description: 'remote.def.port.description',
+    category: 'remote',
+    min: 1024,
+    max: 65535,
+    step: 1,
   },
 } as const satisfies Record<string, SettingDef>;
 

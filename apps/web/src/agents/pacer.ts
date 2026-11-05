@@ -1,4 +1,4 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { createChannel, hasBackend, invoke } from '../bridge';
 import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue';
 import { t } from '../i18n';
 
@@ -198,7 +198,7 @@ function createStore(): PacerStore {
     }
   }
 
-  watching = invoke<void>('pacer_watch', { onEvent: new Channel<WatchEvent>(receive) }).catch((e: unknown) => {
+  watching = invoke<void>('pacer_watch', { onEvent: createChannel<WatchEvent>(receive) }).catch((e: unknown) => {
     error.value = describeError(e);
   });
 
@@ -208,14 +208,14 @@ function createStore(): PacerStore {
 }
 
 export function usePacer(): PacerStore | null {
-  if (!('__TAURI_INTERNALS__' in window)) return null;
+  if (!hasBackend) return null;
   store ??= createStore();
   return store;
 }
 
 export async function attachSession(session: SessionRef, cols: number, rows: number, onEvent: (event: SessionEvent) => void): Promise<void> {
   await watching;
-  await invoke<void>('pacer_attach', { session, cols, rows, onEvent: new Channel<SessionEvent>(onEvent) });
+  await invoke<void>('pacer_attach', { session, cols, rows, onEvent: createChannel<SessionEvent>(onEvent) });
 }
 
 export function detachSession(session: SessionRef): Promise<void> {

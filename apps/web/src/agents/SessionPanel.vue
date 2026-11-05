@@ -7,6 +7,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { attachSession, detachSession, resizeSession, sendInput, sessionId, type SessionEvent, type SessionRef } from './pacer';
 import { t } from '../i18n';
+import { applyCtrl } from '../mobile/keys';
 import { useSettings } from '../settings/store';
 import { zoomTerminal } from './terminalFont';
 
@@ -72,7 +73,7 @@ onMounted(() => {
 
   let disposed = false;
   let fromKeyboard = false;
-  const input = (data: string) => void sendInput(session, data);
+  const input = (data: string) => void sendInput(session, applyCtrl(data));
 
   term.attachCustomKeyEventHandler((event) => {
     fromKeyboard = true;

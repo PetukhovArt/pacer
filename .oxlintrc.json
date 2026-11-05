@@ -13,6 +13,12 @@
           { "name": "WebSocket", "message": "Сеть только через @core/client-sdk." }
         ]
       }
+    },
+    {
+      "files": ["apps/web/src/bridge.ts"],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
     }
   ]
 }
