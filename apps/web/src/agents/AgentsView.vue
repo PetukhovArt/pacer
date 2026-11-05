@@ -1,27 +1,105 @@
 <script setup lang="ts">
 import 'dockview-vue/dist/styles/dockview.css';
-import { computed, onActivated, onBeforeUnmount, onDeactivated, shallowRef, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, shallowRef, useTemplateRef, watch } from 'vue';
 import { DockviewVue, themeLight, type DockviewApi, type DockviewReadyEvent } from 'dockview-vue';
-import { X } from 'lucide-vue-next';
-import { isSessionRef, markSeen, usePacer, type SessionNode, type SessionStatus } from './pacer';
+import { ChevronRight, ChevronsLeft, ChevronsRight, Plus, X } from 'lucide-vue-next';
+import { isSessionRef, markSeen, sessionKey, usePacer, type SessionNode, type SessionRef } from './pacer';
+import ArchivedRow from './ArchivedRow.vue';
+import NewSessionForm from './NewSessionForm.vue';
 import SessionPanel from './SessionPanel.vue';
+import SessionRow from './SessionRow.vue';
+import StatusDot from './StatusDot.vue';
+import MetricsPanel from './manage/MetricsPanel.vue';
+import ProjectActions from './manage/ProjectActions.vue';
+import WorkspaceActions from './manage/WorkspaceActions.vue';
 
-const STATUS_LABELS: Record<SessionStatus, string> = {
-  fresh: 'новая',
-  running: 'работает',
-  needs_feedback: 'ждёт меня',
-  finished: 'закончил',
-  terminated: 'упал',
-  disconnected: 'отключена',
-  shell: 'терминал',
-  closed: 'закрыт',
-};
+const METRICS_PANEL = 'metrics';
+const TREE_WIDTH_KEY = 'veyra.pacer.treeWidth';
+const TREE_COLLAPSED_KEY = 'veyra.pacer.treeCollapsed';
+const TREE_MIN_WIDTH = 180;
+const TREE_DEFAULT_WIDTH = 280;
+const TREE_KEY_STEP = 16;
 
 const pacer = usePacer();
 const dock = shallowRef<DockviewApi | null>(null);
 const activeKey = shallowRef<string | null>(null);
 const visible = shallowRef(true);
 let activeChange: { dispose(): void } | null = null;
+
+const view = useTemplateRef<HTMLDivElement>('view');
+const storedWidth = Number(localStorage.getItem(TREE_WIDTH_KEY));
+const treeWidth = shallowRef(storedWidth >= TREE_MIN_WIDTH ? storedWidth : TREE_DEFAULT_WIDTH);
+const treeCollapsed = shallowRef(localStorage.getItem(TREE_COLLAPSED_KEY) === '1');
+const columns = computed(() => (treeCollapsed.value ? 'auto minmax(0, 1fr)' : `min(${treeWidth.value}px, 50%) minmax(0, 1fr)`));
+
+function setTreeWidth(width: number) {
+  const max = Math.max(TREE_MIN_WIDTH, (view.value?.clientWidth ?? Number.POSITIVE_INFINITY) / 2);
+  treeWidth.value = Math.round(Math.min(max, Math.max(TREE_MIN_WIDTH, width)));
+}
+
+function saveTreeWidth() {
+  localStorage.setItem(TREE_WIDTH_KEY, String(treeWidth.value));
+}
+
+function startResize(event: PointerEvent) {
+  const handle = event.currentTarget;
+  if (!(handle instanceof HTMLElement)) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = Math.min(treeWidth.value, handle.parentElement?.clientWidth ?? treeWidth.value);
+  handle.setPointerCapture(event.pointerId);
+  const move = (next: PointerEvent) => setTreeWidth(startWidth + next.clientX - startX);
+  const end = () => {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', end);
+    handle.removeEventListener('pointercancel', end);
+    saveTreeWidth();
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
+function resizeByKey(event: KeyboardEvent) {
+  const step = event.key === 'ArrowLeft' ? -TREE_KEY_STEP : event.key === 'ArrowRight' ? TREE_KEY_STEP : 0;
+  if (!step) return;
+  event.preventDefault();
+  setTreeWidth(treeWidth.value + step);
+  saveTreeWidth();
+}
+
+function setTreeCollapsed(collapsed: boolean) {
+  treeCollapsed.value = collapsed;
+  localStorage.setItem(TREE_COLLAPSED_KEY, collapsed ? '1' : '0');
+}
+
+const creatingIn = shallowRef<string | null>(null);
+const creatingWorktree = computed(() => {
+  const id = creatingIn.value;
+  if (!id) return null;
+  for (const workspace of pacer?.tree.value ?? []) for (const project of workspace.projects) for (const worktree of project.worktrees) if (worktree.id === id) return worktree;
+  return null;
+});
+const openingKey = shallowRef<string | null>(null);
+const openArchives = shallowRef<ReadonlySet<string>>(new Set());
+
+function toggleArchive(worktree: string) {
+  const next = new Set(openArchives.value);
+  if (!next.delete(worktree)) next.add(worktree);
+  openArchives.value = next;
+}
+
+function onCreated(session: SessionRef) {
+  creatingIn.value = null;
+  openWhenListed(session);
+}
+
+function openWhenListed(session: SessionRef) {
+  const key = sessionKey(session);
+  const node = pacer?.sessions.value.get(key);
+  if (node) open(node);
+  else openingKey.value = key;
+}
 
 const banner = computed(() => {
   const connection = pacer?.connection.value;
@@ -56,7 +134,11 @@ watch(
   (sessions) => {
     const api = dock.value;
     if (!api || !sessions || pacer?.connection.value.state !== 'connected') return;
-    for (const panel of api.panels) if (!sessions.has(panel.id)) panel.api.close();
+    for (const panel of api.panels) if (panel.id !== METRICS_PANEL && !sessions.has(panel.id)) panel.api.close();
+    const opening = openingKey.value ? sessions.get(openingKey.value) : undefined;
+    if (!opening) return;
+    openingKey.value = null;
+    open(opening);
   },
 );
 
@@ -67,15 +149,23 @@ function onReady({ api }: DockviewReadyEvent) {
   });
 }
 
-function open(session: SessionNode) {
+function openPanel(panel: Parameters<DockviewApi['addPanel']>[0]) {
   const api = dock.value;
   if (!api) return;
-  const existing = api.getPanel(session.key);
+  const existing = api.getPanel(panel.id);
   if (existing) {
     existing.api.setActive();
     return;
   }
-  api.addPanel({ id: session.key, component: 'session', title: session.name, params: { session: session.ref }, renderer: 'always' });
+  api.addPanel(panel);
+}
+
+function open(session: SessionNode) {
+  openPanel({ id: session.key, component: 'session', title: session.name, params: { session: session.ref }, renderer: 'always' });
+}
+
+function openMetrics() {
+  openPanel({ id: METRICS_PANEL, component: 'metrics', title: 'Память' });
 }
 
 onActivated(() => {
@@ -89,45 +179,75 @@ onBeforeUnmount(() => activeChange?.dispose());
 
 <template>
   <div v-if="!pacer" class="unavailable" data-testid="pacer-banner" data-state="unavailable">Сессии pacer работают только в десктопном приложении Veyra</div>
-  <div v-else class="agents">
-    <aside class="tree" aria-label="Сессии pacer">
-      <p v-if="banner" class="banner" role="status" data-testid="pacer-banner" :data-state="pacer.connection.value.state">{{ banner }}</p>
-      <p v-if="pacer.error.value" class="banner" role="alert" data-testid="pacer-error">{{ pacer.error.value }}</p>
-      <section v-for="workspace in pacer.tree.value" :key="workspace.id" class="workspace">
-        <h2 class="workspace-name">{{ workspace.name }}</h2>
-        <div v-for="project in workspace.projects" :key="project.id" class="project">
-          <div class="project-name" :title="project.name">{{ project.name }}</div>
-          <div v-for="worktree in project.worktrees" :key="worktree.id" class="worktree">
-            <div class="branch" :title="worktree.branch">{{ worktree.branch }}</div>
-            <button
-              v-for="session in worktree.sessions"
-              :key="session.key"
-              class="row"
-              data-testid="session-row"
-              :data-session-id="session.id"
-              :data-status="session.status"
-              :data-unseen="session.unseen"
-              :data-active="session.key === activeKey"
-              :title="`${session.name} — ${STATUS_LABELS[session.status]}`"
-              @click="open(session)"
-            >
-              <span class="dot" :data-status="session.status" :data-unseen="session.unseen" />
-              <span class="name">{{ session.name }}</span>
-              <span class="label">{{ STATUS_LABELS[session.status] }}</span>
-            </button>
+  <div v-else ref="view" class="agents" :style="{ gridTemplateColumns: columns }">
+    <div v-if="treeCollapsed" class="rail">
+      <button class="icon" title="Показать сессии" aria-label="Показать сессии" data-testid="tree-expand" @click="setTreeCollapsed(false)"><ChevronsRight :size="14" /></button>
+    </div>
+    <div v-else class="tree-pane">
+      <div class="tree-head">
+        <span>Сессии</span>
+        <button class="metrics-open" title="Использование памяти" data-testid="open-metrics" @click="openMetrics">Память</button>
+        <button class="icon" title="Скрыть сессии" aria-label="Скрыть сессии" data-testid="tree-collapse" @click="setTreeCollapsed(true)"><ChevronsLeft :size="14" /></button>
+      </div>
+      <aside class="tree" aria-label="Сессии pacer">
+        <p v-if="banner" class="banner" role="status" data-testid="pacer-banner" :data-state="pacer.connection.value.state">{{ banner }}</p>
+        <p v-if="pacer.error.value" class="banner" role="alert" data-testid="pacer-error">{{ pacer.error.value }}</p>
+        <section v-for="workspace in pacer.tree.value" :key="workspace.id" class="workspace">
+          <div class="workspace-head">
+            <h2 class="workspace-name">{{ workspace.name }}</h2>
+            <WorkspaceActions :workspace-id="workspace.id" />
           </div>
-        </div>
-      </section>
-      <p v-if="pacer.connection.value.state === 'connected' && !pacer.tree.value.length" class="empty">Нет сессий</p>
-    </aside>
+          <div v-for="project in workspace.projects" :key="project.id" class="project">
+            <div class="project-head">
+              <div class="project-name" :title="project.name">{{ project.name }}</div>
+              <ProjectActions :project-id="project.id" @resumed="openWhenListed({ Agent: $event })" />
+            </div>
+            <div v-for="worktree in project.worktrees" :key="worktree.id" class="worktree" data-testid="worktree-row" :data-worktree-id="worktree.id">
+              <div class="branch">
+                <span class="branch-name" :title="worktree.branch">{{ worktree.branch }}</span>
+                <button class="icon add" title="Новая сессия" aria-label="Новая сессия" data-testid="worktree-new-session" @click="creatingIn = worktree.id"><Plus :size="14" /></button>
+              </div>
+              <SessionRow v-for="session in worktree.sessions" :key="session.key" :session="session" :active="session.key === activeKey" @open="open(session)" />
+              <template v-if="worktree.archived.length">
+                <button class="archive-toggle" :aria-expanded="openArchives.has(worktree.id)" data-testid="archive-toggle" @click="toggleArchive(worktree.id)">
+                  <ChevronRight :size="12" class="chevron" />
+                  <span>Архив ({{ worktree.archived.length }})</span>
+                </button>
+                <template v-if="openArchives.has(worktree.id)">
+                  <ArchivedRow v-for="session in worktree.archived" :key="session.key" :session="session" />
+                </template>
+              </template>
+            </div>
+          </div>
+          <ProjectActions :workspace-id="workspace.id" />
+        </section>
+        <p v-if="pacer.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">Нет сессий</p>
+        <WorkspaceActions class="new-workspace" />
+      </aside>
+      <div
+        class="resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ширина списка сессий"
+        tabindex="0"
+        :aria-valuenow="treeWidth"
+        :aria-valuemin="TREE_MIN_WIDTH"
+        data-testid="tree-resize-handle"
+        @pointerdown="startResize"
+        @keydown="resizeByKey"
+      />
+    </div>
     <div class="dock">
       <DockviewVue class="dockview" :theme="themeLight" @ready="onReady">
         <template #panel-session="{ params }">
           <SessionPanel v-if="isSessionRef(params.session)" :session="params.session" />
         </template>
+        <template #panel-metrics>
+          <MetricsPanel />
+        </template>
         <template #defaultTab="{ api }">
-          <span class="tab" data-testid="session-tab" :data-session-id="pacer.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">
-            <span class="dot" :data-status="pacer.sessions.value.get(api.id)?.status" :data-unseen="pacer.sessions.value.get(api.id)?.unseen" />
+          <span class="tab" :data-testid="api.id === METRICS_PANEL ? 'metrics-tab' : 'session-tab'" :data-session-id="pacer.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">
+            <StatusDot v-if="api.id !== METRICS_PANEL" :status="pacer.sessions.value.get(api.id)?.status" :unseen="pacer.sessions.value.get(api.id)?.unseen" />
             <span class="name">{{ pacer.sessions.value.get(api.id)?.name ?? api.title }}</span>
             <button class="close" title="Закрыть" aria-label="Закрыть" data-testid="session-tab-close" @pointerdown.stop @click.stop="api.close()"><X :size="12" /></button>
           </span>
@@ -137,6 +257,7 @@ onBeforeUnmount(() => activeChange?.dispose());
         </template>
       </DockviewVue>
     </div>
+    <NewSessionForm v-if="creatingWorktree" :key="creatingWorktree.id" :worktree="creatingWorktree" @close="creatingIn = null" @created="onCreated" />
   </div>
 </template>
 
@@ -148,16 +269,74 @@ onBeforeUnmount(() => activeChange?.dispose());
 
 .agents {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
 
+.tree-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--vr-color-border);
+}
+
+.tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--vr-space-1) var(--vr-space-2) 0 var(--vr-space-4);
+  font-size: var(--vr-font-size-xs);
+  color: var(--vr-color-text-muted);
+}
+
 .tree {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: var(--vr-space-2);
+}
+
+.rail {
+  padding: var(--vr-space-1);
   border-right: 1px solid var(--vr-color-border);
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resize-handle:hover,
+.resize-handle:focus-visible {
+  outline: none;
+  background: var(--vr-color-nav-active);
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--vr-color-text-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--vr-radius-sm);
+}
+
+.icon:hover {
+  color: var(--vr-color-text);
+  background: var(--vr-color-nav-hover);
 }
 
 .banner {
@@ -179,6 +358,39 @@ onBeforeUnmount(() => activeChange?.dispose());
   margin-top: var(--vr-space-3);
 }
 
+.workspace-head,
+.project-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vr-space-1);
+}
+
+.workspace-head .workspace-name,
+.project-head .project-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.metrics-open {
+  margin-left: auto;
+  padding: 0 var(--vr-space-2);
+  font: inherit;
+  color: var(--vr-color-text-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--vr-radius-sm);
+}
+
+.metrics-open:hover {
+  color: var(--vr-color-text);
+  background: var(--vr-color-nav-hover);
+}
+
+.new-workspace {
+  margin-top: var(--vr-space-3);
+}
+
 .workspace-name {
   margin: 0;
   padding: 0 var(--vr-space-2);
@@ -189,7 +401,7 @@ onBeforeUnmount(() => activeChange?.dispose());
 }
 
 .project-name,
-.branch,
+.branch-name,
 .name {
   overflow: hidden;
   white-space: nowrap;
@@ -203,100 +415,56 @@ onBeforeUnmount(() => activeChange?.dispose());
 }
 
 .branch {
-  padding: 0 var(--vr-space-2) 0 var(--vr-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-1);
+  padding: 0 var(--vr-space-1) 0 var(--vr-space-4);
   font-family: var(--vr-font-mono);
   font-size: var(--vr-font-size-2xs);
   line-height: var(--vr-size-row);
   color: var(--vr-color-text-muted);
 }
 
-.row {
+.branch-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.branch .add {
+  opacity: 0;
+}
+
+.branch:hover .add,
+.branch .add:focus-visible {
+  opacity: 1;
+}
+
+.archive-toggle {
   display: flex;
   align-items: center;
-  gap: var(--vr-space-2);
+  gap: var(--vr-space-1);
   width: 100%;
   height: var(--vr-size-row);
   padding: 0 var(--vr-space-2) 0 var(--vr-space-5);
   font: inherit;
+  font-size: var(--vr-font-size-xs);
   text-align: left;
-  color: inherit;
+  color: var(--vr-color-text-muted);
   background: none;
   border: 0;
   border-radius: var(--vr-radius-md);
 }
 
-.row:hover {
+.archive-toggle:hover {
   background: var(--vr-color-nav-hover);
 }
 
-.row[data-active='true'] {
-  background: var(--vr-color-nav-active);
+.archive-toggle .chevron {
+  transition: transform 0.1s;
 }
 
-.row .name {
-  flex: 1;
-  min-width: 0;
-}
-
-.row[data-unseen='true'] .name,
-.row[data-unseen='true'] .label {
-  font-weight: 600;
-}
-
-.label {
-  flex: none;
-  font-size: var(--vr-font-size-2xs);
-  color: var(--vr-color-text-muted);
-}
-
-.row[data-status='needs_feedback'] .label {
-  color: var(--vr-color-danger);
-}
-
-.row[data-unseen='true'] .label {
-  color: var(--vr-color-success);
-}
-
-.dot {
-  flex: none;
-  box-sizing: border-box;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--vr-color-border);
-}
-
-.dot[data-status='running'] {
-  background: var(--vr-color-conflict);
-}
-
-.dot[data-status='needs_feedback'] {
-  background: var(--vr-color-danger);
-}
-
-.dot[data-status='finished'] {
-  background: var(--vr-color-success);
-}
-
-.dot[data-unseen='true'] {
-  box-shadow: 0 0 0 3px var(--vr-color-chip-bg);
-  outline: 1px solid var(--vr-color-success);
-  outline-offset: 1px;
-}
-
-.dot[data-status='terminated'] {
-  background: none;
-  border: 2px solid var(--vr-color-danger);
-}
-
-.dot[data-status='disconnected'],
-.dot[data-status='closed'] {
-  background: none;
-  border: 2px solid var(--vr-color-border);
-}
-
-.dot[data-status='shell'] {
-  background: var(--vr-color-text-muted);
+.archive-toggle[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
 }
 
 .empty {

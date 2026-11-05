@@ -15,11 +15,17 @@ use tauri::ipc::Channel;
 use tauri::State;
 use tokio::io::{BufReader, BufWriter, ReadHalf, WriteHalf};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::oneshot;
 use tokio::task::AbortHandle;
 
 const OFFLINE_RETRY: Duration = Duration::from_secs(1);
 const INCOMPATIBLE_RETRY: Duration = Duration::from_secs(5);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+const CALL_OFFLINE: &str = "демон pacer не запущен";
+const CALL_LOST: &str = "соединение с pacer потеряно";
+
+type CallResult = Result<serde_json::Value, String>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -132,9 +138,25 @@ pub fn pacer_mark_seen(pacer: State<'_, Pacer>, agent: AgentId) {
     pacer.send(Command::MarkSeen { agent });
 }
 
+#[tauri::command]
+pub async fn pacer_call(pacer: State<'_, Pacer>, mut request: serde_json::Value) -> CallResult {
+    if let Some(serde_json::Value::Object(fields)) = request
+        .as_object_mut()
+        .and_then(|tagged| tagged.values_mut().next())
+    {
+        fields.entry("req_id").or_insert(serde_json::Value::from(0));
+    }
+    let request: ClientRequest = serde_json::from_value(request)
+        .map_err(|error| format!("некорректный запрос к pacer: {error}"))?;
+    let (reply, answer) = oneshot::channel();
+    pacer.send(Command::Call { request, reply });
+    answer.await.unwrap_or_else(|_| Err(CALL_LOST.into()))
+}
+
 enum Msg {
     Command(Command),
     Link { epoch: u64, event: LinkEvent },
+    CallTimedOut(u64),
 }
 
 enum Command {
@@ -159,6 +181,10 @@ enum Command {
     },
     MarkSeen {
         agent: AgentId,
+    },
+    Call {
+        request: ClientRequest,
+        reply: oneshot::Sender<CallResult>,
     },
 }
 
@@ -264,6 +290,8 @@ struct Actor {
     epoch: u64,
     tasks: Vec<AbortHandle>,
     writer: Option<UnboundedSender<ClientRequest>>,
+    next_req_id: u64,
+    pending: HashMap<u64, oneshot::Sender<CallResult>>,
 }
 
 impl Actor {
@@ -276,6 +304,8 @@ impl Actor {
             epoch: 0,
             tasks: Vec::new(),
             writer: None,
+            next_req_id: 0,
+            pending: HashMap::new(),
         }
     }
 
@@ -285,6 +315,14 @@ impl Actor {
                 Msg::Command(command) => self.command(command),
                 Msg::Link { epoch, event } if epoch == self.epoch => self.link(event),
                 Msg::Link { .. } => {}
+                Msg::CallTimedOut(req_id) => {
+                    if let Some(reply) = self.pending.remove(&req_id) {
+                        let _ = reply.send(Err(format!(
+                            "pacer не ответил за {} с",
+                            CALL_TIMEOUT.as_secs()
+                        )));
+                    }
+                }
             }
         }
     }
@@ -335,7 +373,46 @@ impl Actor {
                 self.write(ClientRequest::Detach { session });
             }
             Command::MarkSeen { agent } => self.write(ClientRequest::MarkAgentSeen { id: agent }),
+            Command::Call { request, reply } => self.call(request, reply),
         }
+    }
+
+    fn call(&mut self, mut request: ClientRequest, reply: oneshot::Sender<CallResult>) {
+        let Some(slot) = rpc_req_id(&mut request) else {
+            let _ = reply.send(Err(
+                "pacer_call принимает только RPC-запросы с req_id".into()
+            ));
+            return;
+        };
+        let Some(writer) = &self.writer else {
+            let _ = reply.send(Err(CALL_OFFLINE.into()));
+            return;
+        };
+        self.next_req_id += 1;
+        let req_id = self.next_req_id;
+        *slot = req_id;
+        if writer.send(request).is_err() {
+            let _ = reply.send(Err(CALL_LOST.into()));
+            return;
+        }
+        self.pending.insert(req_id, reply);
+        let inbox = self.inbox.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(CALL_TIMEOUT).await;
+            let _ = inbox.send(Msg::CallTimedOut(req_id));
+        });
+    }
+
+    fn resolve(&mut self, event: ServerEvent) -> Option<ServerEvent> {
+        let Some(reply) = reply_req_id(&event).and_then(|req_id| self.pending.remove(&req_id))
+        else {
+            return Some(event);
+        };
+        let _ = reply.send(match event {
+            ServerEvent::Error { message, .. } => Err(message),
+            other => serde_json::to_value(&other).map_err(|error| error.to_string()),
+        });
+        None
     }
 
     fn link(&mut self, event: LinkEvent) {
@@ -405,6 +482,9 @@ impl Actor {
     }
 
     fn frame(&mut self, event: ServerEvent) {
+        let Some(event) = self.resolve(event) else {
+            return;
+        };
         let watch = match event {
             ServerEvent::Snapshot {
                 workspaces,
@@ -493,6 +573,68 @@ impl Actor {
             task.abort();
         }
         self.writer = None;
+        for (_, reply) in self.pending.drain() {
+            let _ = reply.send(Err(CALL_LOST.into()));
+        }
+    }
+}
+
+fn reply_req_id(event: &ServerEvent) -> Option<u64> {
+    match event {
+        ServerEvent::Ack { req_id, .. }
+        | ServerEvent::OrphanedSessions { req_id, .. }
+        | ServerEvent::WorktreeEntered { req_id, .. }
+        | ServerEvent::Metrics { req_id, .. } => Some(*req_id),
+        ServerEvent::Error { req_id, .. } => *req_id,
+        _ => None,
+    }
+}
+
+fn rpc_req_id(request: &mut ClientRequest) -> Option<&mut u64> {
+    match request {
+        ClientRequest::AddWorkspace { req_id, .. }
+        | ClientRequest::RemoveWorkspace { req_id, .. }
+        | ClientRequest::RenameWorkspace { req_id, .. }
+        | ClientRequest::OpenWorkspace { req_id, .. }
+        | ClientRequest::AddProject { req_id, .. }
+        | ClientRequest::RemoveProject { req_id, .. }
+        | ClientRequest::RenameProject { req_id, .. }
+        | ClientRequest::CreateWorktree { req_id, .. }
+        | ClientRequest::DeleteWorktree { req_id, .. }
+        | ClientRequest::ListOrphanedSessions { req_id, .. }
+        | ClientRequest::ResumeOrphanedSession { req_id, .. }
+        | ClientRequest::CreateAgent { req_id, .. }
+        | ClientRequest::CreatePrAgent { req_id, .. }
+        | ClientRequest::RenameAgent { req_id, .. }
+        | ClientRequest::AutoRenameAgent { req_id, .. }
+        | ClientRequest::MoveAgent { req_id, .. }
+        | ClientRequest::EnterWorktree { req_id, .. }
+        | ClientRequest::SpawnSiblingAgent { req_id, .. }
+        | ClientRequest::ArchiveAgent { req_id, .. }
+        | ClientRequest::UnarchiveAgent { req_id, .. }
+        | ClientRequest::DeleteAgent { req_id, .. }
+        | ClientRequest::RestartAgent { req_id, .. }
+        | ClientRequest::AttachCloudAgent { req_id, .. }
+        | ClientRequest::SendCloudMessage { req_id, .. }
+        | ClientRequest::CreateTerminal { req_id, .. }
+        | ClientRequest::CreateLink { req_id, .. }
+        | ClientRequest::UpdateLink { req_id, .. }
+        | ClientRequest::DeleteLink { req_id, .. }
+        | ClientRequest::RenameTerminal { req_id, .. }
+        | ClientRequest::CloseTerminal { req_id, .. }
+        | ClientRequest::GetMetrics { req_id } => Some(req_id),
+        ClientRequest::Hello { .. }
+        | ClientRequest::Subscribe
+        | ClientRequest::Attach { .. }
+        | ClientRequest::Detach { .. }
+        | ClientRequest::Input { .. }
+        | ClientRequest::Resize { .. }
+        | ClientRequest::PrewarmAgent { .. }
+        | ClientRequest::PrewarmWorktreeSessions { .. }
+        | ClientRequest::SaveUiState { .. }
+        | ClientRequest::MarkPrSeen { .. }
+        | ClientRequest::MarkAgentSeen { .. }
+        | ClientRequest::Shutdown => None,
     }
 }
 

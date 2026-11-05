@@ -1,15 +1,32 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue';
 
+export type AgentKind = 'claude' | 'codex' | 'cursor';
 type AgentStatus = 'fresh' | 'running' | 'finished' | 'needs_feedback' | 'terminated' | 'disconnected';
 export type SessionRef = { Agent: string } | { Terminal: string };
 type ConnectionState = 'connecting' | 'connected' | 'offline' | 'incompatible';
 type Connection = { state: ConnectionState; message: string | null };
 
 type Workspace = { id: string; name: string };
-type Project = { id: string; name: string; workspace_id: string; sort_order: number };
-type Worktree = { id: string; project_id: string; branch: string; is_main: boolean; sort_order: number };
-type Agent = { id: string; worktree_id: string; name: string; status: AgentStatus; archived: boolean; unseen: boolean; sort_order: number };
+type Project = { id: string; name: string; workspace_id: string; repo_path: string; sort_order: number };
+export type Worktree = { id: string; project_id: string; path: string; branch: string; is_main: boolean; sort_order: number };
+type Agent = {
+  id: string;
+  worktree_id: string;
+  name: string;
+  status: AgentStatus;
+  archived: boolean;
+  archived_at: number;
+  unseen: boolean;
+  status_changed_at: number;
+  kind: AgentKind;
+  model: string | null;
+  effort: string | null;
+  session_id: string | null;
+  cloud_session_id: string | null;
+  sort_order: number;
+  alive: boolean;
+};
 type Terminal = { id: string; worktree_id: string; name: string; sort_order: number; alive: boolean };
 
 type Entity = { Workspace: Workspace } | { Project: Project } | { Worktree: Worktree } | { Agent: Agent } | { Terminal: Terminal } | { Link: unknown };
@@ -27,18 +44,19 @@ export type SessionEvent = { type: 'reset'; data: string } | { type: 'output'; d
 
 export type SessionStatus = AgentStatus | 'shell' | 'closed';
 export type SessionNode = { key: string; id: string; ref: SessionRef; name: string; status: SessionStatus; unseen: boolean };
-type WorktreeNode = { id: string; branch: string; sessions: SessionNode[] };
+export type WorktreeNode = { id: string; branch: string; sessions: SessionNode[]; archived: SessionNode[] };
 type ProjectNode = { id: string; name: string; worktrees: WorktreeNode[] };
 type WorkspaceNode = { id: string; name: string; projects: ProjectNode[] };
 
 type PacerStore = {
+  entities: ComputedRef<Entities>;
   connection: ShallowRef<Connection>;
   error: ShallowRef<string | null>;
   tree: ComputedRef<WorkspaceNode[]>;
   sessions: ComputedRef<ReadonlyMap<string, SessionNode>>;
 };
 
-type Entities = {
+export type Entities = {
   workspaces: ReadonlyMap<string, Workspace>;
   projects: ReadonlyMap<string, Project>;
   worktrees: ReadonlyMap<string, Worktree>;
@@ -54,6 +72,14 @@ const drop = <T>(map: ReadonlyMap<string, T>, id: string): ReadonlyMap<string, T
   return next;
 };
 const bySortOrder = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
+
+export function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function worktreesOfProject(entities: Entities, project: string): Worktree[] {
+  return [...entities.worktrees.values()].filter((w) => w.project_id === project).sort((a, b) => Number(b.is_main) - Number(a.is_main) || bySortOrder(a, b));
+}
 
 const EMPTY: Entities = { workspaces: new Map(), projects: new Map(), worktrees: new Map(), agents: new Map(), terminals: new Map() };
 
@@ -81,7 +107,7 @@ function setStatus(entities: Entities, id: string, status: AgentStatus, unseen: 
   return { ...entities, agents: put(entities.agents, { ...agent, status, unseen }) };
 }
 
-function sessionKey(session: SessionRef): string {
+export function sessionKey(session: SessionRef): string {
   return 'Agent' in session ? `agent:${session.Agent}` : `terminal:${session.Terminal}`;
 }
 
@@ -106,22 +132,26 @@ function terminalNode(terminal: Terminal): SessionNode {
 }
 
 function buildTree(entities: Entities): WorkspaceNode[] {
+  const agentsOf = (worktree: string) => [...entities.agents.values()].filter((a) => a.worktree_id === worktree);
   const sessionsOf = (worktree: string) => [
-    ...[...entities.agents.values()].filter((a) => a.worktree_id === worktree && !a.archived).sort(bySortOrder).map(agentNode),
+    ...agentsOf(worktree).filter((a) => !a.archived).sort(bySortOrder).map(agentNode),
     ...[...entities.terminals.values()].filter((t) => t.worktree_id === worktree).sort(bySortOrder).map(terminalNode),
   ];
+  const archivedOf = (worktree: string) =>
+    agentsOf(worktree)
+      .filter((a) => a.archived)
+      .sort((a, b) => b.archived_at - a.archived_at)
+      .map(agentNode);
   const worktreesOf = (project: string) =>
-    [...entities.worktrees.values()]
-      .filter((w) => w.project_id === project)
-      .sort((a, b) => Number(b.is_main) - Number(a.is_main) || bySortOrder(a, b))
-      .map((w) => ({ id: w.id, branch: w.branch, sessions: sessionsOf(w.id) }))
-      .filter((w) => w.sessions.length > 0);
+    worktreesOfProject(entities, project).flatMap((w) => {
+      const node = { id: w.id, branch: w.branch, sessions: sessionsOf(w.id), archived: archivedOf(w.id) };
+      return w.is_main || node.sessions.length > 0 || node.archived.length > 0 ? [node] : [];
+    });
   const projectsOf = (workspace: string) =>
     [...entities.projects.values()]
       .filter((p) => p.workspace_id === workspace)
       .sort(bySortOrder)
-      .map((p) => ({ id: p.id, name: p.name, worktrees: worktreesOf(p.id) }))
-      .filter((p) => p.worktrees.length > 0);
+      .map((p) => ({ id: p.id, name: p.name, worktrees: worktreesOf(p.id) }));
   return [...entities.workspaces.values()].map((w) => ({ id: w.id, name: w.name, projects: projectsOf(w.id) }));
 }
 
@@ -134,10 +164,10 @@ function createStore(): PacerStore {
   const error = shallowRef<string | null>(null);
 
   function receive(event: WatchEvent): void {
+    if (event.type !== 'error') error.value = null;
     switch (event.type) {
       case 'connection':
         connection.value = { state: event.state, message: event.message };
-        error.value = null;
         return;
       case 'snapshot':
         entities.value = {
@@ -168,12 +198,12 @@ function createStore(): PacerStore {
   }
 
   watching = invoke<void>('pacer_watch', { onEvent: new Channel<WatchEvent>(receive) }).catch((e: unknown) => {
-    error.value = e instanceof Error ? e.message : String(e);
+    error.value = describeError(e);
   });
 
   const tree = computed(() => buildTree(entities.value));
   const sessions = computed(() => new Map(tree.value.flatMap((w) => w.projects.flatMap((p) => p.worktrees.flatMap((t) => t.sessions.map((s) => [s.key, s] as const))))));
-  return { connection, error, tree, sessions };
+  return { entities: computed(() => entities.value), connection, error, tree, sessions };
 }
 
 export function usePacer(): PacerStore | null {
@@ -201,4 +231,104 @@ export function resizeSession(session: SessionRef, cols: number, rows: number): 
 
 export function markSeen(agent: string): Promise<void> {
   return invoke<void>('pacer_mark_seen', { agent });
+}
+
+export type PacerRequest = { [variant: string]: Record<string, unknown> };
+
+type OrphanedSession = {
+  session_id: string;
+  project_id: string;
+  kind: AgentKind;
+  name: string;
+  branch: string;
+  worktree_path: string;
+  created_at: number;
+  orphaned_at: number;
+  transcript_bytes: number | null;
+};
+type PrewarmInfo = { worktree: string; kind: AgentKind; model: string | null };
+type SessionMetrics = { session: SessionRef; pid: number; rss_bytes: number; procs: number; prewarm: PrewarmInfo | null };
+type MetricsSnapshot = { daemon_pid: number; daemon_rss_bytes: number; system_total_bytes: number; sessions: SessionMetrics[] };
+type EnterOutcome = 'AlreadyThere' | 'Relocating' | 'NextLaunch';
+
+export type PacerReply =
+  | { Ack: { req_id: number; created: EntityId | null } }
+  | { OrphanedSessions: { req_id: number; sessions: OrphanedSession[] } }
+  | { WorktreeEntered: { req_id: number; worktree: Worktree; outcome: EnterOutcome } }
+  | { Metrics: { req_id: number; snapshot: MetricsSnapshot } };
+
+export class PacerCallError extends Error {}
+
+const REPLY_VARIANTS = new Set(['Ack', 'OrphanedSessions', 'WorktreeEntered', 'Metrics']);
+
+function isPacerReply(value: unknown): value is PacerReply {
+  if (typeof value !== 'object' || value === null) return false;
+  const keys = Object.keys(value);
+  return keys.length === 1 && REPLY_VARIANTS.has(keys[0] ?? '');
+}
+
+export async function call(request: PacerRequest): Promise<PacerReply> {
+  const reply = await invoke<unknown>('pacer_call', { request }).catch((e: unknown) => {
+    throw new PacerCallError(describeError(e));
+  });
+  if (!isPacerReply(reply)) throw new PacerCallError(`неожиданный ответ pacer: ${JSON.stringify(reply)}`);
+  return reply;
+}
+
+export async function acknowledged(request: PacerRequest): Promise<EntityId | null> {
+  const reply = await call(request);
+  if (!('Ack' in reply)) throw new PacerCallError(`pacer ответил ${Object.keys(reply).join('')} вместо Ack`);
+  return reply.Ack.created;
+}
+
+export type NewAgent = { worktree: string; name: string; kind: AgentKind; model: string | null; effort: string | null; autoTitle: boolean; startingPrompt: string | null };
+
+export function createAgent(agent: NewAgent): Promise<EntityId | null> {
+  return acknowledged({
+    CreateAgent: {
+      worktree: agent.worktree,
+      name: agent.name,
+      kind: agent.kind,
+      model: agent.model,
+      effort: agent.effort,
+      auto_title: agent.autoTitle,
+      cloud_prompt: null,
+      starting_prompt: agent.startingPrompt,
+    },
+  });
+}
+
+export function createTerminal(worktree: string, name: string | null): Promise<EntityId | null> {
+  return acknowledged({ CreateTerminal: { worktree, name } });
+}
+
+export async function renameSession(session: SessionRef, name: string): Promise<void> {
+  await acknowledged('Agent' in session ? { RenameAgent: { id: session.Agent, name } } : { RenameTerminal: { id: session.Terminal, name } });
+}
+
+export async function restartAgent(id: string): Promise<void> {
+  await acknowledged({ RestartAgent: { id } });
+}
+
+export async function archiveAgent(id: string): Promise<void> {
+  await acknowledged({ ArchiveAgent: { id } });
+}
+
+export async function unarchiveAgent(id: string): Promise<void> {
+  await acknowledged({ UnarchiveAgent: { id } });
+}
+
+export async function deleteAgent(id: string): Promise<void> {
+  await acknowledged({ DeleteAgent: { id } });
+}
+
+export async function closeTerminal(id: string): Promise<void> {
+  await acknowledged({ CloseTerminal: { id } });
+}
+
+export function entitySessionRef(id: EntityId | null): SessionRef | null {
+  if (!id) return null;
+  if ('Agent' in id) return { Agent: id.Agent };
+  if ('Terminal' in id) return { Terminal: id.Terminal };
+  return null;
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, type Directive } from 'vue';
-import { Hash, ListTodo, Moon, Plus, Search, SquareTerminal, Sun } from 'lucide-vue-next';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Directive } from 'vue';
+import { Hash, ListTodo, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, SquareTerminal, Sun } from 'lucide-vue-next';
 import { useClient, useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
 import { openTask, openTopic, view } from './nav';
@@ -17,6 +17,74 @@ const topicName = ref('');
 const topicError = ref('');
 const vFocus: Directive<HTMLElement> = { mounted: (el) => el.focus() };
 const searchInput = ref<HTMLInputElement | null>(null);
+const sidebarEl = ref<HTMLElement | null>(null);
+
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 400;
+const DEFAULT_WIDTH = 300;
+const RAIL_WIDTH = 56;
+const KEY_STEP = 16;
+const WIDTH_KEY = 'veyra.sidebar.width';
+const COLLAPSED_KEY = 'veyra.sidebar.collapsed';
+
+function clampWidth(value: number) {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)));
+}
+
+function readWidth() {
+  const stored = Number(localStorage.getItem(WIDTH_KEY));
+  return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_WIDTH;
+}
+
+const width = ref(readWidth());
+const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
+const dragging = ref(false);
+const currentWidth = computed(() => (collapsed.value ? RAIL_WIDTH : width.value));
+const collapseLabel = computed(() => (collapsed.value ? 'Развернуть панель' : 'Свернуть панель'));
+
+watch(width, (value) => localStorage.setItem(WIDTH_KEY, String(value)));
+watch(collapsed, (value) => localStorage.setItem(COLLAPSED_KEY, value ? '1' : '0'));
+
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value;
+}
+
+async function openSearch() {
+  collapsed.value = false;
+  await nextTick();
+  searchInput.value?.focus();
+}
+
+function startResize(event: PointerEvent) {
+  if (event.button !== 0 || !(event.currentTarget instanceof HTMLElement)) return;
+  event.preventDefault();
+  event.currentTarget.setPointerCapture(event.pointerId);
+  dragging.value = true;
+}
+
+function moveResize(event: PointerEvent) {
+  if (!dragging.value || !sidebarEl.value) return;
+  const edge = event.clientX - sidebarEl.value.getBoundingClientRect().left;
+  collapsed.value = edge < MIN_WIDTH;
+  if (!collapsed.value) width.value = clampWidth(edge);
+}
+
+function endResize() {
+  dragging.value = false;
+}
+
+function onHandleKey(event: KeyboardEvent) {
+  const step = event.key === 'ArrowLeft' ? -KEY_STEP : event.key === 'ArrowRight' ? KEY_STEP : 0;
+  if (!step) return;
+  event.preventDefault();
+  if (collapsed.value) {
+    collapsed.value = step < 0;
+    return;
+  }
+  const next = width.value + step;
+  if (next < MIN_WIDTH) collapsed.value = true;
+  else width.value = clampWidth(next);
+}
 
 const selectedId = computed(() => (view.value.kind === 'task' ? view.value.id : null));
 const selectedTopicId = computed(() => (view.value.kind === 'topic' ? view.value.id : null));
@@ -57,9 +125,15 @@ async function createTopic() {
 }
 
 function onGlobalKey(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  if (event.target instanceof Element && event.target.closest('.xterm')) return;
+  const key = event.key.toLowerCase();
+  if (key === 'k') {
     event.preventDefault();
-    searchInput.value?.focus();
+    void openSearch();
+  } else if (key === 'b') {
+    event.preventDefault();
+    toggleCollapsed();
   }
 }
 
@@ -68,25 +142,65 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
 </script>
 
 <template>
-  <nav class="sidebar" aria-label="Навигация" data-testid="app-sidebar">
-    <label class="search">
-      <Search :size="16" />
-      <input ref="searchInput" v-model="query" placeholder="Найти задачу" aria-label="Найти задачу" data-testid="sidebar-search" @keydown="onSearchKey" />
-      <kbd>Ctrl K</kbd>
-    </label>
-
-    <div class="primary">
-      <button class="item" :data-active="view.kind === 'tasks'" data-testid="open-tasks" @click="view = { kind: 'tasks' }">
-        <ListTodo :size="16" />
-        <span>Задачи</span>
+  <nav
+    ref="sidebarEl"
+    class="sidebar"
+    :class="{ collapsed, dragging }"
+    :style="{ width: `${currentWidth}px` }"
+    aria-label="Навигация"
+    data-testid="sidebar"
+    :data-collapsed="collapsed"
+  >
+    <div class="top">
+      <label v-if="!collapsed" class="search">
+        <Search :size="16" />
+        <input ref="searchInput" v-model="query" placeholder="Найти задачу" aria-label="Найти задачу" data-testid="sidebar-search" @keydown="onSearchKey" />
+        <kbd>Ctrl K</kbd>
+      </label>
+      <button v-else class="item rail-item" title="Найти задачу" aria-label="Найти задачу" data-testid="sidebar-search-open" @click="openSearch">
+        <Search :size="16" />
       </button>
-      <button class="item" :data-active="view.kind === 'agents'" data-testid="open-agents" @click="view = { kind: 'agents' }">
-        <SquareTerminal :size="16" />
-        <span>Агенты</span>
+      <button
+        class="icon toggle"
+        :title="`${collapseLabel} (Ctrl+B)`"
+        :aria-label="collapseLabel"
+        :aria-expanded="!collapsed"
+        data-testid="sidebar-collapse"
+        @click="toggleCollapsed"
+      >
+        <PanelLeftOpen v-if="collapsed" :size="16" />
+        <PanelLeftClose v-else :size="16" />
       </button>
     </div>
 
-    <div class="sections">
+    <div class="primary">
+      <button
+        class="item"
+        :class="{ 'rail-item': collapsed }"
+        :data-active="view.kind === 'tasks'"
+        :title="collapsed ? 'Задачи' : undefined"
+        :aria-label="collapsed ? 'Задачи' : undefined"
+        data-testid="open-tasks"
+        @click="view = { kind: 'tasks' }"
+      >
+        <ListTodo :size="16" />
+        <span v-if="!collapsed">Задачи</span>
+      </button>
+      <button
+        class="item"
+        :class="{ 'rail-item': collapsed }"
+        :data-active="view.kind === 'agents'"
+        :title="collapsed ? 'Агенты' : undefined"
+        :aria-label="collapsed ? 'Агенты' : undefined"
+        data-testid="open-agents"
+        @click="view = { kind: 'agents' }"
+      >
+        <SquareTerminal :size="16" />
+        <span v-if="!collapsed">Агенты</span>
+      </button>
+    </div>
+
+    <div v-if="!collapsed" class="sections">
       <section v-for="w in state.workspaces" :key="w.id">
         <button
           class="group-label"
@@ -148,7 +262,7 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
         <Avatar :id="state.me.id" :name="state.me.name" />
         <span class="presence vr-dot" :data-online="state.connected" :title="state.connected ? 'в сети' : 'нет связи'" />
       </span>
-      <span class="who">
+      <span v-if="!collapsed" class="who">
         <strong>{{ state.me.name }}</strong>
         <span>{{ workspace?.name }}</span>
       </span>
@@ -157,25 +271,123 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
         <Moon v-else :size="16" />
       </button>
     </footer>
+
+    <div
+      class="resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Изменить ширину панели"
+      tabindex="0"
+      :aria-valuenow="currentWidth"
+      :aria-valuemin="RAIL_WIDTH"
+      :aria-valuemax="MAX_WIDTH"
+      data-testid="sidebar-resize-handle"
+      @pointerdown="startResize"
+      @pointermove="moveResize"
+      @pointerup="endResize"
+      @pointercancel="endResize"
+      @keydown="onHandleKey"
+    />
   </nav>
 </template>
 
 <style scoped>
 .sidebar {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  min-width: 0;
+  padding: var(--vr-space-2) var(--vr-space-2) 0;
+  overflow: hidden;
+  color: var(--vr-color-text);
+  transition: width 0.18s ease;
+}
+
+.sidebar.dragging {
+  transition: none;
+  user-select: none;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-1);
+  margin-bottom: var(--vr-space-2);
+}
+
+.collapsed .top {
+  flex-direction: column-reverse;
+  align-items: stretch;
+}
+
+.collapsed .top .toggle {
+  align-self: center;
+}
+
+.item.rail-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.toggle {
+  flex: none;
+}
+
+.collapsed .primary {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  padding: var(--vr-space-2) var(--vr-space-2) 0;
-  color: var(--vr-color-text);
+  gap: var(--vr-space-1);
+}
+
+.collapsed footer {
+  flex-direction: column;
+  margin-top: auto;
+  padding: var(--vr-space-3) 0;
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.dragging .resize-handle::after {
+  background: var(--vr-color-accent);
+}
+
+.resize-handle:focus-visible {
+  outline: none;
 }
 
 .search {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: var(--vr-space-2);
   height: var(--vr-size-row);
   padding: 0 var(--vr-space-2);
-  margin-bottom: var(--vr-space-2);
   border-radius: var(--vr-radius-md);
   background: var(--vr-color-nav-hover);
   color: var(--vr-color-nav-muted);
@@ -227,6 +439,7 @@ kbd {
 .sections {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   margin: var(--vr-space-3) calc(-1 * var(--vr-space-2)) 0;
   padding: 0 var(--vr-space-2);

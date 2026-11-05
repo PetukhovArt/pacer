@@ -59,3 +59,6 @@ export { default as VTag } from 'primevue/tag';
 export { default as VMessage } from 'primevue/message';
 export { default as VMultiSelect } from 'primevue/multiselect';
 export { default as VToggleSwitch } from 'primevue/toggleswitch';
+export { default as VDialog } from 'primevue/dialog';
+export { default as VContextMenu } from 'primevue/contextmenu';
+export { default as VPopover } from 'primevue/popover';

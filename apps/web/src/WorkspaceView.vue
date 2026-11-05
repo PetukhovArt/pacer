@@ -51,14 +51,17 @@ function toggleTheme() {
 <style scoped>
 .shell {
   display: grid;
-  grid-template-columns: var(--vr-size-sidebar) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .card {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   margin: var(--vr-space-2) var(--vr-space-2) var(--vr-space-2) 1px;
   overflow: hidden;
   background: var(--vr-color-surface);
