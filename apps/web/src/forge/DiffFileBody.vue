@@ -10,6 +10,7 @@ const props = defineProps<{
   discussions: Discussion[];
   mode: 'unified' | 'split';
   expanded: boolean;
+  wrap: boolean;
   flashId: string | null;
   connector?: string;
 }>();
@@ -79,7 +80,7 @@ const codeOf = (line: PatchLine | null) => (line ? model.value.html[line.index] 
 </script>
 
 <template>
-  <div class="body" :data-mode="mode">
+  <div class="body" :data-mode="mode" :data-wrap="wrap">
     <div v-for="d in model.orphans" :key="d.id" class="thread-row" :data-flash="flashId === d.id">
       <ThreadView :discussion="d" :connector="connector" show-position />
     </div>
@@ -133,7 +134,15 @@ const codeOf = (line: PatchLine | null) => (line ? model.value.html[line.index] 
 }
 
 .lines.split {
+  display: grid;
+  grid-template-columns: 52px minmax(calc(50cqw - 52px), max-content) 52px minmax(calc(50cqw - 52px), max-content);
+  width: max-content;
   min-width: 0;
+}
+
+.lines.split > .hunk,
+.lines.split > .thread-row {
+  grid-column: 1 / -1;
 }
 
 .hunk {
@@ -179,12 +188,8 @@ const codeOf = (line: PatchLine | null) => (line ? model.value.html[line.index] 
 }
 
 .split-line {
-  grid-template-columns: 52px minmax(0, 1fr) 52px minmax(0, 1fr);
-}
-
-.split-line .code {
-  white-space: pre-wrap;
-  word-break: break-all;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 
 .split-line [data-kind='add'] {
@@ -197,6 +202,25 @@ const codeOf = (line: PatchLine | null) => (line ? model.value.html[line.index] 
 
 .split-line .code + .num {
   border-left: 1px solid var(--vr-color-border);
+}
+
+.body[data-wrap='true'] .lines {
+  min-width: 0;
+}
+
+.body[data-wrap='true'] .lines.split {
+  grid-template-columns: 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+  width: auto;
+}
+
+.body[data-wrap='true'] .lines:not(.split) .line {
+  grid-template-columns: 52px 52px 16px minmax(0, 1fr);
+}
+
+.body[data-wrap='true'] .code,
+.body[data-wrap='true'] .hunk {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .thread-row {

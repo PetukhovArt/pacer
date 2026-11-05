@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch, type ShallowRef } from 'vue';
-import { ChevronDown, ChevronRight, ChevronUp, Columns2, Folder, FolderOpen, Rows2, Search } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, ChevronUp, Columns2, Folder, FolderOpen, Rows2, Search, WrapText } from 'lucide-vue-next';
 import { VInputText } from '@ui/kit';
 import type { DiffFile, Discussion } from '../connectors/api';
 import DiffFileBody from './DiffFileBody.vue';
@@ -14,8 +14,12 @@ type TreeNode = { name: string; path: string; dirs: Map<string, TreeNode>; files
 type Located = { discussion: Discussion; file: number; line: number };
 
 const MODE_KEY = 'veyra.diff.mode';
+const WRAP_KEY = 'veyra.diff.wrap';
 const LINE_HEIGHT = 20;
+const SETTLE_FRAMES = 8;
+const SETTLE_LIMIT = 90;
 const EMPTY: Discussion[] = [];
+const SCROLL_KEYS: ReadonlySet<string> = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 function storedMode(): Mode {
   try {
@@ -25,8 +29,18 @@ function storedMode(): Mode {
   }
 }
 
+function storedWrap(): boolean {
+  try {
+    return localStorage.getItem(WRAP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 const mode = shallowRef<Mode>(storedMode());
+const wrap = shallowRef(storedWrap());
 const filter = shallowRef('');
+const pinned = shallowRef(-1);
 const collapsed: IndexSet = shallowRef(new Set<number>());
 const shown: IndexSet = shallowRef(new Set<number>());
 const expanded: IndexSet = shallowRef(new Set<number>());
@@ -41,11 +55,22 @@ const fileEls: (HTMLElement | null)[] = [];
 let observer: IntersectionObserver | undefined;
 let flashTimer: ReturnType<typeof setTimeout> | undefined;
 let frame = 0;
+let settleFrame = 0;
+let settling = false;
 
 function setMode(next: Mode) {
   mode.value = next;
   try {
     localStorage.setItem(MODE_KEY, next);
+  } catch {
+    return;
+  }
+}
+
+function toggleWrap() {
+  wrap.value = !wrap.value;
+  try {
+    localStorage.setItem(WRAP_KEY, wrap.value ? '1' : '0');
   } catch {
     return;
   }
@@ -72,6 +97,20 @@ const toggleCollapsed = (index: number) => toggle(collapsed, index);
 const expandFile = (index: number) => include(expanded, index);
 
 const totals = computed(() => props.files.reduce((acc, f) => ({ additions: acc.additions + f.additions, deletions: acc.deletions + f.deletions }), { additions: 0, deletions: 0 }));
+
+const query = computed(() => filter.value.trim().toLowerCase());
+
+const visible = computed<number[]>(() => {
+  const needle = query.value;
+  const indexes: number[] = [];
+  props.files.forEach((file, index) => {
+    if (!needle || file.new_path.toLowerCase().includes(needle) || file.old_path.toLowerCase().includes(needle)) indexes.push(index);
+  });
+  return indexes;
+});
+
+const visibleSet = computed(() => new Set(visible.value));
+const entries = computed(() => visible.value.map((i) => ({ file: props.files[i]!, i })));
 
 const estimates = computed(() =>
   props.files.map((file) => {
@@ -141,12 +180,11 @@ function sumOf(node: TreeNode): { additions: number; deletions: number } {
 }
 
 const treeRows = computed<TreeRow[]>(() => {
-  const query = filter.value.trim().toLowerCase();
-  if (query) {
-    return props.files
-      .map((file, index) => ({ file, index }))
-      .filter(({ file }) => file.new_path.toLowerCase().includes(query) || file.old_path.toLowerCase().includes(query))
-      .map(({ file, index }) => ({ key: `f${index}`, kind: 'file' as const, depth: 0, name: file.new_path, path: file.new_path, index, additions: file.additions, deletions: file.deletions, open: false }));
+  if (query.value) {
+    return visible.value.map((index) => {
+      const file = props.files[index]!;
+      return { key: `f${index}`, kind: 'file' as const, depth: 0, name: file.new_path, path: file.new_path, index, additions: file.additions, deletions: file.deletions, open: false };
+    });
   }
   const rows: TreeRow[] = [];
   const walk = (node: TreeNode, depth: number) => {
@@ -184,29 +222,80 @@ function alignTo(index: number) {
   if (el && host) host.scrollTo({ top: el.offsetTop });
 }
 
+function release() {
+  pinned.value = -1;
+  settling = false;
+  cancelAnimationFrame(settleFrame);
+}
+
+function settle(index: number) {
+  cancelAnimationFrame(settleFrame);
+  settling = true;
+  let stable = 0;
+  let frames = 0;
+  let last = Number.NaN;
+  const step = () => {
+    if (pinned.value !== index) return;
+    alignTo(index);
+    const top = fileEls[index]?.offsetTop ?? Number.NaN;
+    stable = top === last ? stable + 1 : 0;
+    last = top;
+    if (stable >= SETTLE_FRAMES || ++frames >= SETTLE_LIMIT) {
+      settling = false;
+      return;
+    }
+    settleFrame = requestAnimationFrame(step);
+  };
+  step();
+}
+
 async function scrollToFile(index: number) {
   if (index < 0 || index >= props.files.length) return;
+  if (!visibleSet.value.has(index)) {
+    filter.value = '';
+    await nextTick();
+  }
   activeIndex.value = index;
+  pinned.value = index;
+  exclude(collapsed, index);
   include(shown, index);
   alignTo(index);
   await nextTick();
-  alignTo(index);
-  requestAnimationFrame(() => alignTo(index));
+  settle(index);
 }
 
 function trackActive() {
   frame = 0;
   const host = scroller.value;
   if (!host) return;
+  if (pinned.value >= 0) {
+    const el = fileEls[pinned.value];
+    const atEnd = host.scrollTop + host.clientHeight >= host.scrollHeight - 2;
+    if (settling || (el && (Math.abs(el.offsetTop - host.scrollTop) <= 2 || atEnd))) {
+      activeIndex.value = pinned.value;
+      return;
+    }
+    pinned.value = -1;
+  }
   const edge = host.scrollTop + 8;
-  let current = 0;
-  for (let i = 0; i < props.files.length; i++) {
+  let current = visible.value[0] ?? 0;
+  for (const i of visible.value) {
     const el = fileEls[i];
     if (!el) continue;
     if (el.offsetTop > edge) break;
     current = i;
   }
   activeIndex.value = current;
+}
+
+function stepFile(delta: 1 | -1) {
+  const list = visible.value;
+  if (!list.length) return;
+  const at = list.indexOf(activeIndex.value);
+  let next: number;
+  if (at >= 0) next = list[Math.min(Math.max(at + delta, 0), list.length - 1)]!;
+  else next = delta > 0 ? (list.find((i) => i > activeIndex.value) ?? list.at(-1)!) : ([...list].reverse().find((i) => i < activeIndex.value) ?? list[0]!);
+  void scrollToFile(next);
 }
 
 function onScroll() {
@@ -216,6 +305,7 @@ function onScroll() {
 const unresolved = computed<Located[]>(() => {
   const located: Located[] = [];
   fileDiscussions.value.forEach((list, file) => {
+    if (!visibleSet.value.has(file)) return;
     for (const d of list) {
       if (d.resolvable && !d.resolved) located.push({ discussion: d, file, line: d.position?.new_line ?? d.position?.old_line ?? 0 });
     }
@@ -228,6 +318,11 @@ function findThread(id: string): HTMLElement | null {
 }
 
 async function revealThread(id: string, fileIndex: number) {
+  release();
+  if (!visibleSet.value.has(fileIndex)) {
+    filter.value = '';
+    await nextTick();
+  }
   include(shown, fileIndex);
   exclude(collapsed, fileIndex);
   await nextTick();
@@ -265,11 +360,14 @@ function onKey(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const target = event.target as HTMLElement | null;
   if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-  if (event.key === 'j') void scrollToFile(Math.min(activeIndex.value + 1, props.files.length - 1));
-  else if (event.key === 'k') void scrollToFile(Math.max(activeIndex.value - 1, 0));
+  if (event.key === 'j') stepFile(1);
+  else if (event.key === 'k') stepFile(-1);
   else if (event.key === 'n') stepThread(1);
   else if (event.key === 'p') stepThread(-1);
-  else return;
+  else {
+    if (SCROLL_KEYS.has(event.key)) release();
+    return;
+  }
   event.preventDefault();
 }
 
@@ -295,9 +393,19 @@ function observeAll() {
   }
 }
 
+watch(visible, async (list) => {
+  release();
+  threadCursor.value = -1;
+  if (!list.includes(activeIndex.value)) activeIndex.value = list[0] ?? 0;
+  scroller.value?.scrollTo({ top: 0 });
+  await nextTick();
+  observeAll();
+});
+
 watch(
   () => props.files,
   async () => {
+    release();
     shown.value = new Set();
     collapsed.value = new Set();
     expanded.value = new Set();
@@ -316,6 +424,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   observer?.disconnect();
+  cancelAnimationFrame(settleFrame);
   clearTimeout(flashTimer);
   if (frame) cancelAnimationFrame(frame);
 });
@@ -364,15 +473,17 @@ defineExpose({ focusThread, root });
           <span>{{ unresolved.length }} нерешённых</span>
           <button class="icon" title="Следующее обсуждение (n)" aria-label="Следующее обсуждение" data-testid="diff-next-thread" @click="stepThread(1)"><ChevronDown :size="14" /></button>
         </span>
+        <button class="mode" :data-active="wrap" :aria-pressed="wrap" title="Переносить строки" data-testid="diff-wrap" @click="toggleWrap"><WrapText :size="14" />Переносить строки</button>
         <span class="group" role="group" aria-label="Режим диффа">
           <button class="mode" :data-active="mode === 'unified'" title="Единый" data-testid="diff-mode-unified" @click="setMode('unified')"><Rows2 :size="14" />Единый</button>
           <button class="mode" :data-active="mode === 'split'" title="Рядом" data-testid="diff-mode-split" @click="setMode('split')"><Columns2 :size="14" />Рядом</button>
         </span>
       </header>
 
-      <div ref="scroller" class="files" data-testid="diff-files" @scroll.passive="onScroll">
+      <div ref="scroller" class="files" data-testid="diff-files" @scroll.passive="onScroll" @wheel.passive="release" @pointerdown="release" @touchstart.passive="release">
         <p v-if="!files.length" class="empty">Нет изменённых файлов</p>
-        <section v-for="(file, i) in files" :key="`${file.old_path}>${file.new_path}`" :ref="(el) => (fileEls[i] = el as HTMLElement | null)" class="file" :data-index="i" data-testid="diff-file">
+        <p v-else-if="!visible.length" class="empty">Ничего не найдено</p>
+        <section v-for="{ file, i } in entries" :key="`${file.old_path}>${file.new_path}`" :ref="(el) => (fileEls[i] = el as HTMLElement | null)" class="file" :data-index="i" data-testid="diff-file">
           <header class="file-head" @click="toggleCollapsed(i)">
             <component :is="collapsed.has(i) ? ChevronRight : ChevronDown" :size="14" class="chev" />
             <span class="mark" :data-status="file.status" :title="STATUS_TITLE[file.status]">{{ STATUS_MARK[file.status] }}</span>
@@ -390,6 +501,7 @@ defineExpose({ focusThread, root });
               :discussions="fileDiscussions[i] ?? []"
               :mode="mode"
               :expanded="expanded.has(i)"
+              :wrap="wrap"
               :flash-id="flashId"
               :connector="connector"
               @expand="expandFile(i)"
