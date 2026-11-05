@@ -15,7 +15,9 @@
         "title": "Veyra",
         "width": 1400,
         "height": 900,
-        "focus": false
+        "focus": false,
+        "visible": false,
+        "backgroundColor": "#2a2d1c"
       }
     ],
     "security": {
