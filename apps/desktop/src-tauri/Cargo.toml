@@ -13,7 +13,12 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 pacer-core = { git = "https://github.com/PetukhovArt/pacer", tag = "v0.19.0" }
-tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "time", "rt"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "time", "rt", "process"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+futures-util = "0.3"
+url = "2"
+tauri-plugin-opener = "2"

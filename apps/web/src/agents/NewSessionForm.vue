@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue';
 import { VButton, VDialog, VInputText, VMessage, VSelect, VTextarea } from '@ui/kit';
-import { createAgent, createTerminal, entitySessionRef, type AgentKind, type SessionRef, type WorktreeNode } from './pacer';
+import { useSettings } from '../settings/store';
+import { createAgent,createTerminal, entitySessionRef, type AgentKind, type SessionRef, type WorktreeNode } from './pacer';
 import { useAction } from './useAction';
 
 const props = defineProps<{ worktree: WorktreeNode }>();
@@ -22,10 +23,12 @@ function generatedName(kind: Kind): string {
   return `${kind}-${n}`;
 }
 
-const kind = shallowRef<Kind>('claude');
-const name = shallowRef(generatedName('claude'));
-const model = shallowRef('');
-const effort = shallowRef('');
+const { values } = useSettings();
+const initialKind = KINDS.find((option) => option.value === values.value['sessions.default_kind'])?.value ?? 'claude';
+const kind = shallowRef<Kind>(initialKind);
+const name = shallowRef(generatedName(initialKind));
+const model = shallowRef(values.value['sessions.default_model']);
+const effort = shallowRef(values.value['sessions.default_effort']);
 const prompt = shallowRef('');
 const action = useAction();
 

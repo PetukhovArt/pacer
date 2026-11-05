@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Directive } from 'vue';
-import { Hash, ListTodo, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, SquareTerminal, Sun } from 'lucide-vue-next';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component, type Directive } from 'vue';
+import { BookOpen, GitPullRequest, Hash, ListTodo, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, SquareTerminal, Sun, Ticket } from 'lucide-vue-next';
 import { useClient, useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
-import { openTask, openTopic, view } from './nav';
+import { useConnectors } from './connectors/api';
+import { useForgeInbox } from './forge/inbox';
+import { openTask, openTopic, view, type View } from './nav';
 import { priorityRank } from './priority';
 
 defineProps<{ dark: boolean }>();
@@ -86,6 +88,32 @@ function onHandleKey(event: KeyboardEvent) {
   else width.value = clampWidth(next);
 }
 
+const { connectors, list: listConnectors } = useConnectors();
+const { reviewCount, startPolling } = useForgeInbox();
+
+const hasForge = computed(() => connectors.value.some((c) => c.kind === 'github' || c.kind === 'gitlab'));
+const hasJira = computed(() => connectors.value.some((c) => c.kind === 'jira'));
+const hasConfluence = computed(() => connectors.value.some((c) => c.kind === 'confluence'));
+
+type NavItem = { kind: 'tasks' | 'agents' | 'reviews' | 'jira' | 'confluence'; label: string; icon: Component; testId: string; count?: number; countTitle?: string };
+
+const navItems = computed<NavItem[]>(() => {
+  const items: NavItem[] = [
+    { kind: 'tasks', label: 'Задачи', icon: ListTodo, testId: 'open-tasks' },
+    { kind: 'agents', label: 'Агенты', icon: SquareTerminal, testId: 'open-agents' },
+  ];
+  if (hasForge.value) items.push({ kind: 'reviews', label: 'Ревью', icon: GitPullRequest, testId: 'nav-reviews', count: reviewCount.value, countTitle: 'Ждут моего ревью' });
+  if (hasJira.value) items.push({ kind: 'jira', label: 'Jira', icon: Ticket, testId: 'nav-jira' });
+  if (hasConfluence.value) items.push({ kind: 'confluence', label: 'Confluence', icon: BookOpen, testId: 'nav-confluence' });
+  return items;
+});
+
+let stopPolling: (() => void) | undefined;
+watch(hasForge, (on) => {
+  stopPolling?.();
+  stopPolling = on ? startPolling() : undefined;
+}, { immediate: true });
+
 const selectedId = computed(() => (view.value.kind === 'task' ? view.value.id : null));
 const selectedTopicId = computed(() => (view.value.kind === 'topic' ? view.value.id : null));
 const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
@@ -124,8 +152,22 @@ async function createTopic() {
   }
 }
 
+const SHIFT_SHORTCUTS: Record<string, View> = { KeyR: { kind: 'reviews' }, KeyJ: { kind: 'jira' } };
+
 function onGlobalKey(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey) {
+    const target = SHIFT_SHORTCUTS[event.code];
+    if (!target || (event.target instanceof Element && event.target.closest('.xterm'))) return;
+    event.preventDefault();
+    view.value = target;
+    return;
+  }
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  if (event.key === ',') {
+    event.preventDefault();
+    view.value = { kind: 'settings' };
+    return;
+  }
   if (event.target instanceof Element && event.target.closest('.xterm')) return;
   const key = event.key.toLowerCase();
   if (key === 'k') {
@@ -137,8 +179,14 @@ function onGlobalKey(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', onGlobalKey));
-onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKey);
+  void listConnectors();
+});
+onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKey);
+  stopPolling?.();
+});
 </script>
 
 <template>
@@ -175,28 +223,19 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
 
     <div class="primary">
       <button
+        v-for="item in navItems"
+        :key="item.kind"
         class="item"
         :class="{ 'rail-item': collapsed }"
-        :data-active="view.kind === 'tasks'"
-        :title="collapsed ? 'Задачи' : undefined"
-        :aria-label="collapsed ? 'Задачи' : undefined"
-        data-testid="open-tasks"
-        @click="view = { kind: 'tasks' }"
+        :data-active="view.kind === item.kind"
+        :title="collapsed ? item.label : undefined"
+        :aria-label="collapsed ? item.label : undefined"
+        :data-testid="item.testId"
+        @click="view = { kind: item.kind }"
       >
-        <ListTodo :size="16" />
-        <span v-if="!collapsed">Задачи</span>
-      </button>
-      <button
-        class="item"
-        :class="{ 'rail-item': collapsed }"
-        :data-active="view.kind === 'agents'"
-        :title="collapsed ? 'Агенты' : undefined"
-        :aria-label="collapsed ? 'Агенты' : undefined"
-        data-testid="open-agents"
-        @click="view = { kind: 'agents' }"
-      >
-        <SquareTerminal :size="16" />
-        <span v-if="!collapsed">Агенты</span>
+        <component :is="item.icon" :size="16" />
+        <span v-if="!collapsed">{{ item.label }}</span>
+        <span v-if="item.count" class="count" :title="item.countTitle" :data-testid="item.testId + '-count'">{{ item.count }}</span>
       </button>
     </div>
 
@@ -266,7 +305,17 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
         <strong>{{ state.me.name }}</strong>
         <span>{{ workspace?.name }}</span>
       </span>
-      <button class="icon" :title="dark ? 'Светлая тема' : 'Тёмная тема'" :aria-label="dark ? 'Светлая тема' : 'Тёмная тема'" data-testid="toggle-theme" @click="emit('theme')">
+      <button
+        class="icon"
+        :data-active="view.kind === 'settings'"
+        title="Настройки (Ctrl+,)"
+        aria-label="Настройки"
+        data-testid="open-settings"
+        @click="view = { kind: 'settings' }"
+      >
+        <Settings :size="16" />
+      </button>
+      <button class="icon" :title="dark ?'Светлая тема' : 'Тёмная тема'" :aria-label="dark ? 'Светлая тема' : 'Тёмная тема'" data-testid="toggle-theme" @click="emit('theme')">
         <Sun v-if="dark" :size="16" />
         <Moon v-else :size="16" />
       </button>
@@ -425,6 +474,30 @@ kbd {
   background: none;
   border: 0;
   border-radius: var(--vr-radius-md);
+}
+
+.item {
+  position: relative;
+}
+
+.count {
+  min-width: 16px;
+  padding: 0 var(--vr-space-1);
+  margin-left: auto;
+  font-size: var(--vr-font-size-2xs);
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  color: var(--vr-color-accent-contrast);
+  background: var(--vr-color-accent);
+  border-radius: var(--vr-radius-full);
+}
+
+.rail-item .count {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  margin-left: 0;
 }
 
 .item:hover {
@@ -615,7 +688,8 @@ footer {
   border-radius: var(--vr-radius-md);
 }
 
-.icon:hover {
+.icon:hover,
+.icon[data-active='true'] {
   color: var(--vr-color-text);
   background: var(--vr-color-nav-hover);
 }

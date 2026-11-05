@@ -6,10 +6,12 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { attachSession, detachSession, resizeSession, sendInput, sessionId, type SessionEvent, type SessionRef } from './pacer';
-import { terminalFontSize, zoomStep, zoomTerminal } from './terminalFont';
+import { useSettings } from '../settings/store';
+import { zoomStep, zoomTerminal } from './terminalFont';
 
 const props = defineProps<{ session: SessionRef }>();
 const host = useTemplateRef<HTMLDivElement>('host');
+const { values } = useSettings();
 
 const ESC = '\x1b';
 const SHIFT_ENTER = `${ESC}\r`;
@@ -47,10 +49,11 @@ onMounted(() => {
   const session = props.session;
   const term = new Terminal({
     allowProposedApi: true,
-    fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--vr-font-mono').trim(),
-    fontSize: terminalFontSize.value,
-    cursorBlink: true,
-    scrollback: 10000,
+    fontFamily: values.value['terminal.font_family'],
+    fontSize: values.value['terminal.font_size'],
+    lineHeight: values.value['terminal.line_height'],
+    cursorBlink: values.value['terminal.cursor_blink'],
+    scrollback: values.value['terminal.scrollback'],
     theme: themeFromTokens(),
   });
   const fit = new FitAddon();
@@ -117,10 +120,22 @@ onMounted(() => {
   });
   themes.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
-  const stopZoom = watch(terminalFontSize, (size) => {
-    term.options.fontSize = size;
-    refit();
-  });
+  const stopLayout = watch(
+    () => [values.value['terminal.font_family'], values.value['terminal.font_size'], values.value['terminal.line_height']] as const,
+    ([fontFamily, fontSize, lineHeight]) => {
+      term.options.fontFamily = fontFamily;
+      term.options.fontSize = fontSize;
+      term.options.lineHeight = lineHeight;
+      refit();
+    },
+  );
+  const stopBehaviour = watch(
+    () => [values.value['terminal.cursor_blink'], values.value['terminal.scrollback']] as const,
+    ([cursorBlink, scrollback]) => {
+      term.options.cursorBlink = cursorBlink;
+      term.options.scrollback = scrollback;
+    },
+  );
   const onWheel = (event: WheelEvent) => {
     if (!event.ctrlKey || event.deltaY === 0) return;
     event.preventDefault();
@@ -157,7 +172,8 @@ onMounted(() => {
     clearTimeout(timer);
     resizes.disconnect();
     themes.disconnect();
-    stopZoom();
+    stopLayout();
+    stopBehaviour();
     element.removeEventListener('wheel', onWheel, { capture: true });
     void attached.then(() => detachSession(session));
     term.dispose();

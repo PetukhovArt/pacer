@@ -1,19 +1,20 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { watch } from 'vue';
 import { useClient, useClientState } from '@core/vue-bindings';
-import { DARK_CLASS } from '@ui/kit';
 import AgentsView from './agents/AgentsView.vue';
 import Sidebar from './Sidebar.vue';
 import { view, type View } from './nav';
+import { isDark, toggleTheme } from './settings/appearance';
+import SettingsView from './settings/SettingsView.vue';
+import ConfluenceView from './views/ConfluenceView.vue';
+import JiraView from './views/JiraView.vue';
+import ReviewsView from './views/ReviewsView.vue';
 import TasksView from './views/TasksView.vue';
 import TaskView from './views/TaskView.vue';
 import TopicView from './views/TopicView.vue';
 
 const client = useClient();
 const state = useClientState();
-const THEME_KEY = 'veyra.theme';
-const dark = ref(localStorage.getItem(THEME_KEY) !== 'light');
-document.documentElement.classList.toggle(DARK_CLASS, dark.value);
 const WORKSPACE_KEY = 'veyra.workspace';
 const viewKey = `veyra.view.${state.value.me.id}`;
 
@@ -30,19 +31,18 @@ function switchWorkspace(id: string) {
   client.setWorkspace(id);
 }
 
-function toggleTheme() {
-  dark.value = !dark.value;
-  document.documentElement.classList.toggle(DARK_CLASS, dark.value);
-  localStorage.setItem(THEME_KEY, dark.value ? 'dark' : 'light');
-}
 </script>
 
 <template>
   <div class="shell">
-    <Sidebar :dark="dark" @switch="switchWorkspace" @theme="toggleTheme" />
+    <Sidebar :dark="isDark" @switch="switchWorkspace" @theme="toggleTheme" />
     <main class="card">
       <KeepAlive include="AgentsView">
         <AgentsView v-if="view.kind === 'agents'" />
+        <ReviewsView v-else-if="view.kind === 'reviews'" />
+        <JiraView v-else-if="view.kind === 'jira'" />
+        <ConfluenceView v-else-if="view.kind === 'confluence'" />
+        <SettingsView v-else-if="view.kind === 'settings'" />
         <TaskView v-else-if="view.kind === 'task'" :key="view.id" :task-id="view.id" />
         <TopicView v-else-if="view.kind === 'topic'" :key="view.id" :topic-id="view.id" />
         <TasksView v-else />

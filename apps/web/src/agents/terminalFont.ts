@@ -1,23 +1,13 @@
-import { shallowRef, watch } from 'vue';
+import { computed } from 'vue';
+import { useSettings } from '../settings/store';
 
-const KEY = 'veyra.terminal.fontSize';
-const DEFAULT_SIZE = 13;
-const MIN_SIZE = 8;
-const MAX_SIZE = 32;
+const { values, set, reset } = useSettings();
 
-const clamp = (size: number) => Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(size)));
-
-function stored(): number {
-  const value = Number(localStorage.getItem(KEY));
-  return Number.isFinite(value) && value > 0 ? clamp(value) : DEFAULT_SIZE;
-}
-
-export const terminalFontSize = shallowRef(stored());
-
-watch(terminalFontSize, (size) => localStorage.setItem(KEY, String(size)));
+const terminalFontSize = computed(() => values.value['terminal.font_size']);
 
 export function zoomTerminal(step: -1 | 0 | 1): void {
-  terminalFontSize.value = step === 0 ? DEFAULT_SIZE : clamp(terminalFontSize.value + step);
+  if (step === 0) reset('terminal.font_size');
+  else set('terminal.font_size', terminalFontSize.value + step);
 }
 
 export function zoomStep(event: KeyboardEvent): -1 | 0 | 1 | null {

@@ -1,0 +1,102 @@
+:root {
+  --vr-hl-keyword: var(--vr-palette-red-light);
+  --vr-hl-string: color-mix(in srgb, var(--vr-palette-blue-500) 65%, var(--vr-palette-ink-950));
+  --vr-hl-number: var(--vr-palette-green-light);
+  --vr-hl-title: color-mix(in srgb, var(--vr-palette-avatar-6) 75%, var(--vr-palette-ink-950));
+  --vr-hl-builtin: var(--vr-palette-orange-light);
+  --vr-hl-type: color-mix(in srgb, var(--vr-palette-avatar-5) 45%, var(--vr-palette-ink-900));
+  --vr-hl-comment: var(--vr-palette-ink-500);
+  --vr-hl-attr: color-mix(in srgb, var(--vr-palette-blue-500) 80%, var(--vr-palette-ink-950));
+  --vr-hl-add: var(--vr-palette-green-light);
+  --vr-hl-del: var(--vr-palette-red-light);
+}
+
+.vr-dark {
+  --vr-hl-keyword: var(--vr-palette-red-dark);
+  --vr-hl-string: color-mix(in srgb, var(--vr-palette-blue-500) 55%, var(--vr-palette-ink-0));
+  --vr-hl-number: var(--vr-palette-green-dark);
+  --vr-hl-title: color-mix(in srgb, var(--vr-palette-avatar-6) 60%, var(--vr-palette-ink-0));
+  --vr-hl-builtin: var(--vr-palette-orange-dark);
+  --vr-hl-type: var(--vr-palette-avatar-5);
+  --vr-hl-comment: var(--vr-palette-ink-400);
+  --vr-hl-attr: color-mix(in srgb, var(--vr-palette-blue-500) 70%, var(--vr-palette-ink-0));
+  --vr-hl-add: var(--vr-palette-green-dark);
+  --vr-hl-del: var(--vr-palette-red-dark);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: var(--vr-hl-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-meta .hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--vr-hl-string);
+}
+
+.hljs-number,
+.hljs-quote {
+  color: var(--vr-hl-number);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--vr-hl-title);
+}
+
+.hljs-title.class_,
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-name {
+  color: var(--vr-hl-type);
+}
+
+.hljs-built_in,
+.hljs-meta,
+.hljs-subst,
+.hljs-code {
+  color: var(--vr-hl-builtin);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-variable {
+  color: var(--vr-hl-attr);
+}
+
+.hljs-comment,
+.hljs-formula {
+  color: var(--vr-hl-comment);
+  font-style: italic;
+}
+
+.hljs-addition {
+  color: var(--vr-hl-add);
+  background: color-mix(in srgb, var(--vr-hl-add) 14%, transparent);
+}
+
+.hljs-deletion {
+  color: var(--vr-hl-del);
+  background: color-mix(in srgb, var(--vr-hl-del) 14%, transparent);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
