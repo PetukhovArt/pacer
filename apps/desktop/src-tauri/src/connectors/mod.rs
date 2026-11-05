@@ -118,10 +118,7 @@ pub struct Connectors {
 }
 
 fn registry_path() -> Result<PathBuf, String> {
-    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(var)
-        .map(|home| PathBuf::from(home).join(".veyra").join("connectors.json"))
-        .ok_or_else(|| format!("не задана переменная {var}"))
+    Ok(crate::settings::veyra_dir()?.join("connectors.json"))
 }
 
 fn persist(records: &[Record]) -> Result<(), String> {

@@ -37,7 +37,7 @@ export const remote: Translation<typeof en> = {
     noClients: 'Нет подключённых устройств',
     connectedAt: 'с {time}',
     qrLabel: 'QR-код ссылки подключения',
-    desktopOnly: 'Удалённым доступом управляют в приложении Veyra на компьютере.',
+    desktopOnly: 'Удалённым доступом управляют в приложении Veyra на компьютере. На хосте с veyra-server (Docker) ссылка подключения и QR-код есть в логе сервера: docker compose -f docker/compose.yaml logs veyra.',
     problem: {
       tailscale_missing: 'Адрес Tailscale (100.x) не найден. Запустите Tailscale или выберите другую сеть.',
       bind_failed: 'Не удалось слушать {message}',

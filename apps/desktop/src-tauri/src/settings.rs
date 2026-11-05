@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -67,7 +67,16 @@ struct Signature {
     len: u64,
 }
 
+static VEYRA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_veyra_dir(dir: PathBuf) -> bool {
+    VEYRA_DIR.set(dir).is_ok()
+}
+
 pub fn veyra_dir() -> Result<PathBuf, String> {
+    if let Some(dir) = VEYRA_DIR.get() {
+        return Ok(dir.clone());
+    }
     let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     std::env::var_os(var)
         .map(|home| PathBuf::from(home).join(".veyra"))

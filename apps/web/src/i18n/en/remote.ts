@@ -34,7 +34,7 @@ export const remote = {
     noClients: 'No devices connected',
     connectedAt: 'since {time}',
     qrLabel: 'QR code of the pairing link',
-    desktopOnly: 'Remote access is managed in the Veyra app on the computer.',
+    desktopOnly: 'Remote access is managed in the Veyra app on the computer. On a veyra-server (Docker) host the pairing link and QR code are in the server log: docker compose -f docker/compose.yaml logs veyra.',
     problem: {
       tailscale_missing: 'Tailscale address (100.x) not found. Start Tailscale or choose another network.',
       bind_failed: 'Could not listen on {message}',

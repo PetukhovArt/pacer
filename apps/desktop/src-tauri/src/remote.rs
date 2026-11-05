@@ -26,6 +26,7 @@ const TOKEN_ID: &str = "remote-pairing-token";
 const COOKIE: &str = "veyra_remote";
 const COOKIE_MAX_AGE: u32 = 30 * 24 * 60 * 60;
 const WS_PATH: &str = "/__veyra/ws";
+const HEALTH_PATH: &str = "/__veyra/health";
 const POLL: Duration = Duration::from_secs(1);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 const FAIL_WINDOW: Duration = Duration::from_secs(60);
@@ -64,6 +65,13 @@ enum Bind {
     Localhost,
     Lan,
     Tailscale,
+    #[serde(skip)]
+    Fixed(IpAddr),
+}
+
+pub struct Pinned {
+    pub addr: SocketAddr,
+    pub public_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,6 +138,7 @@ struct Shared {
     epoch: watch::Sender<u64>,
     next_client: AtomicU64,
     applying: tokio::sync::Mutex<()>,
+    pinned: Option<Pinned>,
 }
 
 #[derive(Clone)]
@@ -200,6 +209,15 @@ fn lan_ip() -> Option<Ipv4Addr> {
 fn plan(config: Config) -> Result<(SocketAddr, Vec<String>), Problem> {
     let port = config.port;
     let url = |ip: Ipv4Addr| format!("http://{ip}:{port}/");
+    let every = || {
+        let mut urls: Vec<String> = lan_ip()
+            .into_iter()
+            .chain(tailscale_ip())
+            .map(url)
+            .collect();
+        urls.push(url(Ipv4Addr::LOCALHOST));
+        urls
+    };
     match config.bind {
         Bind::Localhost => Ok((
             SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
@@ -208,16 +226,21 @@ fn plan(config: Config) -> Result<(SocketAddr, Vec<String>), Problem> {
         Bind::Tailscale => tailscale_ip()
             .map(|ip| (SocketAddr::from((ip, port)), vec![url(ip)]))
             .ok_or(Problem::TailscaleMissing),
-        Bind::Lan => {
-            let mut urls: Vec<String> = lan_ip()
-                .into_iter()
-                .chain(tailscale_ip())
-                .map(url)
-                .collect();
-            urls.push(url(Ipv4Addr::LOCALHOST));
-            Ok((SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)), urls))
+        Bind::Lan => Ok((SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)), every())),
+        Bind::Fixed(ip) => {
+            let addr = SocketAddr::new(ip, port);
+            let urls = if ip.is_unspecified() {
+                every()
+            } else {
+                vec![format!("http://{addr}/")]
+            };
+            Ok((addr, urls))
         }
     }
+}
+
+async fn health() -> Response {
+    plain(StatusCode::OK)
 }
 
 fn fresh_token() -> Result<String, String> {
@@ -317,6 +340,22 @@ fn harden(mut response: Response) -> Response {
 }
 
 impl Shared {
+    fn config(&self) -> Config {
+        match &self.pinned {
+            Some(pinned) => Config {
+                enabled: true,
+                bind: Bind::Fixed(pinned.addr.ip()),
+                port: pinned.addr.port(),
+            },
+            None => read_config(),
+        }
+    }
+
+    fn public_urls(&self) -> Option<Vec<String>> {
+        let url = self.pinned.as_ref()?.public_url.as_deref()?;
+        Some(vec![format!("{}/", url.trim_end_matches('/'))])
+    }
+
     fn token(&self) -> Result<String, String> {
         let mut slot = guard(&self.token);
         if let Some(token) = slot.as_ref() {
@@ -390,7 +429,16 @@ impl Ctx {
 
 impl Remote {
     pub fn new(connectors: Arc<Connectors>, web: WebSource) -> Self {
+        Self::build(connectors, web, None)
+    }
+
+    pub fn pinned(connectors: Arc<Connectors>, web: WebSource, pinned: Pinned) -> Self {
+        Self::build(connectors, web, Some(pinned))
+    }
+
+    fn build(connectors: Arc<Connectors>, web: WebSource, pinned: Option<Pinned>) -> Self {
         Self(Arc::new(Shared {
+            pinned,
             connectors,
             web,
             http: reqwest::Client::new(),
@@ -407,20 +455,31 @@ impl Remote {
         let remote = self.clone();
         tokio::spawn(async move {
             loop {
-                remote.apply(read_config()).await;
+                remote.refresh().await;
                 tokio::time::sleep(POLL).await;
             }
         });
+    }
+
+    pub async fn refresh(&self) {
+        self.apply(self.0.config()).await;
+    }
+
+    pub fn shutdown(&self) {
+        let mut live = guard(&self.0.live);
+        if live.server.is_some() {
+            self.0.stop(&mut live);
+        }
     }
 
     async fn apply(&self, config: Config) {
         let shared = &self.0;
         let _applying = shared.applying.lock().await;
         let target = if config.enabled {
-            Some(plan(config).and_then(|target| {
+            Some(plan(config).and_then(|(addr, urls)| {
                 shared
                     .token()
-                    .map(|_| target)
+                    .map(|_| (addr, shared.public_urls().unwrap_or(urls)))
                     .map_err(|message| Problem::TokenStore { message })
             }))
         } else {
@@ -468,6 +527,7 @@ impl Remote {
                 };
                 let app = Router::new()
                     .route(WS_PATH, get(socket))
+                    .route(HEALTH_PATH, get(health))
                     .fallback(page)
                     .with_state(ctx);
                 let task = tokio::spawn(async move {
@@ -512,6 +572,15 @@ impl Remote {
         }
     }
 
+    pub fn pairing(&self) -> Result<String, String> {
+        let status = self.status();
+        status.pairing_url.ok_or_else(|| match status.problem {
+            Some(Problem::BindFailed { message } | Problem::TokenStore { message }) => message,
+            Some(Problem::TailscaleMissing) => "tailscale address not found".to_owned(),
+            None => "remote server is not running".to_owned(),
+        })
+    }
+
     pub async fn regenerate(&self) -> Result<RemoteStatus, String> {
         let token = fresh_token()?;
         secrets::save(TOKEN_ID, &token)?;
@@ -523,7 +592,7 @@ impl Remote {
                 self.0.stop(&mut live);
             }
         }
-        self.apply(read_config()).await;
+        self.refresh().await;
         Ok(self.status())
     }
 }
