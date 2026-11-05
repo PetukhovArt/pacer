@@ -24,7 +24,6 @@ export const agents = {
     confirmDelete: 'Delete "{name}" permanently?',
     exited: 'session ended',
     exitedWithCode: 'session ended, code {code}',
-    pick: 'Select a session on the left',
   },
   newSession: {
     title: 'New Session · {branch}',
@@ -97,13 +96,9 @@ export const agents = {
     mainCheckout: 'Main checkout',
   },
   layouts: {
-    explorer: 'Explorer',
-    pacerSessions: 'Pacer sessions',
     archive: 'Archive',
     archivedCount: 'archived',
     runningTotal: 'running / total',
-    noSessions: 'No sessions',
-    pathHint: 'workspace › project › branch › session',
     quickOpen: 'Go to',
     quickOpenTitle: 'Quick Open (Ctrl+P)',
   },

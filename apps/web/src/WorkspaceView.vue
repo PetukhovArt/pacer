@@ -13,28 +13,41 @@ import { isDark, toggleTheme } from './settings/appearance';
 import SettingsView from './settings/SettingsView.vue';
 import ConfluenceView from './views/ConfluenceView.vue';
 import JiraView from './views/JiraView.vue';
-import ReviewsView from './views/ReviewsView.vue';
 import TasksView from './views/TasksView.vue';
 import TaskView from './views/TaskView.vue';
 import TopicView from './views/TopicView.vue';
+import { useDock } from './workbench/dock';
+import QuickOpen from './workbench/QuickOpen.vue';
 
 const inTauri = '__TAURI_INTERNALS__' in window;
 const mobile = useIsMobile();
 const client = useClient();
 const state = useClientState();
 const WORKSPACE_KEY = 'veyra.workspace';
-const viewKey = `veyra.view.${state.value.me.id}`;
+const viewKey = `veyra.view.v2.${state.value.me.id}`;
+const dock = useDock();
 
 try {
   view.value = JSON.parse(localStorage.getItem(viewKey) ?? '') as View;
 } catch {
-  view.value = { kind: 'tasks' };
+  view.value = { kind: 'agents' };
 }
-watch(view, (value) => localStorage.setItem(viewKey, JSON.stringify(value)));
+watch(
+  view,
+  (value) => {
+    if (value.kind === 'reviews') {
+      view.value = { kind: 'agents' };
+      if (value.open) dock.openReview(value.open);
+      return;
+    }
+    localStorage.setItem(viewKey, JSON.stringify(value));
+  },
+  { immediate: true },
+);
 
 function switchWorkspace(id: string) {
   localStorage.setItem(WORKSPACE_KEY, id);
-  if (view.value.kind !== 'tasks') void navigate({ kind: 'tasks' });
+  if (view.value.kind === 'task' || view.value.kind === 'topic') void navigate({ kind: 'agents' });
   client.setWorkspace(id);
 }
 </script>
@@ -47,7 +60,6 @@ function switchWorkspace(id: string) {
       <main class="card vt-main">
         <KeepAlive include="AgentsView">
           <AgentsView v-if="view.kind === 'agents'" />
-          <ReviewsView v-else-if="view.kind === 'reviews'" />
           <JiraView v-else-if="view.kind === 'jira'" />
           <ConfluenceView v-else-if="view.kind === 'confluence'" />
           <SettingsView v-else-if="view.kind === 'settings'" />
@@ -58,6 +70,7 @@ function switchWorkspace(id: string) {
       </main>
     </div>
     <MobileNav v-if="mobile" />
+    <QuickOpen />
     <Transition name="palette">
       <CommandPalette v-if="paletteOpen" />
     </Transition>

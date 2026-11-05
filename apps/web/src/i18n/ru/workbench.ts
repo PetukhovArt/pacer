@@ -1,0 +1,25 @@
+import type { workbench as en } from '../en/workbench';
+import type { Translation } from '../types';
+
+export const workbench: Translation<typeof en> = {
+  tree: 'Проекты',
+  filter: 'Фильтр сессий, запросов, задач',
+  sessions: 'Сессии',
+  mergeRequests: 'Merge requests',
+  tasks: 'Задачи',
+  topics: 'Топики',
+  notInProject: 'Вне проектов',
+  awaitingReview: 'Ждут моего ревью',
+  mine: 'Мои',
+  countTitle: 'Элементов: {count}',
+  byProject: 'По проектам',
+  byType: 'По типам',
+  grouping: 'Группировка дерева',
+  refresh: 'Обновить запросы и задачи',
+  empty: 'Пока пусто: добавьте проект или подключите GitLab, GitHub или Jira',
+  nothingFound: 'Ничего не подходит под фильтр',
+  pick: 'Выберите сессию, запрос или задачу в дереве',
+  newTopic: 'Новый топик',
+  topicName: 'Название топика',
+  quickPath: 'проект › ветка › сессия, запрос или задача',
+};

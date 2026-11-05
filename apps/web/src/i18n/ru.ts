@@ -14,7 +14,8 @@ import { reviews } from './ru/reviews';
 import { settings } from './ru/settings';
 import { shell } from './ru/shell';
 import { mobile } from './ru/mobile';
+import { workbench } from './ru/workbench';
 import { remote } from './ru/remote';
 import { tasks } from './ru/tasks';
 
-export const ru: Translation<typeof en> = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files, remote, mobile };
+export const ru: Translation<typeof en> = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files, remote, mobile, workbench };

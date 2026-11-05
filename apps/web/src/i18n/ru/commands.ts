@@ -11,7 +11,7 @@ export const commands: Translation<typeof en> = {
   action: {
     paletteOpen: 'Палитра команд',
     navTasks: 'Перейти к задачам',
-    navAgents: 'Перейти к агентам',
+    navAgents: 'Перейти в рабочую область',
     navReviews: 'Перейти к ревью',
     navJira: 'Перейти к Jira',
     navConfluence: 'Перейти к Confluence',
@@ -22,7 +22,7 @@ export const commands: Translation<typeof en> = {
     terminalZoomIn: 'Увеличить шрифт терминала',
     terminalZoomOut: 'Уменьшить шрифт терминала',
     terminalZoomReset: 'Сбросить размер шрифта терминала',
-    agentsQuickOpen: 'Быстрый переход к сессии',
+    agentsQuickOpen: 'Быстрый переход к сессии, запросу или задаче',
     keymapOpenSettings: 'Настроить сочетания клавиш',
     keymapOpenFile: 'Открыть keymap.json в редакторе',
   },

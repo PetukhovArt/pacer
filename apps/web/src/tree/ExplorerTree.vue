@@ -21,6 +21,8 @@ defineSlots<{
   label?(props: { node: TreeNode<T>; expanded: boolean }): unknown;
   leaf?(props: { node: TreeNode<T>; data: T | undefined; selected: boolean }): unknown;
   rollup?(props: { node: TreeNode<T> }): unknown;
+  row?(props: { node: TreeNode<T>; row: TreeRow<T> }): unknown;
+  badges?(props: { node: TreeNode<T> }): unknown;
   actions?(props: { node: TreeNode<T>; row: TreeRow<T> }): unknown;
   empty?(): unknown;
 }>();
@@ -85,6 +87,8 @@ const rows = computed<TreeRow<T>[]>(() => {
   return out;
 });
 
+const navigable = computed(() => rows.value.filter((row) => !row.node.inert));
+
 const index = computed(() => {
   const map = new Map<string, { parent: string | null; node: TreeNode<T> }>();
   const walk = (nodes: TreeNode<T>[], parent: string | null) => {
@@ -143,8 +147,8 @@ function onRowClick(row: TreeRow<T>) {
 }
 
 function onFocus() {
-  if (cursor.value && rows.value.some((row) => row.id === cursor.value)) return;
-  const first = rows.value.find((row) => row.id === props.selected) ?? rows.value[0];
+  if (cursor.value && navigable.value.some((row) => row.id === cursor.value)) return;
+  const first = navigable.value.find((row) => row.id === props.selected) ?? navigable.value[0];
   if (first) cursor.value = first.id;
 }
 
@@ -155,7 +159,7 @@ function typeAhead(char: string, from: number): boolean {
   const now = Date.now();
   typed = now - typedAt > TYPEAHEAD_MS ? char : typed + char;
   typedAt = now;
-  const list = rows.value;
+  const list = navigable.value;
   const needle = typed.toLowerCase();
   const start = typed.length > 1 ? from : from + 1;
   for (let step = 0; step < list.length; step++) {
@@ -170,7 +174,7 @@ function typeAhead(char: string, from: number): boolean {
 
 function onKey(event: KeyboardEvent) {
   if (event.target !== tree.value) return;
-  const list = rows.value;
+  const list = navigable.value;
   const index = list.findIndex((row) => row.id === cursor.value);
   const current = index >= 0 ? list[index] : undefined;
   const move = (to: number) => {
@@ -231,8 +235,8 @@ function onKey(event: KeyboardEvent) {
       :id="domId(row.id)"
       :key="row.id"
       class="node"
-      :class="row.group ? 'group' : 'leaf'"
-      role="treeitem"
+      :class="[row.group ? 'group' : 'leaf', { custom: row.node.custom }]"
+      :role="row.node.inert ? 'none' : 'treeitem'"
       :aria-level="row.depth + 1"
       :aria-expanded="row.group ? row.expanded : undefined"
       :aria-selected="row.id === selected"
@@ -243,7 +247,8 @@ function onKey(event: KeyboardEvent) {
       :style="{ '--depth': row.depth }"
     >
       <i v-for="level in row.depth" :key="level" class="guide" :style="{ '--level': level - 1 }" />
-      <button class="toggle" tabindex="-1" :title="row.node.title ?? row.node.label" :data-testid="`tree-${row.node.kind}`" @click="onRowClick(row)">
+      <slot v-if="row.node.custom" name="row" :node="row.node" :row="row" />
+      <button v-else class="toggle" tabindex="-1" :title="row.node.title ?? row.node.label" :data-testid="`tree-${row.node.kind}`" @click="onRowClick(row)">
         <ChevronRight v-if="row.group" :size="14" class="chevron vr-chevron" :data-open="row.expanded" />
         <component :is="row.expanded && row.node.iconOpen ? row.node.iconOpen : row.node.icon" v-if="row.node.icon" :size="14" class="kind-icon" />
         <template v-if="row.group">
@@ -259,7 +264,10 @@ function onKey(event: KeyboardEvent) {
           <span class="label" :data-kind="row.node.kind">{{ row.node.label }}</span>
         </slot>
       </button>
-      <span v-if="$slots.actions" class="node-actions"><slot name="actions" :node="row.node" :row="row" /></span>
+      <template v-if="!row.node.custom">
+        <span v-if="$slots.badges" class="node-badges"><slot name="badges" :node="row.node" /></span>
+        <span v-if="$slots.actions" class="node-actions"><slot name="actions" :node="row.node" :row="row" /></span>
+      </template>
     </div>
     <slot v-if="!rows.length" name="empty" />
   </div>
@@ -274,8 +282,21 @@ function onKey(event: KeyboardEvent) {
 .node {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   border-radius: var(--vr-radius-md);
+}
+
+.node.custom {
+  display: block;
+  padding-left: calc(var(--depth) * var(--indent));
+}
+
+.node-badges {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--vr-space-1);
 }
 
 .node[data-cursor='true'] {

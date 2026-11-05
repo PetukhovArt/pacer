@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { numberLabel, pipelineLabel } from './format';
 import PipelineIcon from './PipelineIcon.vue';
 
-const props = defineProps<{ path: string; branch: string }>();
+const props = defineProps<{ path: string; branch: string; summary?: ChangeRequestSummary }>();
 const emit = defineEmits<{ open: [ref: ChangeRequestRef] }>();
 
 const TTL_MS = 60_000;
@@ -20,15 +20,16 @@ function lookup(path: string, branch: string): Promise<ChangeRequestSummary | nu
   return value;
 }
 
-const summary = shallowRef<ChangeRequestSummary | null>(null);
+const looked = shallowRef<ChangeRequestSummary | null>(null);
+const summary = computed(() => props.summary ?? looked.value);
 
 watch(
-  () => [props.path, props.branch] as const,
-  async ([path, branch]) => {
-    summary.value = null;
-    if (!path || !branch) return;
+  () => [props.path, props.branch, props.summary] as const,
+  async ([path, branch, known]) => {
+    looked.value = null;
+    if (known || !path || !branch) return;
     const result = await lookup(path, branch);
-    if (path === props.path && branch === props.branch) summary.value = result;
+    if (path === props.path && branch === props.branch) looked.value = result;
   },
   { immediate: true },
 );

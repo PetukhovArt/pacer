@@ -1,16 +1,6 @@
 export const forge = {
   draft: 'Draft',
   unresolvedThreads: 'Unresolved threads: {count}',
-  inbox: {
-    groupReviewer: 'Awaiting my review',
-    groupAuthor: 'Mine',
-    groupAssignee: 'Assigned to me',
-    filter: 'Filter: project, number, title, author',
-    dismiss: 'Dismiss',
-    empty: 'No open MRs/PRs related to you',
-    tree: 'Merge and pull requests',
-    countTitle: 'Requests: {count}',
-  },
   pipeline: {
     success: 'Pipeline passed',
     failed: 'Pipeline failed',

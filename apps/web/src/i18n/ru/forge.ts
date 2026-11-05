@@ -4,16 +4,6 @@ import type { forge as en } from '../en/forge';
 export const forge: Translation<typeof en> = {
   draft: 'Черновик',
   unresolvedThreads: 'Нерешённых обсуждений: {count}',
-  inbox: {
-    groupReviewer: 'Ждут моего ревью',
-    groupAuthor: 'Мои',
-    groupAssignee: 'Назначены на меня',
-    filter: 'Фильтр: проект, номер, заголовок, автор',
-    dismiss: 'Скрыть',
-    empty: 'Нет открытых MR/PR, связанных с вами',
-    tree: 'Merge и pull requests',
-    countTitle: 'Запросов: {count}',
-  },
   pipeline: {
     success: 'Пайплайн успешен',
     failed: 'Пайплайн упал',

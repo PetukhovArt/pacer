@@ -1,27 +1,22 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component, type Directive } from 'vue';
-import { BookOpen, GitPullRequest, Hash, ListTodo, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, SquareTerminal, Sun, Ticket } from 'lucide-vue-next';
-import { useClient, useClientState } from '@core/vue-bindings';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue';
+import { BookOpen, LayoutPanelLeft, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, Ticket } from 'lucide-vue-next';
+import { useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
 import { useConnectors } from './connectors/api';
 import { useForgeInbox } from './forge/inbox';
 import { shortcutLabel } from './commands/keymap';
 import { useI18n } from './i18n';
-import { navigate, openTask, openTopic, view } from './nav';
-import { priorityRank } from './priority';
+import { navigate, view } from './nav';
 import { sidebarCollapsed, sidebarSearchRequests, toggleSidebar } from './sidebarState';
+import ProjectTree from './workbench/ProjectTree.vue';
+import { treeQuery } from './workbench/useWorkTree';
 
 defineProps<{ dark: boolean }>();
 const emit = defineEmits<{ switch: [id: string]; theme: [] }>();
 
 const { t, locale, setLocale } = useI18n();
-const client = useClient();
 const state = useClientState();
-const query = ref('');
-const creating = ref(false);
-const topicName = ref('');
-const topicError = ref('');
-const vFocus: Directive<HTMLElement> = { mounted: (el) => el.focus() };
 const searchInput = ref<HTMLInputElement | null>(null);
 const sidebarEl = ref<HTMLElement | null>(null);
 
@@ -30,14 +25,15 @@ const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 300;
 const RAIL_WIDTH = 56;
 const KEY_STEP = 16;
-const WIDTH_KEY = 'veyra.sidebar.width';
+const WIDTH_KEY = 'veyra.sidebar.tree.width';
+const EXPLORER_WIDTH_KEY = 'veyra.agents.a.width';
 
 function clampWidth(value: number) {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)));
 }
 
 function readWidth() {
-  const stored = Number(localStorage.getItem(WIDTH_KEY));
+  const stored = Number(localStorage.getItem(WIDTH_KEY) ?? localStorage.getItem(EXPLORER_WIDTH_KEY));
   return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_WIDTH;
 }
 
@@ -101,14 +97,12 @@ const hasForge = computed(() => connectors.value.some((c) => c.kind === 'github'
 const hasJira = computed(() => connectors.value.some((c) => c.kind === 'jira'));
 const hasConfluence = computed(() => connectors.value.some((c) => c.kind === 'confluence'));
 
-type NavItem = { kind: 'tasks' | 'agents' | 'reviews' | 'jira' | 'confluence'; label: string; icon: Component; testId: string; count?: number; countTitle?: string };
+type NavItem = { kind: 'agents' | 'jira' | 'confluence'; label: string; icon: Component; testId: string; count?: number; countTitle?: string };
 
 const navItems = computed<NavItem[]>(() => {
   const items: NavItem[] = [
-    { kind: 'tasks', label: t('shell.nav.tasks'), icon: ListTodo, testId: 'open-tasks' },
-    { kind: 'agents', label: t('shell.nav.agents'), icon: SquareTerminal, testId: 'open-agents' },
+    { kind: 'agents', label: t('shell.nav.agents'), icon: LayoutPanelLeft, testId: 'open-agents', count: hasForge.value ? reviewCount.value : undefined, countTitle: t('shell.nav.reviewsPending') },
   ];
-  if (hasForge.value) items.push({ kind: 'reviews', label: t('shell.nav.reviews'), icon: GitPullRequest, testId: 'nav-reviews', count: reviewCount.value, countTitle: t('shell.nav.reviewsPending') });
   if (hasJira.value) items.push({ kind: 'jira', label: t('shell.nav.jira'), icon: Ticket, testId: 'nav-jira' });
   if (hasConfluence.value) items.push({ kind: 'confluence', label: t('shell.nav.confluence'), icon: BookOpen, testId: 'nav-confluence' });
   return items;
@@ -120,42 +114,10 @@ watch(hasForge, (on) => {
   stopPolling = on ? startPolling() : undefined;
 }, { immediate: true });
 
-const selectedId = computed(() => (view.value.kind === 'task' ? view.value.id : null));
-const selectedTopicId = computed(() => (view.value.kind === 'topic' ? view.value.id : null));
 const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
 
-const mine = computed(() => state.value.tasks.filter((t) => t.assigneeId === state.value.me.id && t.statusCategory !== 'done'));
-
-const channels = computed(() => {
-  const text = query.value.trim().toLowerCase();
-  const list = text
-    ? state.value.tasks.filter((t) => t.externalRef.toLowerCase().includes(text) || t.title.toLowerCase().includes(text)).slice(0, 50)
-    : [...mine.value, ...state.value.tasks.filter((t) => t.id === selectedId.value && !mine.value.includes(t))];
-  return [...list].sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.externalRef.localeCompare(b.externalRef, undefined, { numeric: true }));
-});
-
 function onSearchKey(event: KeyboardEvent) {
-  if (event.key === 'Escape') query.value = '';
-  if (event.key === 'Enter' && channels.value[0]) openTask(channels.value[0].id);
-}
-
-function startTopic() {
-  creating.value = true;
-  topicError.value = '';
-}
-
-async function createTopic() {
-  const name = topicName.value.trim();
-  if (!name) return;
-  topicError.value = '';
-  try {
-    const topic = await client.createTopic(name);
-    topicName.value = '';
-    creating.value = false;
-    openTopic(topic.id);
-  } catch (e) {
-    topicError.value = e instanceof Error ? e.message : String(e);
-  }
+  if (event.key === 'Escape') treeQuery.value = '';
 }
 
 onMounted(() => {
@@ -179,10 +141,10 @@ onUnmounted(() => {
     <div class="top">
       <label v-if="!collapsed" class="search">
         <Search :size="16" />
-        <input ref="searchInput" v-model="query" :placeholder="t('shell.search')" :aria-label="t('shell.search')" data-testid="sidebar-search" @keydown="onSearchKey" />
+        <input ref="searchInput" v-model="treeQuery" :placeholder="t('workbench.filter')" :aria-label="t('workbench.filter')" data-testid="sidebar-search" @keydown="onSearchKey" />
         <kbd v-if="shortcutLabel('sidebar.search')">{{ shortcutLabel('sidebar.search') }}</kbd>
       </label>
-      <button v-else class="item rail-item" :title="t('shell.search')" :aria-label="t('shell.search')" data-testid="sidebar-search-open" @click="openSearch">
+      <button v-else class="item rail-item" :title="t('workbench.filter')" :aria-label="t('workbench.filter')" data-testid="sidebar-search-open" @click="openSearch">
         <Search :size="16" />
       </button>
       <button
@@ -217,10 +179,12 @@ onUnmounted(() => {
     </div>
 
     <div v-if="!collapsed" class="sections">
-      <section v-for="w in state.workspaces" :key="w.id">
+      <div v-if="state.workspaces.length > 1" class="relay">
         <button
+          v-for="w in state.workspaces"
+          :key="w.id"
           class="group-label"
-          :aria-expanded="w.id === state.workspaceId"
+          :aria-pressed="w.id === state.workspaceId"
           :data-testid="`workspace-section-${w.id}`"
           :title="w.id === state.workspaceId ? w.name : t('shell.switchWorkspace', { name: w.name })"
           @click="w.id !== state.workspaceId && emit('switch', w.id)"
@@ -228,53 +192,8 @@ onUnmounted(() => {
           <span class="badge">{{ w.name.slice(0, 1).toUpperCase() }}</span>
           <span>{{ w.name }}</span>
         </button>
-        <template v-if="w.id === state.workspaceId">
-          <div class="subhead">
-            <span>{{ t('shell.topics') }}</span>
-            <button class="icon add" :title="t('shell.newTopic')" :aria-label="t('shell.newTopic')" data-testid="topic-add" @click="startTopic"><Plus :size="14" /></button>
-          </div>
-          <form v-if="creating" class="new-topic" @submit.prevent="createTopic">
-            <Hash :size="14" />
-            <input v-model="topicName" v-focus :placeholder="t('shell.topicPlaceholder')" :aria-label="t('shell.topicName')" data-testid="topic-name" @keydown.esc="creating = false" />
-          </form>
-          <p v-if="topicError" class="empty" role="alert">{{ topicError }}</p>
-          <div v-auto-animate>
-            <button
-              v-for="topic in state.topics"
-              :key="topic.id"
-              class="item vt-nav channel"
-              :class="{ unread: state.unread.has(topic.id) }"
-              :data-active="topic.id === selectedTopicId"
-              :aria-current="topic.id === selectedTopicId ? 'page' : undefined"
-              :data-testid="`topic-${topic.name}`"
-              @click="openTopic(topic.id)"
-            >
-              <Hash :size="14" class="key" />
-              <span class="name">{{ topic.name }}</span>
-              <span v-if="state.unread.has(topic.id)" class="unread-dot" :data-testid="`topic-unread-${topic.name}`"><span class="sr">{{ t('shell.unread') }}</span></span>
-            </button>
-          </div>
-          <div class="subhead"><span>{{ t('shell.tasks') }}</span></div>
-          <div v-auto-animate>
-            <button
-              v-for="task in channels"
-              :key="task.id"
-              class="item vt-nav channel"
-              :class="{ unread: state.unread.has(task.id) }"
-              :data-active="task.id === selectedId"
-              :aria-current="task.id === selectedId ? 'page' : undefined"
-              :title="`${task.externalRef} ${task.title}`"
-              :data-testid="`channel-${task.externalRef}`"
-              @click="openTask(task.id)"
-            >
-              <span class="key">{{ task.externalRef }}</span>
-              <span class="name">{{ task.title }}</span>
-              <span v-if="state.unread.has(task.id)" class="unread-dot" :data-testid="`channel-unread-${task.externalRef}`"><span class="sr">{{ t('shell.unread') }}</span></span>
-            </button>
-          </div>
-          <p v-if="!channels.length" class="empty">{{ query ? t('shell.nothingFound') : t('shell.noOpenTasks') }}</p>
-        </template>
-      </section>
+      </div>
+      <ProjectTree />
     </div>
 
     <footer>
@@ -494,16 +413,29 @@ kbd {
 }
 
 .sections {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  margin: var(--vr-space-3) calc(-1 * var(--vr-space-2)) 0;
-  padding: 0 var(--vr-space-2);
+  margin: var(--vr-space-2) calc(-1 * var(--vr-space-1)) 0;
+  overflow: hidden;
 }
 
-section + section {
-  margin-top: var(--vr-space-3);
+.relay {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--vr-space-1);
+  padding: 0 var(--vr-space-1) var(--vr-space-1);
+}
+
+.relay .group-label {
+  width: auto;
+}
+
+.relay .group-label[aria-pressed='true'] {
+  color: var(--vr-color-text);
+  background: var(--vr-color-nav-active);
 }
 
 .group-label {
@@ -522,7 +454,7 @@ section + section {
   border-radius: var(--vr-radius-md);
 }
 
-.group-label[aria-expanded='false']:hover {
+.group-label[aria-pressed='false']:hover {
   color: var(--vr-color-text);
   background: var(--vr-color-nav-hover);
 }
@@ -540,89 +472,10 @@ section + section {
   background: var(--vr-color-chrome);
 }
 
-.channel .key {
-  flex: none;
-  font-size: var(--vr-font-size-xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--vr-color-nav-muted);
-}
-
-.channel .name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.channel.unread .name {
-  font-weight: 600;
-}
-
-.unread-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--vr-color-accent);
-}
-
-.sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-.empty {
-  margin: 0;
-  padding: var(--vr-space-1) var(--vr-space-2);
-  font-size: var(--vr-font-size-xs);
-  color: var(--vr-color-nav-muted);
-}
-
-.subhead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: var(--vr-size-row);
-  padding: 0 var(--vr-space-2);
-  margin-top: var(--vr-space-1);
-  font-size: var(--vr-font-size-2xs);
-  color: var(--vr-color-nav-muted);
-}
-
 .icon.lang {
   font: inherit;
   font-size: var(--vr-font-size-2xs);
   font-weight: 600;
-}
-
-.icon.add {
-  width: 20px;
-  height: 20px;
-}
-
-.new-topic {
-  display: flex;
-  align-items: center;
-  gap: var(--vr-space-2);
-  height: var(--vr-size-row);
-  padding: 0 var(--vr-space-2);
-  border-radius: var(--vr-radius-md);
-  background: var(--vr-color-nav-hover);
-  color: var(--vr-color-nav-muted);
-}
-
-.new-topic input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  color: var(--vr-color-text);
-  background: none;
-  border: 0;
-  outline: none;
 }
 
 footer {

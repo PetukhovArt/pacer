@@ -1,35 +1,34 @@
 <script setup lang="ts">
 import { computed, onMounted, shallowRef, useTemplateRef } from 'vue';
-import { ChevronRight, FileText } from 'lucide-vue-next';
-import type { SessionNode } from '../pacer';
+import { ChevronRight, FileText, GitPullRequest, Hash, ListTodo, Ticket } from 'lucide-vue-next';
 import { subsequenceScore } from '../../commands/fuzzy';
 import { usePickerList } from '../../commands/usePickerList';
+import PipelineIcon from '../../forge/PipelineIcon.vue';
 import { t } from '../../i18n';
+import type { QuickItem, WorkNode } from '../../workbench/tree';
 import StatusDot from '../StatusDot.vue';
 import type { MarkdownEntry } from './markdownFiles';
-import type { SessionPath } from './nav';
 
-type Item = { kind: 'session'; key: string; entry: SessionPath } | { kind: 'file'; key: string; file: MarkdownEntry };
+type Item = { kind: 'leaf'; key: string; entry: QuickItem } | { kind: 'file'; key: string; file: MarkdownEntry };
 
-const props = withDefaults(defineProps<{ entries: readonly SessionPath[]; files?: readonly MarkdownEntry[]; fileScope?: string }>(), { files: () => [], fileScope: '' });
-const emit = defineEmits<{ select: [session: SessionNode]; 'select-file': [path: string]; close: [] }>();
+const props = withDefaults(defineProps<{ entries: readonly QuickItem[]; files?: readonly MarkdownEntry[]; fileScope?: string }>(), { files: () => [], fileScope: '' });
+const emit = defineEmits<{ select: [node: WorkNode]; 'select-file': [path: string]; close: [] }>();
 
 const input = useTemplateRef<HTMLInputElement>('input');
 const list = useTemplateRef<HTMLElement>('list');
 const query = shallowRef('');
 
-function fullText(entry: SessionPath): string {
-  return `${entry.workspace.name} › ${entry.project.name} › ${entry.worktree.branch} › ${entry.session.name}`.toLowerCase();
-}
+const ICONS = { mr: GitPullRequest, issue: Ticket, task: ListTodo, topic: Hash } as const;
+const iconOf = (kind: string) => (kind in ICONS ? ICONS[kind as keyof typeof ICONS] : undefined);
 
 const results = computed<Item[]>(() => {
   const words = query.value.toLowerCase().split(/\s+/).filter(Boolean);
-  const sessions: Item[] = props.entries.map((entry) => ({ kind: 'session', key: entry.session.key, entry }));
-  if (!words.length) return sessions;
+  const leaves: Item[] = props.entries.map((entry) => ({ kind: 'leaf', key: entry.key, entry }));
+  if (!words.length) return leaves;
   const files: Item[] = props.files.map((file) => ({ kind: 'file', key: file.path, file }));
-  return [...sessions, ...files]
+  return [...leaves, ...files]
     .map((item, order) => {
-      const text = item.kind === 'session' ? fullText(item.entry) : item.file.rel.toLowerCase();
+      const text = item.kind === 'leaf' ? item.entry.search : item.file.rel.toLowerCase();
       let total = 0;
       for (const word of words) {
         const score = subsequenceScore(word, text);
@@ -45,7 +44,7 @@ const results = computed<Item[]>(() => {
 
 function choose(item: Item | undefined) {
   if (!item) return;
-  if (item.kind === 'session') emit('select', item.entry.session);
+  if (item.kind === 'leaf') emit('select', item.entry.node);
   else emit('select-file', item.file.path);
 }
 
@@ -62,7 +61,7 @@ onMounted(() => input.value?.focus());
         v-model="query"
         class="query"
         type="text"
-        :placeholder="fileScope ? t('files.switcher.placeholderFiles', { scope: fileScope }) : t('agents.layouts.pathHint')"
+        :placeholder="fileScope ? t('files.switcher.placeholderFiles', { scope: fileScope }) : t('workbench.quickPath')"
         :aria-label="t('files.switcher.search')"
         data-testid="quick-switcher-input"
         @keydown="onKey"
@@ -75,20 +74,21 @@ onMounted(() => input.value?.focus());
           role="option"
           :aria-selected="position === index"
           :data-current="position === index"
-          :data-testid="item.kind === 'session' ? 'quick-switcher-item' : 'quick-switcher-file'"
-          :data-session-id="item.kind === 'session' ? item.entry.session.id : undefined"
+          :data-testid="item.kind === 'leaf' ? 'quick-switcher-item' : 'quick-switcher-file'"
+          :data-kind="item.kind === 'leaf' ? item.entry.node.kind : 'file'"
+          :data-session-id="item.kind === 'leaf' ? item.entry.node.data?.session?.id : undefined"
           @pointermove="index = position"
           @click="choose(item)"
         >
-          <template v-if="item.kind === 'session'">
-            <StatusDot :status="item.entry.session.status" :unseen="item.entry.session.unseen" />
-            <span class="path">{{ item.entry.workspace.name }}</span>
-            <ChevronRight :size="11" />
-            <span class="path">{{ item.entry.project.name }}</span>
-            <ChevronRight :size="11" />
-            <span class="path mono">{{ item.entry.worktree.branch }}</span>
-            <ChevronRight :size="11" />
-            <span class="session">{{ item.entry.session.name }}</span>
+          <template v-if="item.kind === 'leaf'">
+            <StatusDot v-if="item.entry.node.data?.session" :status="item.entry.node.data.session.status" :unseen="item.entry.node.data.session.unseen" />
+            <component :is="iconOf(item.entry.node.kind)" v-else-if="iconOf(item.entry.node.kind)" :size="14" class="file-icon" />
+            <template v-for="crumb in item.entry.crumbs" :key="crumb">
+              <span class="path">{{ crumb }}</span>
+              <ChevronRight :size="11" />
+            </template>
+            <span class="session">{{ item.entry.node.label }}</span>
+            <PipelineIcon v-if="item.entry.node.data?.item && item.entry.node.data.item.pipeline !== 'none'" :status="item.entry.node.data.item.pipeline" :size="12" />
           </template>
           <template v-else>
             <FileText :size="14" class="file-icon" />

@@ -14,23 +14,39 @@ const { values, set, reset, isModified } = useSettings();
 const def = computed(() => SETTINGS[props.settingKey]);
 const value = computed(() => values.value[props.settingKey]);
 const modified = computed(() => isModified(props.settingKey));
-const draft = shallowRef(String(value.value));
+const display = (next: unknown) =>
+  typeof next === 'object' && next !== null
+    ? Object.entries(next)
+        .map(([key, item]) => `${key}=${String(item)}`)
+        .join(', ')
+    : String(next);
+const draft = shallowRef(display(value.value));
+
+function parseMap(text: string): Record<string, string> {
+  const pairs = text.split(/[,;\n]/).flatMap((part) => {
+    const at = part.indexOf('=');
+    const key = part.slice(0, at).trim();
+    const item = part.slice(at + 1).trim();
+    return at > 0 && key && item ? [[key, item] as const] : [];
+  });
+  return Object.fromEntries(pairs);
+}
 const placeholder = computed(() => ('placeholder' in def.value && def.value.placeholder ? t(def.value.placeholder) : undefined));
 const testId = computed(() => `setting-${props.settingKey}`);
 const options = computed(() => (def.value.type === 'enum' ? def.value.options.map((option) => ({ value: option.value, label: t(option.label) })) : []));
 
 watch(value, (next) => {
-  draft.value = String(next);
+  draft.value = display(next);
 });
 
 function commit() {
-  const parsed = def.value.type === 'number' ? (draft.value.trim() === '' ? NaN : Number(draft.value)) : draft.value;
+  const parsed = def.value.type === 'number' ? (draft.value.trim() === '' ? NaN : Number(draft.value)) : def.value.type === 'map' ? parseMap(draft.value) : draft.value;
   if (typeof parsed === 'number' && Number.isNaN(parsed)) {
-    draft.value = String(value.value);
+    draft.value = display(value.value);
     return;
   }
   set(props.settingKey, parsed);
-  draft.value = String(values.value[props.settingKey]);
+  draft.value = display(values.value[props.settingKey]);
 }
 </script>
 

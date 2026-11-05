@@ -51,7 +51,3 @@ export function rollupOf(sessions: readonly SessionNode[]): Rollup {
   }
   return { status, unseen, running, feedback, total: sessions.length };
 }
-
-export function workspaceSessions(workspace: WorkspaceNode): SessionNode[] {
-  return workspace.projects.flatMap((project) => project.worktrees.flatMap((worktree) => worktree.sessions));
-}

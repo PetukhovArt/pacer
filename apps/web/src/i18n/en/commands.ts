@@ -8,7 +8,7 @@ export const commands = {
   action: {
     paletteOpen: 'Command palette',
     navTasks: 'Go to tasks',
-    navAgents: 'Go to agents',
+    navAgents: 'Go to the workbench',
     navReviews: 'Go to reviews',
     navJira: 'Go to Jira',
     navConfluence: 'Go to Confluence',
@@ -19,7 +19,7 @@ export const commands = {
     terminalZoomIn: 'Increase terminal font size',
     terminalZoomOut: 'Decrease terminal font size',
     terminalZoomReset: 'Reset terminal font size',
-    agentsQuickOpen: 'Quick switch to a session',
+    agentsQuickOpen: 'Quick switch to a session, request or task',
     keymapOpenSettings: 'Customize keyboard shortcuts',
     keymapOpenFile: 'Open keymap.json in the editor',
   },

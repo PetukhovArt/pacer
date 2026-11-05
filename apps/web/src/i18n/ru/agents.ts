@@ -27,7 +27,6 @@ export const agents: Translation<typeof en> = {
     confirmDelete: 'Удалить «{name}» насовсем?',
     exited: 'сессия завершена',
     exitedWithCode: 'сессия завершена, код {code}',
-    pick: 'Выберите сессию слева',
   },
   newSession: {
     title: 'Новая сессия · {branch}',
@@ -100,13 +99,9 @@ export const agents: Translation<typeof en> = {
     mainCheckout: 'Основной checkout',
   },
   layouts: {
-    explorer: 'Проводник',
-    pacerSessions: 'Сессии pacer',
     archive: 'Архив',
     archivedCount: 'в архиве',
     runningTotal: 'работает / всего',
-    noSessions: 'Нет сессий',
-    pathHint: 'workspace › проект › ветка › сессия',
     quickOpen: 'Перейти',
     quickOpenTitle: 'Быстрый переход (Ctrl+P)',
   },

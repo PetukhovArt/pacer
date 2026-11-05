@@ -81,6 +81,11 @@ export const settings: Translation<typeof en> = {
       description: 'Подставляется в форму новой сессии. Пусто — значение выбирает сам агент.',
       placeholder: 'по умолчанию',
     },
+    treeJiraProjects: {
+      label: 'Проекты Jira в дереве',
+      description: 'Привязывает задачи Jira к проекту, когда ни одна ветка проекта не называет задачу. Пары ключа Jira и имени проекта: WC=web-client, SC=frontend.',
+      placeholder: 'WC=web-client',
+    },
   },
   problem: {
     expectedBoolean: 'ожидается true или false',
@@ -88,6 +93,7 @@ export const settings: Translation<typeof en> = {
     range: 'число от {min} до {max}',
     expectedString: 'ожидается строка',
     oneOf: 'одно из: {values}',
+    expectedMap: 'ожидается объект строк {"WC": "web-client"}',
   },
   parse: {
     rootObject: 'Корень файла должен быть объектом {…}',

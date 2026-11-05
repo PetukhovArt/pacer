@@ -1,8 +1,8 @@
 import { zoomTerminal } from '../agents/terminalFont';
-import { quickOpen } from '../agents/proto/quickOpen';
 import { navigate, openSettings } from '../nav';
 import { toggleTheme } from '../settings/appearance';
 import { requestSidebarSearch, toggleSidebar } from '../sidebarState';
+import { toggleQuickOpen } from '../workbench/dock';
 import { paletteOpen } from './context';
 import { openKeymapExternal } from './keymap';
 import { defineAction } from './registry';
@@ -29,7 +29,7 @@ defineAction({ id: 'terminal.zoomIn', title: 'commands.action.terminalZoomIn', c
 defineAction({ id: 'terminal.zoomOut', title: 'commands.action.terminalZoomOut', category: TERMINAL, run: () => zoomTerminal(-1) });
 defineAction({ id: 'terminal.zoomReset', title: 'commands.action.terminalZoomReset', category: TERMINAL, run: () => zoomTerminal(0) });
 
-defineAction({ id: 'agents.quickOpen', title: 'commands.action.agentsQuickOpen', category: NAVIGATION, when: "view == 'agents'", run: quickOpen });
+defineAction({ id: 'agents.quickOpen', title: 'commands.action.agentsQuickOpen', category: NAVIGATION, run: toggleQuickOpen });
 
 defineAction({ id: 'keymap.openSettings', title: 'commands.action.keymapOpenSettings', category: KEYS, run: () => openSettings('keymap') });
 defineAction({ id: 'keymap.openFile', title: 'commands.action.keymapOpenFile', category: KEYS, run: () => openKeymapExternal() });

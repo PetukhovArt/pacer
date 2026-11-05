@@ -1,35 +1,5 @@
-<script lang="ts">
-import { shallowRef } from 'vue';
-import { describeError, jiraSearch, type JiraIssueSummary } from '../connectors/api';
-
-const JIRA_JQL = 'assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC';
-const JIRA_LIMIT = 100;
-const JIRA_FRESH_MS = 60_000;
-
-type JiraResult = { issues: JiraIssueSummary[]; error: string | null; loading: boolean; loadedAt: number };
-
-const jiraResults = shallowRef<ReadonlyMap<string, JiraResult>>(new Map());
-
-function patchJira(connector: string, patch: Partial<JiraResult>) {
-  const previous = jiraResults.value.get(connector) ?? { issues: [], error: null, loading: false, loadedAt: 0 };
-  jiraResults.value = new Map([...jiraResults.value, [connector, { ...previous, ...patch }]]);
-}
-
-async function loadJira(connector: string, force: boolean) {
-  const current = jiraResults.value.get(connector);
-  if (current?.loading || (!force && current && Date.now() - current.loadedAt < JIRA_FRESH_MS)) return;
-  patchJira(connector, { loading: true });
-  try {
-    const result = await jiraSearch(connector, JIRA_JQL, 0, JIRA_LIMIT);
-    patchJira(connector, { issues: result.issues, error: null, loading: false, loadedAt: Date.now() });
-  } catch (e) {
-    patchJira(connector, { error: describeError(e), loading: false, loadedAt: Date.now() });
-  }
-}
-</script>
-
 <script setup lang="ts">
-import { computed, onMounted, reactive, watch } from 'vue';
+import { computed, onMounted, reactive, shallowRef, watch } from 'vue';
 import type { StatusCategory, Task } from '@veyra/protocol';
 import { CircleCheck, CircleDashed, CircleDot, Folder, FolderOpen, ListTodo, RefreshCw, Search, SlidersHorizontal, Tag, Ticket } from 'lucide-vue-next';
 import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
@@ -38,7 +8,8 @@ import JiraIssueView from '../atlassian/JiraIssueView.vue';
 import JiraPersonAvatar from '../atlassian/PersonAvatar.vue';
 import TypeIcon from '../atlassian/TypeIcon.vue';
 import Avatar from '../Avatar.vue';
-import { useConnectors } from '../connectors/api';
+import { useMyIssues } from '../atlassian/myIssues';
+import { useConnectors, type JiraIssueSummary } from '../connectors/api';
 import { t } from '../i18n';
 import { withViewTransition } from '../motion';
 import { openSettings } from '../nav';
@@ -166,13 +137,7 @@ function issueMatches(issue: JiraIssueSummary) {
   return textMatches(issue.key, issue.summary);
 }
 
-const jiraConnectors = computed(() => connectors.value.filter((c) => c.kind === 'jira'));
-const jiraIssues = computed(() => jiraConnectors.value.flatMap((c) => jiraResults.value.get(c.id)?.issues ?? []));
-const jiraErrors = computed(() => jiraConnectors.value.flatMap((c) => {
-  const error = jiraResults.value.get(c.id)?.error;
-  return error ? [{ connector: c.label, message: error }] : [];
-}));
-const jiraLoading = computed(() => jiraConnectors.value.some((c) => jiraResults.value.get(c.id)?.loading));
+const { jiraConnectors, issues: jiraIssues, errors: jiraErrors, loading: jiraLoading, refresh: refreshJira } = useMyIssues();
 
 const visible = computed(() => state.value.tasks.filter(matches));
 const visibleIssues = computed(() => jiraIssues.value.filter(issueMatches));
@@ -180,10 +145,6 @@ const total = computed(() => state.value.tasks.length + jiraIssues.value.length)
 
 const settled = computed(() => connectors.value.length > 0 || !connectorsLoading.value);
 const noSource = computed(() => settled.value && !state.value.tasks.length && !jiraConnectors.value.length);
-
-function refreshJira(force: boolean) {
-  for (const connector of jiraConnectors.value) void loadJira(connector.id, force);
-}
 
 watch(jiraConnectors, () => refreshJira(false));
 

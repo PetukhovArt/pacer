@@ -10,6 +10,8 @@ export type TreeNode<T = unknown> = {
   count?: number | string;
   countTitle?: string;
   defaultExpanded?: boolean;
+  custom?: boolean;
+  inert?: boolean;
   title?: string;
   data?: T;
 };

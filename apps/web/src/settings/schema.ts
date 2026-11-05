@@ -8,7 +8,8 @@ type BooleanDef = Base & { readonly type: 'boolean'; readonly default: boolean }
 type NumberDef = Base & { readonly type: 'number'; readonly default: number; readonly min: number; readonly max: number; readonly step: number };
 type StringDef = Base & { readonly type: 'string'; readonly default: string; readonly placeholder?: MessageKey };
 type EnumDef = Base & { readonly type: 'enum'; readonly default: string; readonly options: readonly Option[] };
-export type SettingDef = BooleanDef | NumberDef | StringDef | EnumDef;
+type MapDef = Base & { readonly type: 'map'; readonly default: Readonly<Record<string, string>>; readonly placeholder?: MessageKey };
+export type SettingDef = BooleanDef | NumberDef | StringDef | EnumDef | MapDef;
 
 export const CATEGORIES = [
   { id: 'appearance', label: 'settings.category.appearance' },
@@ -136,6 +137,14 @@ export const SETTINGS = {
     category: 'sessions',
     placeholder: 'settings.def.sessionsDefaultEffort.placeholder',
   },
+  'tree.jiraProjects': {
+    type: 'map',
+    default: {},
+    label: 'settings.def.treeJiraProjects.label',
+    description: 'settings.def.treeJiraProjects.description',
+    category: 'connectors',
+    placeholder: 'settings.def.treeJiraProjects.placeholder',
+  },
   'remote.enabled': {
     type: 'boolean',
     default: false,
@@ -169,7 +178,15 @@ export const SETTINGS = {
 
 export type SettingKey = keyof typeof SETTINGS;
 
-type ValueOf<D> = D extends { type: 'boolean' } ? boolean : D extends { type: 'number' } ? number : D extends { type: 'enum'; options: readonly { value: infer V }[] } ? V : string;
+type ValueOf<D> = D extends { type: 'boolean' }
+  ? boolean
+  : D extends { type: 'number' }
+    ? number
+    : D extends { type: 'enum'; options: readonly { value: infer V }[] }
+      ? V
+      : D extends { type: 'map' }
+        ? Readonly<Record<string, string>>
+        : string;
 export type SettingValues = { [K in SettingKey]: ValueOf<(typeof SETTINGS)[K]> };
 
 export const SETTING_KEYS = Object.keys(SETTINGS) as SettingKey[];
@@ -193,6 +210,8 @@ export function checkValue(def: SettingDef, raw: unknown): string | null {
       return typeof raw === 'string' ? null : tr('settings.problem.expectedString');
     case 'enum':
       return typeof raw === 'string' && def.options.some((option) => option.value === raw) ? null : tr('settings.problem.oneOf', { values: def.options.map((option) => option.value).join(', ') });
+    case 'map':
+      return typeof raw === 'object' && raw !== null && !Array.isArray(raw) && Object.values(raw).every((value) => typeof value === 'string') ? null : tr('settings.problem.expectedMap');
   }
 }
 

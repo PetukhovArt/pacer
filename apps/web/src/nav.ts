@@ -12,7 +12,7 @@ export type View =
   | { kind: 'task'; id: string }
   | { kind: 'topic'; id: string };
 
-export const view = ref<View>({ kind: 'tasks' });
+export const view = ref<View>({ kind: 'agents' });
 export const requestedSettingsCategory = ref<string | null>(null);
 
 export function navigate(next: View): Promise<void> {
@@ -21,16 +21,8 @@ export function navigate(next: View): Promise<void> {
   });
 }
 
-export function openTask(id: string): void {
-  void navigate({ kind: 'task', id });
-}
-
 export function openTopic(id: string): void {
   void navigate({ kind: 'topic', id });
-}
-
-export function openReview(ref: ChangeRequestRef): void {
-  void navigate({ kind: 'reviews', open: ref });
 }
 
 export function openSettings(category?: string): void {

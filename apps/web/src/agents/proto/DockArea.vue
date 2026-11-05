@@ -2,16 +2,19 @@
 import 'dockview-vue/dist/styles/dockview.css';
 import { onBeforeUnmount, shallowRef } from 'vue';
 import { DockviewVue, themeLight, type DockviewApi, type DockviewReadyEvent } from 'dockview-vue';
-import { ChevronRight, FileText, X } from 'lucide-vue-next';
+import { ChevronRight, FileText, GitPullRequest, ListTodo, Ticket, X } from 'lucide-vue-next';
+import JiraIssueView from '../../atlassian/JiraIssueView.vue';
+import ChangeRequestView from '../../forge/ChangeRequestView.vue';
 import { t } from '../../i18n';
 import MarkdownFile from '../../files/MarkdownFile.vue';
+import TaskView from '../../views/TaskView.vue';
+import { METRICS_PANEL, useDock } from '../../workbench/dock';
 import { isSessionRef, usePacer } from '../pacer';
 import SessionPanel from '../SessionPanel.vue';
 import StatusDot from '../StatusDot.vue';
 import MetricsPanel from '../manage/MetricsPanel.vue';
 import { isFilePanel } from './markdownFiles';
 import type { SessionPath } from './nav';
-import { METRICS_PANEL } from './useAgentsDock';
 
 const props = defineProps<{ activeKey: string | null; paths: ReadonlyMap<string, SessionPath>; groupLabels?: boolean }>();
 const emit = defineEmits<{ ready: [event: DockviewReadyEvent]; 'open-file': [path: string, hash: string, from: string] }>();
@@ -19,6 +22,7 @@ const emit = defineEmits<{ ready: [event: DockviewReadyEvent]; 'open-file': [pat
 type Host = { id: string; el: HTMLElement; panels: string[] };
 
 const pacer = usePacer();
+const dock = useDock();
 const hosts = shallowRef<Host[]>([]);
 const subscriptions: { dispose(): void }[] = [];
 
@@ -46,11 +50,16 @@ function labelOf(host: Host): SessionPath | undefined {
   return undefined;
 }
 
-function tabTestId(id: string): string {
-  if (id === METRICS_PANEL) return 'metrics-tab';
-  if (isFilePanel(id)) return 'file-tab';
-  return 'session-tab';
+function kindOf(id: string): 'metrics' | 'file' | 'review' | 'issue' | 'task' | 'session' {
+  if (id === METRICS_PANEL) return 'metrics';
+  if (isFilePanel(id)) return 'file';
+  if (id.startsWith('mr:')) return 'review';
+  if (id.startsWith('jira:')) return 'issue';
+  if (id.startsWith('task:')) return 'task';
+  return 'session';
 }
+
+const str = (value: unknown) => (typeof value === 'string' ? value : '');
 
 onBeforeUnmount(() => {
   for (const subscription of subscriptions) subscription.dispose();
@@ -63,6 +72,15 @@ onBeforeUnmount(() => {
       <template #panel-session="{ params }">
         <SessionPanel v-if="isSessionRef(params.session)" class="vr-fade-in" :session="params.session" />
       </template>
+      <template #panel-review="{ params }">
+        <ChangeRequestView v-if="typeof params.connector === 'string' && typeof params.project === 'string' && typeof params.number === 'number'" class="vr-fade-in" :connector="params.connector" :project="params.project" :number="params.number" />
+      </template>
+      <template #panel-issue="{ params }">
+        <JiraIssueView v-if="typeof params.connector === 'string' && typeof params.key === 'string'" class="vr-fade-in" :connector="params.connector" :issue-key="params.key" @open="(ref) => dock.openIssue(ref.connector, ref.key)" />
+      </template>
+      <template #panel-task="{ params }">
+        <TaskView v-if="str(params.id)" class="vr-fade-in" :task-id="str(params.id)" embedded />
+      </template>
       <template #panel-metrics>
         <MetricsPanel class="vr-fade-in" />
       </template>
@@ -70,15 +88,18 @@ onBeforeUnmount(() => {
         <MarkdownFile v-if="typeof params.path === 'string'" class="vr-fade-in" :path="params.path" :hash="typeof params.hash === 'string' ? params.hash : ''" @open-file="(path, hash) => emit('open-file', path, hash, api.id)" />
       </template>
       <template #defaultTab="{ api }">
-        <span class="tab" :data-testid="tabTestId(api.id)" :data-session-id="pacer?.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">
-          <FileText v-if="isFilePanel(api.id)" :size="12" />
+        <span class="tab" :data-testid="`${kindOf(api.id)}-tab`" :data-panel-id="api.id" :data-session-id="pacer?.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">
+          <FileText v-if="kindOf(api.id) === 'file'" :size="12" />
+          <GitPullRequest v-else-if="kindOf(api.id) === 'review'" :size="12" />
+          <Ticket v-else-if="kindOf(api.id) === 'issue'" :size="12" />
+          <ListTodo v-else-if="kindOf(api.id) === 'task'" :size="12" />
           <StatusDot v-if="pacer?.sessions.value.has(api.id)" :status="pacer.sessions.value.get(api.id)?.status" :unseen="pacer.sessions.value.get(api.id)?.unseen" />
           <span class="name">{{ pacer?.sessions.value.get(api.id)?.name ?? api.title }}</span>
           <button class="close" :title="t('common.close')" :aria-label="t('common.close')" data-testid="session-tab-close" @pointerdown.stop @click.stop="api.close()"><X :size="12" /></button>
         </span>
       </template>
       <template #watermark>
-        <p class="watermark">{{ t('agents.session.pick') }}</p>
+        <p class="watermark">{{ t('workbench.pick') }}</p>
       </template>
     </DockviewVue>
     <template v-for="host in hosts" :key="host.id">

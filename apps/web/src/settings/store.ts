@@ -74,7 +74,7 @@ function set(key: SettingKey, value: unknown): void {
   const next = coerceValue(def, value);
   if (next === undefined) return;
   const object = { ...fileObject.value };
-  if (next === def.default) delete object[key];
+  if (same(next, def.default)) delete object[key];
   else object[key] = next;
   if (!Object.keys(object).length && !text.value.trim()) return;
   commit(object);
@@ -85,7 +85,11 @@ function reset(key: SettingKey): void {
 }
 
 function isModified(key: SettingKey): boolean {
-  return values.value[key] !== SETTINGS[key].default;
+  return !same(values.value[key], SETTINGS[key].default);
+}
+
+function same(a: unknown, b: unknown): boolean {
+  return a === b || (typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
 }
 
 function checkText(candidate: string): string | null {

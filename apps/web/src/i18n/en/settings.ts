@@ -78,6 +78,11 @@ export const settings = {
       description: 'Prefilled in the new session form. Empty: the agent picks the value.',
       placeholder: 'default',
     },
+    treeJiraProjects: {
+      label: 'Jira projects in the tree',
+      description: 'Links Jira issues to a project when no branch of the project names the issue. Pairs of Jira key and project name: WC=web-client, SC=frontend.',
+      placeholder: 'WC=web-client',
+    },
   },
   problem: {
     expectedBoolean: 'expected true or false',
@@ -85,6 +90,7 @@ export const settings = {
     range: 'a number from {min} to {max}',
     expectedString: 'expected a string',
     oneOf: 'one of: {values}',
+    expectedMap: 'expected an object of strings {"WC": "web-client"}',
   },
   parse: {
     rootObject: 'The file root must be an object {…}',

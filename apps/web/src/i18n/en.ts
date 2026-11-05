@@ -12,7 +12,8 @@ import { reviews } from './en/reviews';
 import { settings } from './en/settings';
 import { shell } from './en/shell';
 import { mobile } from './en/mobile';
+import { workbench } from './en/workbench';
 import { remote } from './en/remote';
 import { tasks } from './en/tasks';
 
-export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files, remote, mobile } as const;
+export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files, remote, mobile, workbench } as const;
