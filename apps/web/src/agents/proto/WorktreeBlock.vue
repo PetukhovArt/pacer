@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue';
-import { ChevronRight, GitBranch, Plus } from 'lucide-vue-next';
+import { ChevronRight, GitBranch, House, Plus } from 'lucide-vue-next';
 import { t } from '../../i18n';
 import WorktreeBadge from '../../forge/WorktreeBadge.vue';
 import { openReview } from '../../nav';
@@ -18,8 +18,9 @@ const archiveOpen = shallowRef(false);
 <template>
   <div class="worktree" data-testid="worktree-row" :data-worktree-id="worktree.id">
     <div class="branch">
-      <GitBranch :size="12" class="branch-icon" />
-      <span class="branch-name" :title="worktree.branch">{{ worktree.branch }}</span>
+      <House v-if="worktree.main" :size="12" class="branch-icon" :aria-label="t('agents.worktree.mainCheckout')" />
+      <GitBranch v-else :size="12" class="branch-icon" />
+      <span class="branch-name" :title="worktree.main ? `${t('agents.worktree.mainCheckout')}: ${worktree.branch}` : worktree.branch">{{ worktree.branch }}</span>
       <WorktreeBadge :path="worktree.path" :branch="worktree.branch" @open="openReview" />
       <MarkdownPicker :root="worktree.path" @open="emit('open-file', $event)" />
       <button class="add" :title="t('agents.newSession.action')" :aria-label="t('agents.newSession.action')" data-testid="worktree-new-session" @click="emit('create')"><Plus :size="14" /></button>

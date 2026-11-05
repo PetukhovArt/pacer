@@ -95,7 +95,7 @@ function projectRollup(projectId: string) {
               <Folder :size="14" class="folder" />
               <h3 class="card-title" :title="project.name">{{ project.name }}</h3>
               <span v-if="projectRollup(project.id).running" class="running" :title="t('agents.layouts.running')">{{ projectRollup(project.id).running }}</span>
-              <ProjectActions :project-id="project.id" @resumed="state.openWhenListed({ Agent: $event })" />
+              <ProjectActions :project-id="project.id" @resumed="state.openWhenListed({ Agent: $event })" @create="state.creatingIn.value = $event" />
             </div>
             <WorktreeBlock
               v-for="worktree in project.worktrees"

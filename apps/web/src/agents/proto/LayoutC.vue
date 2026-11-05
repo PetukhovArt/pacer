@@ -117,7 +117,7 @@ onBeforeUnmount(() => stopQuickOpen());
               <div class="project-head">
                 <Folder :size="14" class="icon" />
                 <h3 class="project-name" :title="project.name">{{ project.name }}</h3>
-                <ProjectActions :project-id="project.id" @resumed="state.openWhenListed({ Agent: $event })" />
+                <ProjectActions :project-id="project.id" @resumed="state.openWhenListed({ Agent: $event })" @create="state.creatingIn.value = $event" />
               </div>
               <WorktreeBlock
                 v-for="worktree in project.worktrees"

@@ -45,7 +45,7 @@ export type SessionEvent = { type: 'reset'; data: string } | { type: 'output'; d
 
 export type SessionStatus = AgentStatus | 'shell' | 'closed';
 export type SessionNode = { key: string; id: string; ref: SessionRef; name: string; status: SessionStatus; unseen: boolean };
-export type WorktreeNode = { id: string; path: string; branch: string; sessions: SessionNode[]; archived: SessionNode[] };
+export type WorktreeNode = { id: string; path: string; branch: string; main: boolean; sessions: SessionNode[]; archived: SessionNode[] };
 type ProjectNode = { id: string; name: string; worktrees: WorktreeNode[] };
 type WorkspaceNode = { id: string; name: string; projects: ProjectNode[] };
 
@@ -145,7 +145,7 @@ function buildTree(entities: Entities): WorkspaceNode[] {
       .map(agentNode);
   const worktreesOf = (project: string) =>
     worktreesOfProject(entities, project).flatMap((w) => {
-      const node = { id: w.id, path: w.path, branch: w.branch, sessions: sessionsOf(w.id), archived: archivedOf(w.id) };
+      const node = { id: w.id, path: w.path, branch: w.branch, main: w.is_main, sessions: sessionsOf(w.id), archived: archivedOf(w.id) };
       return w.is_main || node.sessions.length > 0 || node.archived.length > 0 ? [node] : [];
     });
   const projectsOf = (workspace: string) =>

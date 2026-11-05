@@ -78,6 +78,7 @@ export const agents = {
   },
   project: {
     actions: 'Project actions',
+    newSession: 'New Session',
     removeFromPacer: 'Remove from pacer',
     oldConversations: 'Old Conversations',
     add: 'Add Project',
@@ -102,6 +103,7 @@ export const agents = {
   },
   worktree: {
     main: '{branch} · main',
+    mainCheckout: 'Main checkout',
     archive: 'Archive ({count})',
   },
   layouts: {

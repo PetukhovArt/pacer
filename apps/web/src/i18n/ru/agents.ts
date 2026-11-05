@@ -81,6 +81,7 @@ export const agents: Translation<typeof en> = {
   },
   project: {
     actions: 'Действия проекта',
+    newSession: 'Новая сессия',
     removeFromPacer: 'Убрать из pacer',
     oldConversations: 'Старые разговоры',
     add: 'Добавить проект',
@@ -105,6 +106,7 @@ export const agents: Translation<typeof en> = {
   },
   worktree: {
     main: '{branch} · основной',
+    mainCheckout: 'Основной checkout',
     archive: 'Архив ({count})',
   },
   layouts: {

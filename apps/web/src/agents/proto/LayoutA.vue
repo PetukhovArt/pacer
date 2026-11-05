@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue';
-import { Archive, ChevronRight, Folder, FolderOpen, GitBranch, Layers, Plus } from 'lucide-vue-next';
+import { Archive, ChevronRight, Folder, FolderOpen, GitBranch, House, Layers, Plus } from 'lucide-vue-next';
 import { t } from '../../i18n';
 import WorktreeBadge from '../../forge/WorktreeBadge.vue';
 import { openReview } from '../../nav';
@@ -22,7 +22,7 @@ const EXPANDED_KEY = 'veyra.agents.explorer.expanded';
 
 type Base = { id: string; depth: number; parent: string | null };
 type GroupKind = 'workspace' | 'project' | 'worktree' | 'archive';
-type GroupRow = Base & { kind: GroupKind; label: string; entityId: string; expanded: boolean; rollup: Rollup; archived: number; path?: string };
+type GroupRow = Base & { kind: GroupKind; label: string; entityId: string; expanded: boolean; rollup: Rollup; archived: number; path?: string; main?: boolean };
 type Row =
   | GroupRow
   | (Base & { kind: 'session'; session: SessionNode })
@@ -95,7 +95,7 @@ const rows = computed<Row[]>(() => {
       if (!open.has(prId)) continue;
       for (const worktree of project.worktrees) {
         const wtId = `wt:${worktree.id}`;
-        out.push({ kind: 'worktree', id: wtId, depth: 2, parent: prId, label: worktree.branch, path: worktree.path, entityId: worktree.id, expanded: open.has(wtId), rollup: rollupOf(worktree.sessions), archived: worktree.archived.length });
+        out.push({ kind: 'worktree', id: wtId, depth: 2, parent: prId, label: worktree.branch, path: worktree.path, main: worktree.main, entityId: worktree.id, expanded: open.has(wtId), rollup: rollupOf(worktree.sessions), archived: worktree.archived.length });
         if (!open.has(wtId)) continue;
         for (const session of worktree.sessions) out.push({ kind: 'session', id: session.key, depth: 3, parent: wtId, session });
         if (worktree.archived.length) {
@@ -256,6 +256,7 @@ function countOf(row: GroupRow): string {
                 <ChevronRight :size="14" class="chevron vr-chevron" :data-open="row.expanded" />
                 <Layers v-if="row.kind === 'workspace'" :size="14" class="kind-icon" />
                 <component :is="row.expanded ? FolderOpen : Folder" v-else-if="row.kind === 'project'" :size="14" class="kind-icon" />
+                <House v-else-if="row.kind === 'worktree' && row.main" :size="14" class="kind-icon" :aria-label="t('agents.worktree.mainCheckout')" />
                 <GitBranch v-else-if="row.kind === 'worktree'" :size="14" class="kind-icon" />
                 <Archive v-else :size="14" class="kind-icon" />
                 <span class="label" :data-kind="row.kind">{{ row.label }}</span>
@@ -270,7 +271,7 @@ function countOf(row: GroupRow): string {
                 <button class="add" :title="t('agents.newSession.action')" :aria-label="t('agents.newSession.action')" data-testid="worktree-new-session" @click="state.creatingIn.value = row.entityId"><Plus :size="14" /></button>
               </template>
               <WorkspaceActions v-else-if="row.kind === 'workspace'" class="node-actions" :workspace-id="row.entityId" />
-              <ProjectActions v-else-if="row.kind === 'project'" class="node-actions" :project-id="row.entityId" @resumed="state.openWhenListed({ Agent: $event })" />
+              <ProjectActions v-else-if="row.kind === 'project'" class="node-actions" :project-id="row.entityId" @resumed="state.openWhenListed({ Agent: $event })" @create="state.creatingIn.value = $event" />
             </div>
           </template>
           <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">{{ t('agents.layouts.noSessions') }}</p>

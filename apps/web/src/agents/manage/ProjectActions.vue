@@ -2,7 +2,7 @@
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
 import { t } from '../../i18n';
-import { usePacer } from '../pacer';
+import { usePacer, worktreesOfProject } from '../pacer';
 import ActionMenu from './ActionMenu.vue';
 import OrphansDialog from './OrphansDialog.vue';
 import { useAction } from '../useAction';
@@ -11,7 +11,7 @@ import { addProject, removeProject, renameProject } from './workspaces';
 const MISSING_FOLDER = /не существует|не найден|not exist|no such|not found/i;
 
 const props = defineProps<{ projectId?: string; workspaceId?: string }>();
-const emit = defineEmits<{ resumed: [agent: string] }>();
+const emit = defineEmits<{ resumed: [agent: string]; create: [worktree: string] }>();
 
 type Mode = 'idle' | 'adding' | 'renaming' | 'removing';
 
@@ -26,6 +26,18 @@ const pathInput = useTemplateRef<{ $el: HTMLInputElement }>('pathInput');
 const nameInput = useTemplateRef<{ $el: HTMLInputElement }>('nameInput');
 
 const current = computed(() => (props.projectId ? pacer?.entities.value.projects.get(props.projectId) : undefined));
+const mainWorktree = computed(() => {
+  const entities = pacer?.entities.value;
+  if (!entities || !props.projectId) return undefined;
+  const worktrees = worktreesOfProject(entities, props.projectId);
+  return worktrees.find((worktree) => worktree.is_main) ?? worktrees[0];
+});
+
+function createInMain() {
+  const worktree = mainWorktree.value;
+  if (worktree) emit('create', worktree.id);
+}
+
 const trimmedPath = computed(() => path.value.trim());
 const canCreateMissing = computed(() => error.value !== null && refusedPath.value === trimmedPath.value && MISSING_FOLDER.test(error.value));
 
@@ -90,6 +102,8 @@ async function confirmRemove() {
       :remove-label="t('agents.project.removeFromPacer')"
       :extra-label="t('agents.project.oldConversations')"
       extra-testid="project-menu-orphans"
+      :create-label="mainWorktree ? t('agents.project.newSession') : undefined"
+      @create="createInMain"
       @rename="openRename"
       @remove="openRemove"
       @extra="orphansOpen = true"
