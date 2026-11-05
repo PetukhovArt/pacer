@@ -326,7 +326,11 @@ pub async fn diff(ctx: &Ctx, project: &str, number: u64) -> ApiResult<Vec<DiffFi
     let base = mr_url(ctx, project, number);
     match all_pages(ctx, &format!("{base}/diffs"), &[]).await {
         Ok(entries) => Ok(entries.iter().map(diff_file).collect()),
-        Err(error) if error.message().contains("(404)") => {
+        Err(error)
+            if !["(401)", "(403)"]
+                .iter()
+                .any(|code| error.message().contains(code)) =>
+        {
             let changes = ctx
                 .api
                 .json(&format!("{base}/changes"), &[("access_raw_diffs", "true")])
