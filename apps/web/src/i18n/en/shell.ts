@@ -26,4 +26,10 @@ export const shell = {
   settings: 'Settings',
   themeLight: 'Light theme',
   themeDark: 'Dark theme',
+  window: {
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    restore: 'Restore',
+    close: 'Close',
+  },
 } as const;

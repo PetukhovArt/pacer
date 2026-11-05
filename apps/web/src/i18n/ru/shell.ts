@@ -29,4 +29,10 @@ export const shell: Translation<typeof en> = {
   settings: 'Настройки',
   themeLight: 'Светлая тема',
   themeDark: 'Тёмная тема',
+  window: {
+    minimize: 'Свернуть',
+    maximize: 'Развернуть',
+    restore: 'Восстановить',
+    close: 'Закрыть',
+  },
 };
