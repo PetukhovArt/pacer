@@ -11,7 +11,7 @@ import StatusDot from '../StatusDot.vue';
 import MetricsPanel from '../manage/MetricsPanel.vue';
 import { isFilePanel } from './markdownFiles';
 import type { SessionPath } from './nav';
-import { METRICS_PANEL, NAVIGATOR_PANEL } from './useAgentsDock';
+import { METRICS_PANEL } from './useAgentsDock';
 
 const props = defineProps<{ activeKey: string | null; paths: ReadonlyMap<string, SessionPath>; groupLabels?: boolean }>();
 const emit = defineEmits<{ ready: [event: DockviewReadyEvent]; 'open-file': [path: string, hash: string, from: string] }>();
@@ -48,7 +48,6 @@ function labelOf(host: Host): SessionPath | undefined {
 
 function tabTestId(id: string): string {
   if (id === METRICS_PANEL) return 'metrics-tab';
-  if (id === NAVIGATOR_PANEL) return 'navigator-tab';
   if (isFilePanel(id)) return 'file-tab';
   return 'session-tab';
 }
@@ -69,9 +68,6 @@ onBeforeUnmount(() => {
       </template>
       <template #panel-markdown="{ params, api }">
         <MarkdownFile v-if="typeof params.path === 'string'" class="vr-fade-in" :path="params.path" :hash="typeof params.hash === 'string' ? params.hash : ''" @open-file="(path, hash) => emit('open-file', path, hash, api.id)" />
-      </template>
-      <template #panel-navigator>
-        <slot name="navigator" />
       </template>
       <template #defaultTab="{ api }">
         <span class="tab" :data-testid="tabTestId(api.id)" :data-session-id="pacer?.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">

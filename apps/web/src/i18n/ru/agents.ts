@@ -3,15 +3,6 @@ import type { agents as en } from '../en/agents';
 
 export const agents: Translation<typeof en> = {
   unavailable: 'Сессии pacer работают только в десктопном приложении Veyra',
-  layout: {
-    label: 'Раскладка',
-    aria: 'Раскладка экрана агентов',
-    titles: {
-      A: 'Проводник: единое дерево',
-      B: 'Рейка workspace и панель проектов',
-      C: 'Dock-first: навигатор как панель, группа на ветку, Ctrl+P',
-    },
-  },
   sidePane: {
     resize: 'Ширина списка сессий',
   },
@@ -107,7 +98,6 @@ export const agents: Translation<typeof en> = {
   worktree: {
     main: '{branch} · основной',
     mainCheckout: 'Основной checkout',
-    archive: 'Архив ({count})',
   },
   layouts: {
     explorer: 'Проводник',
@@ -115,19 +105,10 @@ export const agents: Translation<typeof en> = {
     archive: 'Архив',
     archivedCount: 'в архиве',
     runningTotal: 'работает / всего',
-    running: 'работает',
-    waitingReply: 'ждут ответа',
-    unread: 'есть непрочитанное',
     noSessions: 'Нет сессий',
-    sessionPath: 'Путь к сессии',
     pathHint: 'workspace › проект › ветка › сессия',
-    navigator: 'Навигатор',
-    showNavigator: 'Показать навигатор',
-    floating: 'Плавающий',
-    floatNavigatorTitle: 'Вынести навигатор в плавающее окно',
     quickOpen: 'Перейти',
     quickOpenTitle: 'Быстрый переход (Ctrl+P)',
-    dragTip: 'Shift + перетаскивание вкладки: плавающая группа',
   },
   notices: {
     connecting: 'подключаюсь к pacer…',

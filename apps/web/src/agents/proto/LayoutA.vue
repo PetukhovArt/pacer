@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue';
-import { Archive, ChevronRight, Folder, FolderOpen, GitBranch, House, Layers, Plus } from 'lucide-vue-next';
+import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
+import { Archive, ChevronRight, Folder, FolderOpen, GitBranch, House, Layers, Plus, Search } from 'lucide-vue-next';
 import { t } from '../../i18n';
 import WorktreeBadge from '../../forge/WorktreeBadge.vue';
 import { openReview } from '../../nav';
@@ -14,8 +14,11 @@ import WorkspaceActions from '../manage/WorkspaceActions.vue';
 import DockArea from './DockArea.vue';
 import MarkdownPicker from './MarkdownPicker.vue';
 import NavNotices from './NavNotices.vue';
+import QuickSwitcher from './QuickSwitcher.vue';
 import SidePane from '../../SidePane.vue';
+import { listWorktreeMarkdown, type MarkdownEntry } from './markdownFiles';
 import { rollupOf, workspaceSessions, type Rollup } from './nav';
+import { provideQuickOpen } from './quickOpen';
 import { useAgentsDock } from './useAgentsDock';
 
 const EXPANDED_KEY = 'veyra.agents.explorer.expanded';
@@ -30,8 +33,52 @@ type Row =
   | (Base & { kind: 'add-project'; workspaceId: string })
   | (Base & { kind: 'add-workspace' });
 
-const state = useAgentsDock();
+const state = useAgentsDock({
+  position: (session, api, paths) => {
+    const worktree = paths.get(session.key)?.worktree.id;
+    const sibling = api.panels.find((panel) => panel.id !== session.key && paths.get(panel.id)?.worktree.id === worktree);
+    if (sibling) return { referencePanel: sibling.id, direction: 'within' };
+    const lastSession = api.panels.filter((panel) => paths.has(panel.id)).at(-1);
+    if (lastSession) return { referencePanel: lastSession.id, direction: 'right' };
+    return undefined;
+  },
+});
 const { pacer, activeKey, paths } = state;
+
+const switching = shallowRef(false);
+const entries = computed(() => [...paths.value.values()]);
+const switcherFiles = shallowRef<MarkdownEntry[]>([]);
+
+watch(switching, async (on) => {
+  switcherFiles.value = [];
+  const worktree = state.activeWorktree.value;
+  if (!on || !worktree) return;
+  try {
+    const files = await listWorktreeMarkdown(worktree.path);
+    if (switching.value) switcherFiles.value = files;
+  } catch {
+    switcherFiles.value = [];
+  }
+});
+
+function pick(session: SessionNode) {
+  switching.value = false;
+  state.open(session);
+}
+
+function pickFile(path: string) {
+  switching.value = false;
+  state.openFile(path, { worktreeId: state.activeWorktree.value?.id });
+}
+
+let stopQuickOpen = () => {};
+
+onMounted(() => {
+  stopQuickOpen = provideQuickOpen(() => {
+    if (state.visible.value) switching.value = !switching.value;
+  });
+});
+onBeforeUnmount(() => stopQuickOpen());
 
 const tree = useTemplateRef<HTMLElement>('tree');
 const cursor = shallowRef<string | null>(null);
@@ -211,7 +258,10 @@ function countOf(row: GroupRow): string {
     <SidePane storage-key="veyra.agents.a.width" :default-width="300">
       <div class="head">
         <span>{{ t('agents.layouts.explorer') }}</span>
-        <button class="text-button" :title="t('agents.metrics.open')" data-testid="open-metrics" @click="state.openMetrics()">{{ t('agents.metrics.title') }}</button>
+        <span class="head-actions">
+          <button class="text-button" :title="t('agents.layouts.quickOpenTitle')" data-testid="quick-switch-open" @click="switching = true"><Search :size="14" />{{ t('agents.layouts.quickOpen') }}<kbd>Ctrl+P</kbd></button>
+          <button class="text-button" :title="t('agents.metrics.open')" data-testid="open-metrics" @click="state.openMetrics()">{{ t('agents.metrics.title') }}</button>
+        </span>
       </div>
       <div class="scroll">
         <NavNotices />
@@ -278,7 +328,10 @@ function countOf(row: GroupRow): string {
         </div>
       </div>
     </SidePane>
-    <DockArea :active-key="activeKey" :paths="paths" @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })" />
+    <DockArea :active-key="activeKey" :paths="paths" group-labels @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })" />
+    <Transition name="qs">
+      <QuickSwitcher v-if="switching" :entries="entries" :files="switcherFiles" :file-scope="state.activeWorktree.value?.branch" @select="pick" @select-file="pickFile" @close="switching = false" />
+    </Transition>
     <NewSessionForm v-if="state.creatingWorktree.value" :key="state.creatingWorktree.value.id" :worktree="state.creatingWorktree.value" @close="state.creatingIn.value = null" @created="state.onCreated" />
   </div>
 </template>
@@ -300,7 +353,25 @@ function countOf(row: GroupRow): string {
   color: var(--vr-color-text-muted);
 }
 
+.head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vr-space-1);
+}
+
+kbd {
+  margin-left: var(--vr-space-1);
+  padding: 0 var(--vr-space-1);
+  font-family: var(--vr-font-mono);
+  font-size: var(--vr-font-size-2xs);
+  background: var(--vr-color-chip-bg);
+  border-radius: var(--vr-radius-sm);
+}
+
 .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vr-space-1);
   padding: 0 var(--vr-space-2);
   font: inherit;
   color: var(--vr-color-text-muted);

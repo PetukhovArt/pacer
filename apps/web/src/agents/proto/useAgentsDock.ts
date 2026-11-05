@@ -6,15 +6,13 @@ import { FILE_PANEL_PREFIX, fileNameOf, filePanelId, isFilePanel, normalizePath 
 import { sessionPaths, type SessionPath } from './nav';
 
 export const METRICS_PANEL = 'metrics';
-export const NAVIGATOR_PANEL = 'navigator';
-const RESERVED_PANELS = new Set([METRICS_PANEL, NAVIGATOR_PANEL]);
+const RESERVED_PANELS = new Set([METRICS_PANEL]);
 
 type AddPanel = Parameters<DockviewApi['addPanel']>[0];
 type PanelPosition = { referencePanel: string; direction: 'within' | 'right' | 'below' | 'left' };
 
 type Options = {
   position?: (session: SessionNode, api: DockviewApi, paths: ReadonlyMap<string, SessionPath>) => PanelPosition | undefined;
-  init?: (api: DockviewApi) => void;
 };
 
 let carried: { keys: string[]; active: string | null } = { keys: [], active: null };
@@ -118,9 +116,7 @@ export function useAgentsDock(options: Options = {}) {
     let position: PanelPosition | undefined = anchor ? { referencePanel: anchor, direction: 'within' } : undefined;
     if (!position) {
       const last = api.panels.filter((panel) => !RESERVED_PANELS.has(panel.id)).at(-1);
-      const navigator = api.getPanel(NAVIGATOR_PANEL);
       if (last) position = { referencePanel: last.id, direction: 'within' };
-      else if (navigator && navigator.group.api.location.type === 'grid') position = { referencePanel: NAVIGATOR_PANEL, direction: 'right' };
     }
     api.addPanel({ id, component: 'markdown', title: fileNameOf(path), params: { path: normalizePath(path), hash }, renderer: 'always', ...(position ? { position } : {}) });
   }
@@ -146,7 +142,6 @@ export function useAgentsDock(options: Options = {}) {
     activeChange = api.onDidActivePanelChange(({ panel }) => {
       activeKey.value = panel?.id ?? null;
     });
-    options.init?.(api);
     const sessions = pacer?.sessions.value;
     for (const key of carried.keys) {
       if (key === METRICS_PANEL) openMetrics();
@@ -167,7 +162,7 @@ export function useAgentsDock(options: Options = {}) {
   });
   onBeforeUnmount(() => {
     const api = dock.value;
-    if (api) carried = { keys: api.panels.filter((panel) => panel.id !== NAVIGATOR_PANEL).map((panel) => panel.id), active: activeKey.value };
+    if (api) carried = { keys: api.panels.map((panel) => panel.id), active: activeKey.value };
     activeChange?.dispose();
   });
 

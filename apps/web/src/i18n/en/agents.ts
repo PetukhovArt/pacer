@@ -1,14 +1,5 @@
 export const agents = {
   unavailable: 'Pacer sessions work only in the Veyra desktop app',
-  layout: {
-    label: 'Layout',
-    aria: 'Agents screen layout',
-    titles: {
-      A: 'Explorer: single tree',
-      B: 'Workspace rail and project panel',
-      C: 'Dock-first: navigator as a panel, group per branch, Ctrl+P',
-    },
-  },
   sidePane: {
     resize: 'Session list width',
   },
@@ -104,7 +95,6 @@ export const agents = {
   worktree: {
     main: '{branch} · main',
     mainCheckout: 'Main checkout',
-    archive: 'Archive ({count})',
   },
   layouts: {
     explorer: 'Explorer',
@@ -112,19 +102,10 @@ export const agents = {
     archive: 'Archive',
     archivedCount: 'archived',
     runningTotal: 'running / total',
-    running: 'running',
-    waitingReply: 'waiting for reply',
-    unread: 'unread',
     noSessions: 'No sessions',
-    sessionPath: 'Session path',
     pathHint: 'workspace › project › branch › session',
-    navigator: 'Navigator',
-    showNavigator: 'Show Navigator',
-    floating: 'Floating',
-    floatNavigatorTitle: 'Move Navigator to a Floating Window',
     quickOpen: 'Go to',
     quickOpenTitle: 'Quick Open (Ctrl+P)',
-    dragTip: 'Shift + drag a tab: floating group',
   },
   notices: {
     connecting: 'connecting to pacer…',
