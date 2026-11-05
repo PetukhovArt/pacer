@@ -26,7 +26,7 @@ const open = computed(() => (view.value.kind === 'reviews' ? view.value.open : u
     :selected="open"
   >
     <template #list>
-      <ForgeInbox @open="(ref) => withViewTransition(() => openReview(ref))" />
+      <ForgeInbox :selected="open" @open="(ref) => withViewTransition(() => openReview(ref))" />
     </template>
     <template #detail>
       <ChangeRequestView v-if="open" :key="`${open.connector}/${open.project}/${open.number}`" v-bind="open" />

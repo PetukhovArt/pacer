@@ -11,6 +11,8 @@ export const forge: Translation<typeof en> = {
     filter: 'Фильтр: проект, номер, заголовок, автор',
     dismiss: 'Скрыть',
     empty: 'Нет открытых MR/PR, связанных с вами',
+    tree: 'Merge и pull requests',
+    countTitle: 'Запросов: {count}',
   },
   pipeline: {
     success: 'Пайплайн успешен',

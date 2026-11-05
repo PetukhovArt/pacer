@@ -10,7 +10,7 @@ import TaskFeed from './TaskFeed.vue';
 import TaskSide from './TaskSide.vue';
 import { useTask } from './task';
 
-const props = defineProps<{ taskId: string }>();
+const props = defineProps<{ taskId: string; embedded?: boolean }>();
 const ctx = useTask(props.taskId);
 const { client, state, error, task, mergeRequests, agents, agentOf, lastOf, statusOf, worktreeOf, run } = ctx;
 
@@ -56,7 +56,7 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
 <template>
   <div v-if="task" class="task" :data-testid="`task-panel-${task.externalRef}`">
     <header>
-      <nav class="crumbs" :aria-label="t('tasks.path')">
+      <nav v-if="!embedded" class="crumbs" :aria-label="t('tasks.path')">
         <span>{{ workspaceName() }}</span>
         <ChevronRight :size="12" />
         <button @click="view = { kind: 'tasks' }">{{ t('tasks.title') }}</button>

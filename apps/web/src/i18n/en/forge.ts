@@ -8,6 +8,8 @@ export const forge = {
     filter: 'Filter: project, number, title, author',
     dismiss: 'Dismiss',
     empty: 'No open MRs/PRs related to you',
+    tree: 'Merge and pull requests',
+    countTitle: 'Requests: {count}',
   },
   pipeline: {
     success: 'Pipeline passed',

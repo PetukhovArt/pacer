@@ -5,10 +5,12 @@ import { VButton, VInputText } from '@ui/kit';
 import { useConnectors, type ChangeRequestRef, type InboxError, type InboxItem } from '../connectors/api';
 import PersonAvatar from '../connectors/PersonAvatar.vue';
 import { t } from '../i18n';
+import ExplorerTree from '../tree/ExplorerTree.vue';
 import { fullDate, numberLabel, pipelineLabel, relativeTime } from './format';
-import { useForgeInbox } from './inbox';
+import { inboxTree, itemId, useForgeInbox, type InboxNode } from './inbox';
 import PipelineIcon from './PipelineIcon.vue';
 
+const props = defineProps<{ selected?: ChangeRequestRef }>();
 const emit = defineEmits<{ open: [ref: ChangeRequestRef] }>();
 
 const MOUNT_FRESH_MS = 15_000;
@@ -21,12 +23,6 @@ const filter = shallowRef('');
 const now = shallowRef(Date.now());
 
 let timer: ReturnType<typeof setInterval> | undefined;
-
-const GROUPS = [
-  { reason: 'reviewer', title: 'forge.inbox.groupReviewer' },
-  { reason: 'author', title: 'forge.inbox.groupAuthor' },
-  { reason: 'assignee', title: 'forge.inbox.groupAssignee' },
-] as const;
 
 const errorKey = (e: InboxError) => `${e.connector}\n${e.message}`;
 const connectorLabel = (id: string) => connectors.value.find((c) => c.id === id)?.label ?? id;
@@ -42,14 +38,15 @@ function matches(item: InboxItem, query: string): boolean {
   return query.split(/\s+/).every((word) => haystack.includes(word));
 }
 
-const groups = computed(() => {
-  const query = filter.value.trim().toLowerCase();
-  const byUpdate = (a: InboxItem, b: InboxItem) => Date.parse(b.updated_at) - Date.parse(a.updated_at);
-  return GROUPS.map((group) => {
-    const claimed = group.reason === 'reviewer' ? (i: InboxItem) => i.reasons.includes('reviewer') : group.reason === 'author' ? (i: InboxItem) => !i.reasons.includes('reviewer') && i.reasons.includes('author') : (i: InboxItem) => !i.reasons.includes('reviewer') && !i.reasons.includes('author');
-    return { ...group, items: items.value.filter((i) => claimed(i) && matches(i, query)).sort(byUpdate) };
-  }).filter((group) => group.items.length > 0);
-});
+const query = computed(() => filter.value.trim().toLowerCase());
+const nodes = computed(() => inboxTree(items.value.filter((item) => matches(item, query.value)), connectorLabel));
+const selectedId = computed(() => (props.selected ? itemId(props.selected) : null));
+
+const shownTitle = (item: InboxItem) => (item.draft ? item.title.replace(/^(draft:|\[draft\]|\(draft\)|wip:)\s*/i, '') : item.title);
+
+function onOpen(node: InboxNode) {
+  if (node.data?.item) open(node.data.item);
+}
 
 watch(errors, (list) => {
   const live = new Set(list.map(errorKey));
@@ -88,28 +85,49 @@ const open = (item: InboxItem) => emit('open', { connector: item.connector, proj
       <button class="strip-close" :aria-label="t('forge.inbox.dismiss')" :title="t('forge.inbox.dismiss')" @click="dismiss(e)"><X :size="14" /></button>
     </div>
 
-    <div v-auto-animate class="scroll">
+    <div class="scroll">
       <p v-if="!loadedOnce" class="note">{{ t('common.loading') }}</p>
       <p v-else-if="!items.length && !failure" class="note" data-testid="forge-empty"><GitPullRequest :size="16" />{{ t('forge.inbox.empty') }}</p>
-      <p v-else-if="!groups.length" class="note">{{ t('common.noResults') }}</p>
+      <p v-else-if="!nodes.length" class="note">{{ t('common.noResults') }}</p>
 
-      <section v-for="group in groups" :key="group.reason" v-auto-animate class="group" :data-testid="`forge-group-${group.reason}`">
-        <h3>{{ t(group.title) }} <span class="count">{{ group.items.length }}</span></h3>
-        <button v-for="item in group.items" :key="`${item.connector}/${item.project}/${item.number}`" class="row" data-testid="forge-row" @click="open(item)">
-          <PersonAvatar :person="item.author" small />
-          <span class="main">
-            <span class="title">
-              <span v-if="item.draft" class="draft" data-testid="forge-draft">{{ t('forge.draft') }}</span>{{ item.title }}
+      <ExplorerTree
+        v-if="nodes.length"
+        :nodes="nodes"
+        storage-key="veyra.reviews.tree.expanded"
+        :label="t('forge.inbox.tree')"
+        :selected="selectedId"
+        :reveal-all="query.length > 0"
+        test-id="forge-tree"
+        @open="onOpen"
+      >
+        <template #label="{ node }">
+          <span v-if="node.kind === 'project'" class="label path" data-testid="forge-project">
+            <span v-if="node.data?.group" class="path-group">{{ node.data.group }}/</span><span class="path-name">{{ node.data?.name ?? node.label }}</span>
+          </span>
+          <span v-else class="label" :data-kind="node.kind">{{ node.label }}</span>
+        </template>
+        <template #rollup="{ node }">
+          <PipelineIcon v-if="node.data?.pipeline" :status="node.data.pipeline" :size="12" :title="pipelineLabel(node.data.pipeline)" />
+        </template>
+        <template #leaf="{ data }">
+          <span v-if="data?.item" class="row" data-testid="forge-row">
+            <PersonAvatar :person="data.item.author" small />
+            <span class="main">
+              <span class="title">
+                <span v-if="data.item.draft" class="draft" data-testid="forge-draft">{{ t('forge.draft') }}</span>{{ shownTitle(data.item) }}
+              </span>
+              <span class="meta">
+                <span class="sub">{{ numberLabel(data.item) }} · {{ data.item.source_branch }}</span>
+                <span v-if="data.item.unresolved_threads" class="threads" :title="t('forge.unresolvedThreads', { count: data.item.unresolved_threads })">
+                  <MessageSquare :size="12" />{{ data.item.unresolved_threads }}
+                </span>
+                <PipelineIcon v-if="data.item.pipeline !== 'none'" :status="data.item.pipeline" :size="12" :title="pipelineLabel(data.item.pipeline)" />
+                <span class="time" :title="fullDate(data.item.updated_at)">{{ relativeTime(data.item.updated_at, now) }}</span>
+              </span>
             </span>
-            <span class="sub">{{ item.project }} · {{ numberLabel(item) }} · {{ item.source_branch }}</span>
           </span>
-          <span v-if="item.unresolved_threads" class="threads" :title="t('forge.unresolvedThreads', { count: item.unresolved_threads })">
-            <MessageSquare :size="12" />{{ item.unresolved_threads }}
-          </span>
-          <PipelineIcon v-if="item.pipeline !== 'none'" :status="item.pipeline" :title="pipelineLabel(item.pipeline)" />
-          <span class="time" :title="fullDate(item.updated_at)">{{ relativeTime(item.updated_at, now) }}</span>
-        </button>
-      </section>
+        </template>
+      </ExplorerTree>
     </div>
   </section>
 </template>
@@ -172,7 +190,7 @@ const open = (item: InboxItem) => emit('open', { connector: item.connector, proj
 .scroll {
   flex: 1;
   min-height: 0;
-  padding: var(--vr-space-2) var(--vr-space-3) var(--vr-space-4);
+  padding: var(--vr-space-2);
   overflow: auto;
 }
 
@@ -180,45 +198,42 @@ const open = (item: InboxItem) => emit('open', { connector: item.connector, proj
   display: flex;
   align-items: center;
   gap: var(--vr-space-2);
-  margin: var(--vr-space-4) 0;
+  margin: var(--vr-space-4) var(--vr-space-2);
   color: var(--vr-color-text-muted);
 }
 
-h3 {
-  margin: var(--vr-space-3) 0 var(--vr-space-1);
-  color: var(--vr-color-text-muted);
-  font-size: var(--vr-font-size-xs);
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.label[data-kind='section'] {
   font-weight: 600;
-  text-transform: uppercase;
 }
 
-.count {
-  margin-left: var(--vr-space-1);
-  padding: 0 var(--vr-space-2);
-  background: var(--vr-color-chip-bg);
-  border-radius: var(--vr-radius-full);
+.label[data-kind='host'] {
+  font-weight: 500;
+}
+
+.path-group {
+  color: var(--vr-color-text-muted);
+}
+
+.path-name {
+  font-weight: 600;
 }
 
 .row {
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: var(--vr-space-3);
-  width: 100%;
-  min-height: 44px;
-  padding: var(--vr-space-1) var(--vr-space-2);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  background: none;
-  border: none;
-  border-radius: var(--vr-radius-md);
-  cursor: pointer;
-}
-
-.row:hover,
-.row:focus-visible {
-  background: var(--vr-color-nav-hover);
-  outline: none;
+  gap: var(--vr-space-2);
+  min-width: 0;
+  min-height: 40px;
+  padding: 2px 0;
 }
 
 .main {
@@ -258,11 +273,21 @@ h3 {
   font-size: var(--vr-font-size-xs);
 }
 
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-2);
+  min-width: 0;
+}
+
+.sub {
+  flex: 1;
+  min-width: 0;
+}
+
 .time {
   flex: none;
-  min-width: 72px;
   color: var(--vr-color-text-muted);
   font-size: var(--vr-font-size-xs);
-  text-align: right;
 }
 </style>
