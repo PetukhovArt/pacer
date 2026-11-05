@@ -1,3 +1,4 @@
+pub mod ai;
 mod cli;
 pub mod confluence;
 pub mod forge;
@@ -114,6 +115,7 @@ struct Inner {
 pub struct Connectors {
     inner: Mutex<Inner>,
     tokens: cli::TokenCache,
+    ai: ai::AiState,
 }
 
 fn registry_path() -> Result<PathBuf, String> {
@@ -221,6 +223,7 @@ impl Connectors {
                 health: HashMap::new(),
             }),
             tokens: cli::TokenCache::default(),
+            ai: ai::AiState::default(),
         }
     }
 

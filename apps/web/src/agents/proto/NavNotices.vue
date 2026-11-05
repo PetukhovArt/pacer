@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { t } from '../../i18n';
 import { usePacer } from '../pacer';
 
 const pacer = usePacer();
@@ -11,11 +12,11 @@ const banner = computed(() => {
     case 'connected':
       return null;
     case 'connecting':
-      return 'подключаюсь к pacer…';
+      return t('agents.notices.connecting');
     case 'offline':
-      return 'демон pacer не запущен';
+      return t('agents.notices.offline');
     case 'incompatible':
-      return connection.message ?? 'несовместимая версия pacer';
+      return connection.message ?? t('agents.notices.incompatible');
     default: {
       const unknown: never = connection.state;
       return unknown;

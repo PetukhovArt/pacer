@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { GitPullRequest } from 'lucide-vue-next';
 import ChangeRequestView from '../forge/ChangeRequestView.vue';
 import ForgeInbox from '../forge/ForgeInbox.vue';
+import { t } from '../i18n';
+import { withViewTransition } from '../motion';
 import { openReview, view } from '../nav';
 import ConnectorPage from './ConnectorPage.vue';
 
@@ -14,17 +16,17 @@ const open = computed(() => (view.value.kind === 'reviews' ? view.value.open : u
 <template>
   <ConnectorPage
     :kinds="KINDS"
-    title="Ревью"
+    :title="t('reviews.title')"
     :icon="GitPullRequest"
-    empty-text="Подключите GitHub или GitLab, чтобы видеть здесь MR и PR"
-    placeholder="Выберите MR/PR слева"
+    :empty-text="t('reviews.empty')"
+    :placeholder="t('reviews.placeholder')"
     test-id="reviews-view"
     storage-key="veyra.reviews"
     :preferred="open?.connector"
     :selected="open"
   >
     <template #list>
-      <ForgeInbox @open="openReview" />
+      <ForgeInbox @open="(ref) => withViewTransition(() => openReview(ref))" />
     </template>
     <template #detail>
       <ChangeRequestView v-if="open" :key="`${open.connector}/${open.project}/${open.number}`" v-bind="open" />

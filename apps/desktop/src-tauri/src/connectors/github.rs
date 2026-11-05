@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 
-use super::http::{opt, text, ApiError, ApiResult};
+use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{
     ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus, InboxItem, Job,
     Note, Person, Pipeline, PipelineState, Position, Reason,
@@ -215,7 +215,7 @@ async fn pull_request(ctx: &Ctx, project: &str, number: u64, fields: &str) -> Ap
 
 pub async fn change_request(ctx: &Ctx, project: &str, number: u64) -> ApiResult<ChangeRequest> {
     let fields = format!(
-        "{} body createdAt mergeable labels(first: 30) {{ nodes {{ name }} }} \
+        "{} body createdAt headRefOid mergeable labels(first: 30) {{ nodes {{ name }} }} \
          reviewRequests(first: 30) {{ nodes {{ requestedReviewer {{ \
          ... on User {{ login name avatarUrl }} ... on Team {{ slug name avatarUrl }} ... on Bot {{ login avatarUrl }} }} }} }} \
          latestReviews(first: 30) {{ nodes {{ {AUTHOR} }} }}",
@@ -258,12 +258,25 @@ pub async fn change_request(ctx: &Ctx, project: &str, number: u64) -> ApiResult<
             .filter_map(|label| opt(&label["name"]))
             .collect(),
         created_at: text(&node["createdAt"]),
+        head_sha: text(&node["headRefOid"]),
         mergeable: match node["mergeable"].as_str() {
             Some("MERGEABLE") => Some(true),
             Some("CONFLICTING") => Some(false),
             _ => None,
         },
     })
+}
+
+pub async fn file(ctx: &Ctx, project: &str, git_ref: &str, path: &str) -> ApiResult<String> {
+    let encoded = path
+        .split('/')
+        .map(encode_segment)
+        .collect::<Vec<_>>()
+        .join("/");
+    let url = format!("{}/repos/{project}/contents/{encoded}", api_base(ctx));
+    ctx.api
+        .get_text(&url, &[("ref", git_ref)], "application/vnd.github.raw+json")
+        .await
 }
 
 pub async fn diff(ctx: &Ctx, project: &str, number: u64) -> ApiResult<Vec<DiffFile>> {

@@ -10,11 +10,13 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const TOTAL_TIMEOUT: Duration = Duration::from_secs(20);
 const JSON: &str = "application/json";
 const ANY: &str = "*/*";
+const TEXT_LIMIT: u64 = 5 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub enum ApiError {
     Unreachable(String),
     Failed(String),
+    Rejected(String),
 }
 
 impl ApiError {
@@ -24,7 +26,9 @@ impl ApiError {
 
     pub fn message(&self) -> &str {
         match self {
-            ApiError::Unreachable(message) | ApiError::Failed(message) => message,
+            ApiError::Unreachable(message)
+            | ApiError::Failed(message)
+            | ApiError::Rejected(message) => message,
         }
     }
 }
@@ -182,10 +186,15 @@ async fn status_error(host: &str, response: Response) -> ApiError {
         }
         _ => format!("ошибка {code} от {host}"),
     };
-    ApiError::Failed(match detail {
+    let message = match detail {
         Some(detail) => format!("{base}: {detail}"),
         None => base,
-    })
+    };
+    if status == StatusCode::UNAUTHORIZED {
+        ApiError::Rejected(message)
+    } else {
+        ApiError::Failed(message)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -246,6 +255,33 @@ impl Api {
         let host = host_of(&url);
         self.send(self.builder(Method::GET, url, true, ANY), &host)
             .await
+    }
+
+    pub async fn get_text(
+        &self,
+        raw: &str,
+        query: &[(&str, &str)],
+        accept: &str,
+    ) -> ApiResult<String> {
+        let url = Self::parse_url(raw, query)?;
+        let host = host_of(&url);
+        let response = self
+            .send(self.builder(Method::GET, url, true, accept), &host)
+            .await?;
+        if response
+            .content_length()
+            .is_some_and(|len| len > TEXT_LIMIT)
+        {
+            return Err(ApiError::failed("файл слишком большой"));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| ApiError::failed(format!("обрыв соединения с {host}")))?;
+        if bytes.len() as u64 > TEXT_LIMIT {
+            return Err(ApiError::failed("файл слишком большой"));
+        }
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     pub async fn json(&self, raw: &str, query: &[(&str, &str)]) -> ApiResult<Value> {

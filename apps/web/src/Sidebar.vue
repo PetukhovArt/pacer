@@ -5,12 +5,16 @@ import { useClient, useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
 import { useConnectors } from './connectors/api';
 import { useForgeInbox } from './forge/inbox';
-import { openTask, openTopic, view, type View } from './nav';
+import { shortcutLabel } from './commands/keymap';
+import { useI18n } from './i18n';
+import { navigate, openTask, openTopic, view } from './nav';
 import { priorityRank } from './priority';
+import { sidebarCollapsed, sidebarSearchRequests, toggleSidebar } from './sidebarState';
 
 defineProps<{ dark: boolean }>();
 const emit = defineEmits<{ switch: [id: string]; theme: [] }>();
 
+const { t, locale, setLocale } = useI18n();
 const client = useClient();
 const state = useClientState();
 const query = ref('');
@@ -27,7 +31,6 @@ const DEFAULT_WIDTH = 300;
 const RAIL_WIDTH = 56;
 const KEY_STEP = 16;
 const WIDTH_KEY = 'veyra.sidebar.width';
-const COLLAPSED_KEY = 'veyra.sidebar.collapsed';
 
 function clampWidth(value: number) {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)));
@@ -39,22 +42,25 @@ function readWidth() {
 }
 
 const width = ref(readWidth());
-const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
+const collapsed = sidebarCollapsed;
 const dragging = ref(false);
 const currentWidth = computed(() => (collapsed.value ? RAIL_WIDTH : width.value));
-const collapseLabel = computed(() => (collapsed.value ? 'Развернуть панель' : 'Свернуть панель'));
+const collapseLabel = computed(() => (collapsed.value ? t('shell.expand') : t('shell.collapse')));
+const nextLocale = computed(() => (locale.value === 'en' ? 'ru' : 'en'));
 
 watch(width, (value) => localStorage.setItem(WIDTH_KEY, String(value)));
-watch(collapsed, (value) => localStorage.setItem(COLLAPSED_KEY, value ? '1' : '0'));
-
-function toggleCollapsed() {
-  collapsed.value = !collapsed.value;
-}
 
 async function openSearch() {
   collapsed.value = false;
   await nextTick();
   searchInput.value?.focus();
+}
+
+watch(sidebarSearchRequests, () => void openSearch());
+
+function shortcutTitle(label: string, actionId: string) {
+  const shortcut = shortcutLabel(actionId);
+  return shortcut ? `${label} (${shortcut})` : label;
 }
 
 function startResize(event: PointerEvent) {
@@ -99,12 +105,12 @@ type NavItem = { kind: 'tasks' | 'agents' | 'reviews' | 'jira' | 'confluence'; l
 
 const navItems = computed<NavItem[]>(() => {
   const items: NavItem[] = [
-    { kind: 'tasks', label: 'Задачи', icon: ListTodo, testId: 'open-tasks' },
-    { kind: 'agents', label: 'Агенты', icon: SquareTerminal, testId: 'open-agents' },
+    { kind: 'tasks', label: t('shell.nav.tasks'), icon: ListTodo, testId: 'open-tasks' },
+    { kind: 'agents', label: t('shell.nav.agents'), icon: SquareTerminal, testId: 'open-agents' },
   ];
-  if (hasForge.value) items.push({ kind: 'reviews', label: 'Ревью', icon: GitPullRequest, testId: 'nav-reviews', count: reviewCount.value, countTitle: 'Ждут моего ревью' });
-  if (hasJira.value) items.push({ kind: 'jira', label: 'Jira', icon: Ticket, testId: 'nav-jira' });
-  if (hasConfluence.value) items.push({ kind: 'confluence', label: 'Confluence', icon: BookOpen, testId: 'nav-confluence' });
+  if (hasForge.value) items.push({ kind: 'reviews', label: t('shell.nav.reviews'), icon: GitPullRequest, testId: 'nav-reviews', count: reviewCount.value, countTitle: t('shell.nav.reviewsPending') });
+  if (hasJira.value) items.push({ kind: 'jira', label: t('shell.nav.jira'), icon: Ticket, testId: 'nav-jira' });
+  if (hasConfluence.value) items.push({ kind: 'confluence', label: t('shell.nav.confluence'), icon: BookOpen, testId: 'nav-confluence' });
   return items;
 });
 
@@ -152,39 +158,10 @@ async function createTopic() {
   }
 }
 
-const SHIFT_SHORTCUTS: Record<string, View> = { KeyR: { kind: 'reviews' }, KeyJ: { kind: 'jira' } };
-
-function onGlobalKey(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey) {
-    const target = SHIFT_SHORTCUTS[event.code];
-    if (!target || (event.target instanceof Element && event.target.closest('.xterm'))) return;
-    event.preventDefault();
-    view.value = target;
-    return;
-  }
-  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
-  if (event.key === ',') {
-    event.preventDefault();
-    view.value = { kind: 'settings' };
-    return;
-  }
-  if (event.target instanceof Element && event.target.closest('.xterm')) return;
-  const key = event.key.toLowerCase();
-  if (key === 'k') {
-    event.preventDefault();
-    void openSearch();
-  } else if (key === 'b') {
-    event.preventDefault();
-    toggleCollapsed();
-  }
-}
-
 onMounted(() => {
-  window.addEventListener('keydown', onGlobalKey);
   void listConnectors();
 });
 onUnmounted(() => {
-  window.removeEventListener('keydown', onGlobalKey);
   stopPolling?.();
 });
 </script>
@@ -195,26 +172,26 @@ onUnmounted(() => {
     class="sidebar"
     :class="{ collapsed, dragging }"
     :style="{ width: `${currentWidth}px` }"
-    aria-label="Навигация"
+    :aria-label="t('shell.nav.label')"
     data-testid="sidebar"
     :data-collapsed="collapsed"
   >
     <div class="top">
       <label v-if="!collapsed" class="search">
         <Search :size="16" />
-        <input ref="searchInput" v-model="query" placeholder="Найти задачу" aria-label="Найти задачу" data-testid="sidebar-search" @keydown="onSearchKey" />
-        <kbd>Ctrl K</kbd>
+        <input ref="searchInput" v-model="query" :placeholder="t('shell.search')" :aria-label="t('shell.search')" data-testid="sidebar-search" @keydown="onSearchKey" />
+        <kbd v-if="shortcutLabel('sidebar.search')">{{ shortcutLabel('sidebar.search') }}</kbd>
       </label>
-      <button v-else class="item rail-item" title="Найти задачу" aria-label="Найти задачу" data-testid="sidebar-search-open" @click="openSearch">
+      <button v-else class="item rail-item" :title="t('shell.search')" :aria-label="t('shell.search')" data-testid="sidebar-search-open" @click="openSearch">
         <Search :size="16" />
       </button>
       <button
         class="icon toggle"
-        :title="`${collapseLabel} (Ctrl+B)`"
+        :title="shortcutTitle(collapseLabel, 'sidebar.toggle')"
         :aria-label="collapseLabel"
         :aria-expanded="!collapsed"
         data-testid="sidebar-collapse"
-        @click="toggleCollapsed"
+        @click="toggleSidebar"
       >
         <PanelLeftOpen v-if="collapsed" :size="16" />
         <PanelLeftClose v-else :size="16" />
@@ -225,13 +202,13 @@ onUnmounted(() => {
       <button
         v-for="item in navItems"
         :key="item.kind"
-        class="item"
+        class="item vt-nav"
         :class="{ 'rail-item': collapsed }"
         :data-active="view.kind === item.kind"
         :title="collapsed ? item.label : undefined"
         :aria-label="collapsed ? item.label : undefined"
         :data-testid="item.testId"
-        @click="view = { kind: item.kind }"
+        @click="navigate({ kind: item.kind })"
       >
         <component :is="item.icon" :size="16" />
         <span v-if="!collapsed">{{ item.label }}</span>
@@ -245,7 +222,7 @@ onUnmounted(() => {
           class="group-label"
           :aria-expanded="w.id === state.workspaceId"
           :data-testid="`workspace-section-${w.id}`"
-          :title="w.id === state.workspaceId ? w.name : `Перейти в ${w.name}`"
+          :title="w.id === state.workspaceId ? w.name : t('shell.switchWorkspace', { name: w.name })"
           @click="w.id !== state.workspaceId && emit('switch', w.id)"
         >
           <span class="badge">{{ w.name.slice(0, 1).toUpperCase() }}</span>
@@ -253,45 +230,49 @@ onUnmounted(() => {
         </button>
         <template v-if="w.id === state.workspaceId">
           <div class="subhead">
-            <span>Топики</span>
-            <button class="icon add" title="Новый топик" aria-label="Новый топик" data-testid="topic-add" @click="startTopic"><Plus :size="14" /></button>
+            <span>{{ t('shell.topics') }}</span>
+            <button class="icon add" :title="t('shell.newTopic')" :aria-label="t('shell.newTopic')" data-testid="topic-add" @click="startTopic"><Plus :size="14" /></button>
           </div>
           <form v-if="creating" class="new-topic" @submit.prevent="createTopic">
             <Hash :size="14" />
-            <input v-model="topicName" v-focus placeholder="название топика" aria-label="Название топика" data-testid="topic-name" @keydown.esc="creating = false" />
+            <input v-model="topicName" v-focus :placeholder="t('shell.topicPlaceholder')" :aria-label="t('shell.topicName')" data-testid="topic-name" @keydown.esc="creating = false" />
           </form>
           <p v-if="topicError" class="empty" role="alert">{{ topicError }}</p>
-          <button
-            v-for="topic in state.topics"
-            :key="topic.id"
-            class="item channel"
-            :class="{ unread: state.unread.has(topic.id) }"
-            :data-active="topic.id === selectedTopicId"
-            :aria-current="topic.id === selectedTopicId ? 'page' : undefined"
-            :data-testid="`topic-${topic.name}`"
-            @click="openTopic(topic.id)"
-          >
-            <Hash :size="14" class="key" />
-            <span class="name">{{ topic.name }}</span>
-            <span v-if="state.unread.has(topic.id)" class="unread-dot" :data-testid="`topic-unread-${topic.name}`"><span class="sr">новое</span></span>
-          </button>
-          <div class="subhead"><span>Задачи</span></div>
-          <button
-            v-for="task in channels"
-            :key="task.id"
-            class="item channel"
-            :class="{ unread: state.unread.has(task.id) }"
-            :data-active="task.id === selectedId"
-            :aria-current="task.id === selectedId ? 'page' : undefined"
-            :title="`${task.externalRef} ${task.title}`"
-            :data-testid="`channel-${task.externalRef}`"
-            @click="openTask(task.id)"
-          >
-            <span class="key">{{ task.externalRef }}</span>
-            <span class="name">{{ task.title }}</span>
-            <span v-if="state.unread.has(task.id)" class="unread-dot" :data-testid="`channel-unread-${task.externalRef}`"><span class="sr">новое</span></span>
-          </button>
-          <p v-if="!channels.length" class="empty">{{ query ? 'Ничего не найдено' : 'На вас нет открытых задач' }}</p>
+          <div v-auto-animate>
+            <button
+              v-for="topic in state.topics"
+              :key="topic.id"
+              class="item vt-nav channel"
+              :class="{ unread: state.unread.has(topic.id) }"
+              :data-active="topic.id === selectedTopicId"
+              :aria-current="topic.id === selectedTopicId ? 'page' : undefined"
+              :data-testid="`topic-${topic.name}`"
+              @click="openTopic(topic.id)"
+            >
+              <Hash :size="14" class="key" />
+              <span class="name">{{ topic.name }}</span>
+              <span v-if="state.unread.has(topic.id)" class="unread-dot" :data-testid="`topic-unread-${topic.name}`"><span class="sr">{{ t('shell.unread') }}</span></span>
+            </button>
+          </div>
+          <div class="subhead"><span>{{ t('shell.tasks') }}</span></div>
+          <div v-auto-animate>
+            <button
+              v-for="task in channels"
+              :key="task.id"
+              class="item vt-nav channel"
+              :class="{ unread: state.unread.has(task.id) }"
+              :data-active="task.id === selectedId"
+              :aria-current="task.id === selectedId ? 'page' : undefined"
+              :title="`${task.externalRef} ${task.title}`"
+              :data-testid="`channel-${task.externalRef}`"
+              @click="openTask(task.id)"
+            >
+              <span class="key">{{ task.externalRef }}</span>
+              <span class="name">{{ task.title }}</span>
+              <span v-if="state.unread.has(task.id)" class="unread-dot" :data-testid="`channel-unread-${task.externalRef}`"><span class="sr">{{ t('shell.unread') }}</span></span>
+            </button>
+          </div>
+          <p v-if="!channels.length" class="empty">{{ query ? t('shell.nothingFound') : t('shell.noOpenTasks') }}</p>
         </template>
       </section>
     </div>
@@ -299,7 +280,7 @@ onUnmounted(() => {
     <footer>
       <span class="me">
         <Avatar :id="state.me.id" :name="state.me.name" />
-        <span class="presence vr-dot" :data-online="state.connected" :title="state.connected ? 'в сети' : 'нет связи'" />
+        <span class="presence vr-dot" :data-online="state.connected" :title="state.connected ? t('shell.online') : t('shell.offline')" />
       </span>
       <span v-if="!collapsed" class="who">
         <strong>{{ state.me.name }}</strong>
@@ -308,14 +289,17 @@ onUnmounted(() => {
       <button
         class="icon"
         :data-active="view.kind === 'settings'"
-        title="Настройки (Ctrl+,)"
-        aria-label="Настройки"
+        :title="shortcutTitle(t('shell.settings'), 'nav.settings')"
+        :aria-label="t('shell.settings')"
         data-testid="open-settings"
-        @click="view = { kind: 'settings' }"
+        @click="navigate({ kind: 'settings' })"
       >
         <Settings :size="16" />
       </button>
-      <button class="icon" :title="dark ?'Светлая тема' : 'Тёмная тема'" :aria-label="dark ? 'Светлая тема' : 'Тёмная тема'" data-testid="toggle-theme" @click="emit('theme')">
+      <button v-if="!collapsed" class="icon lang" :title="t(`common.language.${nextLocale}`)" :aria-label="t('common.language.label')" data-testid="toggle-language" @click="setLocale(nextLocale)">
+        {{ locale.toUpperCase() }}
+      </button>
+      <button class="icon" :title="dark ? t('shell.themeLight') : t('shell.themeDark')" :aria-label="dark ? t('shell.themeLight') : t('shell.themeDark')" data-testid="toggle-theme" @click="emit('theme')">
         <Sun v-if="dark" :size="16" />
         <Moon v-else :size="16" />
       </button>
@@ -325,7 +309,7 @@ onUnmounted(() => {
       class="resize-handle"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Изменить ширину панели"
+      :aria-label="t('shell.resize')"
       tabindex="0"
       :aria-valuenow="currentWidth"
       :aria-valuemin="RAIL_WIDTH"
@@ -607,6 +591,12 @@ section + section {
   margin-top: var(--vr-space-1);
   font-size: var(--vr-font-size-2xs);
   color: var(--vr-color-nav-muted);
+}
+
+.icon.lang {
+  font: inherit;
+  font-size: var(--vr-font-size-2xs);
+  font-weight: 600;
 }
 
 .icon.add {

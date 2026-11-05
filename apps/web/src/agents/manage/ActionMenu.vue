@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTemplateRef } from 'vue';
 import { VButton, VPopover } from '@ui/kit';
+import { t } from '../../i18n';
 
 defineProps<{ testid: string; label: string; removeLabel: string; extraLabel?: string; extraTestid?: string }>();
 const emit = defineEmits<{ rename: []; remove: []; extra: [] }>();
@@ -19,7 +20,7 @@ function choose(action: 'rename' | 'remove' | 'extra') {
   <VButton label="⋯" size="small" text severity="secondary" :aria-label="label" aria-haspopup="menu" :data-testid="testid" @click="popover?.toggle($event)" />
   <VPopover ref="popover">
     <div class="menu" role="menu">
-      <button class="item" type="button" role="menuitem" data-testid="rename" @click="choose('rename')">Переименовать</button>
+      <button class="item" type="button" role="menuitem" data-testid="rename" @click="choose('rename')">{{ t('common.rename') }}</button>
       <button v-if="extraLabel" class="item" type="button" role="menuitem" :data-testid="extraTestid" @click="choose('extra')">{{ extraLabel }}</button>
       <button class="item danger" type="button" role="menuitem" data-testid="remove" @click="choose('remove')">{{ removeLabel }}</button>
     </div>

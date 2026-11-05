@@ -3,6 +3,7 @@ import { computed, reactive, watch } from 'vue';
 import type { Task } from '@veyra/protocol';
 import { VButton, VInputText, VMultiSelect, VSelect, VToggleSwitch } from '@ui/kit';
 import { useClient, useClientState } from '@core/vue-bindings';
+import { t } from '../i18n';
 import { openTask } from '../nav';
 import { priorityRank } from '../priority';
 import TaskMeta from './TaskMeta.vue';
@@ -57,25 +58,30 @@ function reset() {
 
 const sortedReleases = computed(() => [...state.value.releases].sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true })));
 
-const releaseOptions = computed(() => [...sortedReleases.value.map((r) => ({ label: r.name, value: r.id })), { label: 'Без релиза', value: NO_RELEASE }]);
+const releaseOptions = computed(() => [...sortedReleases.value.map((r) => ({ label: r.name, value: r.id })), { label: t('tasks.noRelease'), value: NO_RELEASE }]);
 
-const statusOptions = computed(() => [...new Set(state.value.tasks.map((t) => t.status))].sort((a, b) => a.localeCompare(b)));
+const statusOptions = computed(() => [...new Set(state.value.tasks.map((task) => task.status))].sort((a, b) => a.localeCompare(b)));
 
 const priorityOptions = computed(() => {
-  const names = [...new Set(state.value.tasks.flatMap((t) => (t.priority ? [t.priority] : [])))].sort((a, b) => priorityRank(a) - priorityRank(b) || a.localeCompare(b));
-  return [...names.map((n) => ({ label: n, value: n })), { label: 'Без приоритета', value: NO_PRIORITY }];
+  const names = [...new Set(state.value.tasks.flatMap((task) => (task.priority ? [task.priority] : [])))].sort((a, b) => priorityRank(a) - priorityRank(b) || a.localeCompare(b));
+  return [...names.map((n) => ({ label: n, value: n })), { label: t('tasks.filters.noPriority'), value: NO_PRIORITY }];
 });
 
-const labelOptions = computed(() => [...new Set(state.value.tasks.flatMap((t) => t.labels ?? []))].sort((a, b) => a.localeCompare(b)));
+const labelOptions = computed(() => [...new Set(state.value.tasks.flatMap((task) => task.labels ?? []))].sort((a, b) => a.localeCompare(b)));
 
 function byPriority(a: Task, b: Task) {
   return priorityRank(a.priority) - priorityRank(b.priority) || a.externalRef.localeCompare(b.externalRef, undefined, { numeric: true });
 }
 
 const assigneeOptions = computed(() => {
-  const ids = new Set(state.value.tasks.flatMap((t) => (t.assigneeId ? [t.assigneeId] : [])));
+  const ids = new Set(state.value.tasks.flatMap((task) => (task.assigneeId ? [task.assigneeId] : [])));
   const all = [...ids].map((id) => ({ label: client.actorName(id), value: `actor:${id}` })).sort((a, b) => a.label.localeCompare(b.label));
-  return [{ label: 'Все', value: 'all' }, { label: 'Мои', value: 'mine' }, { label: 'Не назначены', value: 'unassigned' }, ...all];
+  return [
+    { label: t('tasks.filters.assigneeAll'), value: 'all' },
+    { label: t('tasks.filters.assigneeMine'), value: 'mine' },
+    { label: t('tasks.filters.assigneeUnassigned'), value: 'unassigned' },
+    ...all,
+  ];
 });
 
 function isMine(task: Task) {
@@ -83,7 +89,7 @@ function isMine(task: Task) {
 }
 
 function assigneeLabel(task: Task) {
-  return task.assigneeId ? client.actorName(task.assigneeId) : 'не назначена';
+  return task.assigneeId ? client.actorName(task.assigneeId) : t('tasks.unassigned');
 }
 
 function isClosed(task: Task) {
@@ -107,9 +113,9 @@ const visible = computed(() => state.value.tasks.filter(matches));
 
 const groups = computed(() => {
   const tasks = [...visible.value].sort(byPriority);
-  const byRelease = sortedReleases.value.map((r) => ({ id: r.id, name: r.name, tasks: tasks.filter((t) => t.releaseId === r.id) }));
+  const byRelease = sortedReleases.value.map((r) => ({ id: r.id, name: r.name, tasks: tasks.filter((task) => task.releaseId === r.id) }));
   const known = new Set(sortedReleases.value.map((r) => r.id));
-  const none = { id: NO_RELEASE, name: 'Без релиза', tasks: tasks.filter((t) => !t.releaseId || !known.has(t.releaseId)) };
+  const none = { id: NO_RELEASE, name: t('tasks.noRelease'), tasks: tasks.filter((task) => !task.releaseId || !known.has(task.releaseId)) };
   return [...byRelease, none].filter((g) => g.tasks.length);
 });
 
@@ -127,8 +133,8 @@ function mrCount(task: Task) {
 <template>
   <div class="page">
     <header>
-      <h1>Задачи</h1>
-      <span class="vr-muted" data-testid="tasks-count">{{ visible.length }} из {{ state.tasks.length }}</span>
+      <h1>{{ t('tasks.title') }}</h1>
+      <span class="vr-muted" data-testid="tasks-count">{{ t('tasks.count', { shown: visible.length, total: state.tasks.length }) }}</span>
     </header>
     <div class="filters">
       <VMultiSelect
@@ -136,20 +142,20 @@ function mrCount(task: Task) {
         :options="releaseOptions"
         option-label="label"
         option-value="value"
-        placeholder="Релиз"
+        :placeholder="t('tasks.filters.release')"
         filter
         :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
+        :selected-items-label="t('tasks.filters.selected', { value: '{0}' })"
         size="small"
         data-testid="filter-release"
       />
       <VMultiSelect
         v-model="filters.statuses"
         :options="statusOptions"
-        placeholder="Статус"
+        :placeholder="t('tasks.filters.status')"
         filter
         :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
+        :selected-items-label="t('tasks.filters.selected', { value: '{0}' })"
         size="small"
         data-testid="filter-status"
       />
@@ -158,29 +164,29 @@ function mrCount(task: Task) {
         :options="priorityOptions"
         option-label="label"
         option-value="value"
-        placeholder="Приоритет"
+        :placeholder="t('tasks.filters.priority')"
         :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
+        :selected-items-label="t('tasks.filters.selected', { value: '{0}' })"
         size="small"
         data-testid="filter-priority"
       />
       <VMultiSelect
         v-model="filters.labels"
         :options="labelOptions"
-        placeholder="Метки"
+        :placeholder="t('tasks.filters.labels')"
         filter
         :max-selected-labels="2"
-        selected-items-label="Выбрано: {0}"
+        :selected-items-label="t('tasks.filters.selected', { value: '{0}' })"
         size="small"
         data-testid="filter-labels"
       />
       <VSelect v-model="filters.assignee" :options="assigneeOptions" option-label="label" option-value="value" filter size="small" data-testid="filter-assignee" />
-      <VInputText v-model="filters.text" placeholder="Поиск" size="small" data-testid="filter-text" />
+      <VInputText v-model="filters.text" :placeholder="t('common.search')" size="small" data-testid="filter-text" />
       <label class="toggle">
         <VToggleSwitch v-model="filters.hideClosed" data-testid="filter-hide-closed" />
-        Скрыть закрытые
+        {{ t('tasks.filters.hideClosed') }}
       </label>
-      <VButton label="Сбросить" size="small" text data-testid="filter-reset" @click="reset" />
+      <VButton :label="t('tasks.filters.reset')" size="small" text data-testid="filter-reset" @click="reset" />
     </div>
     <div class="body">
       <section v-for="group in groups" :key="group.id">
@@ -194,7 +200,7 @@ function mrCount(task: Task) {
               </span>
               <span class="vr-row-meta">
                 <TaskMeta :task="task" />
-                <span v-if="mrCount(task)" class="vr-chip" :title="`Merge requests: ${mrCount(task)}`" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
+                <span v-if="mrCount(task)" class="vr-chip" :title="t('tasks.filters.mergeRequests', { count: mrCount(task) })" data-testid="task-mr-count">MR {{ mrCount(task) }}</span>
                 <span>{{ assigneeLabel(task) }}</span>
                 <span>{{ task.status }}</span>
               </span>
@@ -204,10 +210,10 @@ function mrCount(task: Task) {
       </section>
       <div v-if="!visible.length" class="empty" data-testid="tasks-empty">
         <template v-if="state.tasks.length">
-          <span>Нет задач по фильтрам</span>
-          <VButton label="Сбросить" size="small" text data-testid="empty-reset" @click="reset" />
+          <span>{{ t('tasks.filters.emptyFiltered') }}</span>
+          <VButton :label="t('tasks.filters.reset')" size="small" text data-testid="empty-reset" @click="reset" />
         </template>
-        <span v-else class="vr-muted">Задач пока нет</span>
+        <span v-else class="vr-muted">{{ t('tasks.filters.empty') }}</span>
       </div>
     </div>
   </div>

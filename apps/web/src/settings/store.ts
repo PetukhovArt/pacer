@@ -1,25 +1,20 @@
 import { shallowRef } from 'vue';
-import { backend } from './backend';
+import { createBackend } from './backend';
+import { createFileText } from './fileText';
 import { describeFailure, parseSettings, type ParseFailure } from './parse';
 import { SETTINGS, checkValue, coerceValue, defaultValues, isSettingKey, type SettingKey, type SettingValues } from './schema';
 
 const LEGACY_THEME_KEY = 'veyra.theme';
 const LEGACY_TERMINAL_SIZE_KEY = 'veyra.terminal.fontSize';
-const ECHO_MEMORY = 8;
 
-const text = shallowRef('');
 const fileObject = shallowRef<Record<string, unknown>>({});
 const values = shallowRef<SettingValues>(defaultValues());
 const parseError = shallowRef<ParseFailure | null>(null);
 const issues = shallowRef<string[]>([]);
-const ioError = shallowRef<string | null>(null);
 
-let started = false;
-let pending: string | null = null;
-let flushing = false;
-const written: string[] = [];
-
-const describe = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const backend = createBackend('settings');
+const file = createFileText(backend, parseText);
+const { text, ioError } = file;
 
 function resolve(object: Record<string, unknown>): { values: SettingValues; issues: string[] } {
   const next = defaultValues() as Record<SettingKey, unknown>;
@@ -33,8 +28,7 @@ function resolve(object: Record<string, unknown>): { values: SettingValues; issu
   return { values: next as SettingValues, issues: found };
 }
 
-function applyText(next: string): void {
-  text.value = next;
+function parseText(next: string): void {
   const result = parseSettings(next);
   if (!result.ok) {
     parseError.value = result.error;
@@ -48,44 +42,8 @@ function applyText(next: string): void {
   backend.remember(next);
 }
 
-async function flush(): Promise<void> {
-  if (flushing) return;
-  flushing = true;
-  try {
-    while (pending !== null) {
-      const next = pending;
-      pending = null;
-      await backend.write(next);
-    }
-    ioError.value = null;
-  } catch (e) {
-    ioError.value = describe(e);
-  } finally {
-    flushing = false;
-  }
-}
-
-function persist(next: string): void {
-  written.push(next);
-  if (written.length > ECHO_MEMORY) written.shift();
-  pending = next;
-  void flush();
-}
-
 function commit(object: Record<string, unknown>): void {
-  const next = `${JSON.stringify(object, null, 2)}\n`;
-  applyText(next);
-  persist(next);
-}
-
-function onDisk(next: string): void {
-  if (next === text.value) {
-    written.length = 0;
-    return;
-  }
-  if (written.includes(next)) return;
-  written.length = 0;
-  applyText(next);
+  file.save(`${JSON.stringify(object, null, 2)}\n`);
 }
 
 function migrateLegacy(): void {
@@ -106,23 +64,8 @@ function migrateLegacy(): void {
   if (Object.keys(patch).length) commit({ ...fileObject.value, ...patch });
 }
 
-async function load(): Promise<void> {
-  try {
-    const disk = await backend.read();
-    if (disk !== text.value) applyText(disk);
-  } catch (e) {
-    ioError.value = describe(e);
-    return;
-  }
-  migrateLegacy();
-  backend.watch(onDisk);
-}
-
 function start(): void {
-  if (started) return;
-  started = true;
-  applyText(backend.cached());
-  void load();
+  file.start(migrateLegacy);
 }
 
 function set(key: SettingKey, value: unknown): void {
@@ -155,22 +98,11 @@ function checkText(candidate: string): string | null {
 function saveText(candidate: string): string | null {
   const problem = checkText(candidate);
   if (problem) return problem;
-  applyText(candidate);
-  persist(candidate);
+  file.save(candidate);
   return null;
 }
 
-async function openExternal(): Promise<void> {
-  if (!backend.openExternal) return;
-  try {
-    await backend.openExternal();
-    ioError.value = null;
-  } catch (e) {
-    ioError.value = describe(e);
-  }
-}
-
-const api = { values, text, parseError, issues, ioError, set, reset, isModified, checkText, saveText, openExternal, canOpenExternal: backend.openExternal !== null };
+const api = { values, text, parseError, issues, ioError, set, reset, isModified, checkText, saveText, openExternal: file.openExternal, canOpenExternal: file.canOpenExternal };
 
 export function useSettings(): typeof api {
   start();

@@ -1,3 +1,5 @@
+import { tr } from './translate';
+
 export type ParseFailure = { message: string; line: number | null; column: number | null };
 type ParseResult = { ok: true; object: Record<string, unknown> } | { ok: false; error: ParseFailure };
 
@@ -26,12 +28,24 @@ export function parseSettings(text: string): ParseResult {
     return { ok: false, error: failure(text, e) };
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return { ok: false, error: { message: 'Корень файла должен быть объектом {…}', line: 1, column: 1 } };
+    return { ok: false, error: { message: tr('settings.parse.rootObject'), line: 1, column: 1 } };
   }
   return { ok: true, object: value as Record<string, unknown> };
 }
 
+export function parseJsonArray(text: string): { ok: true; list: unknown[] } | { ok: false; error: ParseFailure } {
+  if (!text.trim()) return { ok: true, list: [] };
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, error: failure(text, e) };
+  }
+  if (!Array.isArray(value)) return { ok: false, error: { message: tr('settings.parse.rootArray'), line: 1, column: 1 } };
+  return { ok: true, list: value };
+}
+
 export function describeFailure(error: ParseFailure): string {
-  const where = error.line === null ? '' : `строка ${error.line}, столбец ${error.column}: `;
-  return `${where}${error.message}`;
+  if (error.line === null) return error.message;
+  return tr('settings.parse.position', { line: error.line, column: error.column ?? 0, message: error.message });
 }

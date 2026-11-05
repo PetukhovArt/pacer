@@ -2,12 +2,15 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VInputText } from '@ui/kit';
 import { confluenceSearch, describeError, type ConfluenceHit } from '../connectors/api';
+import { t, useI18n } from '../i18n';
 import ErrorInline from './ErrorInline.vue';
 import Skeleton from './Skeleton.vue';
-import { highlightHtml, recentPages, rememberPage, relativeTime, absoluteTime, type RecentPage } from './util';
+import { highlightHtml, recentPages, rememberPage, type RecentPage } from './util';
 
 const props = defineProps<{ connector: string }>();
 const emit = defineEmits<{ open: [payload: { connector: string; id: string }] }>();
+
+const { formatRelative, formatDate } = useI18n();
 
 const LIMIT = 25;
 const DEBOUNCE = 350;
@@ -83,20 +86,20 @@ onBeforeUnmount(() => clearTimeout(timer));
 <template>
   <div class="search" data-testid="confluence-search">
     <div class="bar">
-      <VInputText ref="input" v-model="text" class="field" placeholder="Поиск по Confluence" aria-label="Поиск по Confluence" data-testid="confluence-query" @keydown="onKey" />
+      <VInputText ref="input" v-model="text" class="field" :placeholder="t('confluence.search.placeholder')" :aria-label="t('confluence.search.placeholder')" data-testid="confluence-query" @keydown="onKey" />
     </div>
     <div class="body">
       <ErrorInline v-if="error" :message="error" @retry="run" />
       <Skeleton v-else-if="loading && !hits.length" :rows="8" :height="44" />
       <template v-else-if="searched">
-        <div v-if="!hits.length" class="empty">По запросу «{{ searched }}» ничего не найдено</div>
-        <ul v-else class="list">
+        <div v-if="!hits.length" class="empty">{{ t('confluence.search.noHits', { query: searched }) }}</div>
+        <ul v-else v-auto-animate class="list">
           <li v-for="hit in hits" :key="hit.id">
             <button class="hit" data-testid="confluence-hit" @click="openHit(hit)">
               <span class="title">{{ hit.title }}</span>
               <span class="meta">
                 <span class="space">{{ hit.space }}</span>
-                <span :title="absoluteTime(hit.updated)">{{ relativeTime(hit.updated) }}</span>
+                <span :title="formatDate(hit.updated)">{{ formatRelative(hit.updated) }}</span>
               </span>
               <span v-if="hit.excerpt" class="excerpt" v-html="highlightHtml(hit.excerpt)" />
             </button>
@@ -104,9 +107,9 @@ onBeforeUnmount(() => clearTimeout(timer));
         </ul>
       </template>
       <template v-else>
-        <div class="group-title">Недавние страницы</div>
-        <div v-if="!recent.length" class="empty">Введите запрос, чтобы найти страницу</div>
-        <ul v-else class="list">
+        <div class="group-title">{{ t('confluence.search.recent') }}</div>
+        <div v-if="!recent.length" class="empty">{{ t('confluence.search.prompt') }}</div>
+        <ul v-else v-auto-animate class="list">
           <li v-for="page in recent" :key="page.id">
             <button class="hit" @click="openPage(page)">
               <span class="title">{{ page.title }}</span>

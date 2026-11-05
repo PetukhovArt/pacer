@@ -1,3 +1,5 @@
+@import './motion/motion.css';
+
 html,
 body,
 #app {
@@ -172,4 +174,38 @@ button.vr-row:hover:not(:disabled) {
   font-size: var(--vr-font-size-xs);
   font-weight: 600;
   color: var(--vr-color-text);
+}
+
+:where(button, a[href], summary, [role='tab'], [role='button'], input, textarea, select) {
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  transition-property: background-color, color, border-color, opacity, transform, outline-color, outline-offset;
+  transition-duration: var(--vr-motion-fast);
+  transition-timing-function: var(--vr-motion-ease-standard);
+}
+
+:where(button:not(:disabled, .vr-row, [role='tab'], [role='button'], .p-button):active) {
+  transform: scale(0.97);
+}
+
+:where(.vr-row, .vr-chip, .vr-dot, .vr-code) {
+  transition: background-color var(--vr-motion-fast) var(--vr-motion-ease-standard), color var(--vr-motion-fast) var(--vr-motion-ease-standard);
+}
+
+.vr-chevron {
+  display: inline-flex;
+  transition: transform var(--vr-motion-base) var(--vr-motion-ease-standard);
+}
+
+.vr-chevron[data-open='true'],
+[aria-expanded='true'] > .vr-chevron {
+  transform: rotate(var(--vr-chevron-open, 90deg));
+}
+
+.vr-chevron[data-dir='vertical'] {
+  --vr-chevron-open: 180deg;
+}
+
+.vr-fade-in {
+  animation: vr-fade-in var(--vr-motion-base) var(--vr-motion-ease-standard) both;
 }

@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { ChangeRequestRef } from './connectors/api';
+import { withViewTransition } from './motion';
 
 export type View =
   | { kind: 'tasks' }
@@ -14,19 +15,25 @@ export type View =
 export const view = ref<View>({ kind: 'tasks' });
 export const requestedSettingsCategory = ref<string | null>(null);
 
+export function navigate(next: View): Promise<void> {
+  return withViewTransition(() => {
+    view.value = next;
+  });
+}
+
 export function openTask(id: string): void {
-  view.value = { kind: 'task', id };
+  void navigate({ kind: 'task', id });
 }
 
 export function openTopic(id: string): void {
-  view.value = { kind: 'topic', id };
+  void navigate({ kind: 'topic', id });
 }
 
 export function openReview(ref: ChangeRequestRef): void {
-  view.value = { kind: 'reviews', open: ref };
+  void navigate({ kind: 'reviews', open: ref });
 }
 
 export function openSettings(category?: string): void {
   requestedSettingsCategory.value = category ?? null;
-  view.value = { kind: 'settings' };
+  if (view.value.kind !== 'settings') void navigate({ kind: 'settings' });
 }

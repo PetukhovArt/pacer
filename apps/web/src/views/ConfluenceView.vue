@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { BookOpen } from 'lucide-vue-next';
 import ConfluencePageView from '../atlassian/ConfluencePageView.vue';
 import ConfluenceSearch from '../atlassian/ConfluenceSearch.vue';
+import { t } from '../i18n';
+import { withViewTransition } from '../motion';
 import { view } from '../nav';
 import ConnectorPage from './ConnectorPage.vue';
 
@@ -11,7 +13,9 @@ const KINDS = ['confluence'] as const;
 const open = computed(() => (view.value.kind === 'confluence' ? view.value.open : undefined));
 
 function select(target: { connector: string; id: string }) {
-  view.value = { kind: 'confluence', open: target };
+  void withViewTransition(() => {
+    view.value = { kind: 'confluence', open: target };
+  });
 }
 </script>
 
@@ -20,8 +24,8 @@ function select(target: { connector: string; id: string }) {
     :kinds="KINDS"
     title="Confluence"
     :icon="BookOpen"
-    empty-text="Подключите Confluence, чтобы искать и читать страницы здесь"
-    placeholder="Найдите страницу слева"
+    :empty-text="t('confluence.view.empty')"
+    :placeholder="t('confluence.view.placeholder')"
     test-id="confluence-view"
     storage-key="veyra.confluence"
     picker

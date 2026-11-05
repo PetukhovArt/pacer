@@ -1,13 +1,18 @@
 import type { ChangeRequestSummary, PipelineStatus } from '../connectors/api';
+import { t, useI18n } from '../i18n';
 
-export const PIPELINE_LABEL: Record<PipelineStatus, string> = {
-  success: 'Пайплайн успешен',
-  failed: 'Пайплайн упал',
-  running: 'Пайплайн выполняется',
-  pending: 'Пайплайн ожидает',
-  canceled: 'Пайплайн отменён',
-  none: 'Нет пайплайна',
-};
+const PIPELINE_KEY = {
+  success: 'forge.pipeline.success',
+  failed: 'forge.pipeline.failed',
+  running: 'forge.pipeline.running',
+  pending: 'forge.pipeline.pending',
+  canceled: 'forge.pipeline.canceled',
+  none: 'forge.pipeline.none',
+} as const satisfies Record<PipelineStatus, string>;
+
+export function pipelineLabel(status: PipelineStatus): string {
+  return t(PIPELINE_KEY[status]);
+}
 
 const JOB_TONE: Record<string, PipelineStatus> = {
   success: 'success',
@@ -46,17 +51,17 @@ export function relativeTime(iso: string, now = Date.now()): string {
   const time = Date.parse(iso);
   if (Number.isNaN(time)) return '';
   const diff = Math.max(0, now - time);
-  if (diff < MINUTE) return 'только что';
-  if (diff < HOUR) return `${Math.floor(diff / MINUTE)} мин назад`;
-  if (diff < DAY) return `${Math.floor(diff / HOUR)} ч назад`;
-  if (diff < 2 * DAY) return 'вчера';
-  if (diff < 30 * DAY) return `${Math.floor(diff / DAY)} дн назад`;
-  return new Date(time).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: diff > 300 * DAY ? 'numeric' : undefined });
+  if (diff < MINUTE) return t('forge.time.justNow');
+  if (diff < HOUR) return t('forge.time.minutesAgo', { count: Math.floor(diff / MINUTE) });
+  if (diff < DAY) return t('forge.time.hoursAgo', { count: Math.floor(diff / HOUR) });
+  if (diff < 2 * DAY) return t('forge.time.yesterday');
+  if (diff < 30 * DAY) return t('forge.time.daysAgo', { count: Math.floor(diff / DAY) });
+  return useI18n().formatDate(time, { day: 'numeric', month: 'short', year: diff > 300 * DAY ? 'numeric' : undefined });
 }
 
 export function fullDate(iso: string): string {
   const time = Date.parse(iso);
-  return Number.isNaN(time) ? '' : new Date(time).toLocaleString('ru-RU');
+  return Number.isNaN(time) ? '' : useI18n().formatDate(time, { dateStyle: 'short', timeStyle: 'medium' });
 }
 
 export function formatDuration(seconds: number | null): string {
@@ -64,5 +69,5 @@ export function formatDuration(seconds: number | null): string {
   const total = Math.round(seconds);
   const minutes = Math.floor(total / 60);
   const rest = total % 60;
-  return minutes > 0 ? `${minutes}м ${rest}с` : `${rest}с`;
+  return minutes > 0 ? t('forge.time.durationMinutes', { minutes, seconds: rest }) : t('forge.time.durationSeconds', { seconds: rest });
 }

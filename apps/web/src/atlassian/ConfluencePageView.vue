@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { VButton } from '@ui/kit';
 import RichContent from '../content/RichContent.vue';
+import { t } from '../i18n';
 import { confluencePage, describeError, openUrl, type ConfluencePage } from '../connectors/api';
 import ErrorInline from './ErrorInline.vue';
 import Skeleton from './Skeleton.vue';
@@ -89,7 +90,7 @@ onBeforeUnmount(() => {
     <Skeleton v-else-if="loading" :rows="12" />
     <template v-else-if="page">
       <header class="head">
-        <nav v-if="page.ancestors.length" class="crumbs" aria-label="Путь">
+        <nav v-if="page.ancestors.length" class="crumbs" :aria-label="t('confluence.page.path')">
           <template v-for="ancestor in page.ancestors" :key="ancestor.id">
             <button class="crumb" @click="emit('open', { connector: connector, id: ancestor.id })">{{ ancestor.title }}</button>
             <span class="sep">/</span>
@@ -98,17 +99,17 @@ onBeforeUnmount(() => {
         <h1 class="title">{{ page.title }}</h1>
         <div class="meta">
           <span class="space">{{ page.space }}</span>
-          <span class="muted">версия {{ page.version }}</span>
+          <span class="muted">{{ t('confluence.page.version', { version: page.version }) }}</span>
           <span class="spacer" />
-          <VButton label="Открыть в браузере" size="small" severity="secondary" @click="openUrl(page.url)" />
+          <VButton :label="t('common.openInBrowser')" size="small" severity="secondary" @click="openUrl(page.url)" />
         </div>
       </header>
       <div class="layout">
         <div ref="bodyEl" class="content">
           <RichContent :html="page.body_html" :connector="page.connector" />
         </div>
-        <nav v-if="headings.length" class="toc" aria-label="Содержание">
-          <div class="toc-title">Содержание</div>
+        <nav v-if="headings.length" class="toc" :aria-label="t('confluence.page.contents')">
+          <div class="toc-title">{{ t('confluence.page.contents') }}</div>
           <button
             v-for="heading in headings"
             :key="heading.index"

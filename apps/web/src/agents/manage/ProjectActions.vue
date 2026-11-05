@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
+import { t } from '../../i18n';
 import { usePacer } from '../pacer';
 import ActionMenu from './ActionMenu.vue';
 import OrphansDialog from './OrphansDialog.vue';
@@ -85,32 +86,32 @@ async function confirmRemove() {
     <ActionMenu
       v-if="projectId"
       testid="project-menu"
-      label="Действия проекта"
-      remove-label="Убрать из pacer"
-      extra-label="Старые разговоры"
+      :label="t('agents.project.actions')"
+      :remove-label="t('agents.project.removeFromPacer')"
+      :extra-label="t('agents.project.oldConversations')"
       extra-testid="project-menu-orphans"
       @rename="openRename"
       @remove="openRemove"
       @extra="orphansOpen = true"
     />
-    <VButton v-else label="Добавить проект" size="small" text severity="secondary" data-testid="project-add" @click="openAdd" />
+    <VButton v-else :label="t('agents.project.add')" size="small" text severity="secondary" data-testid="project-add" @click="openAdd" />
     <form v-if="mode === 'adding'" class="inline" @submit.prevent="submitAdd(false)">
-      <VInputText ref="pathInput" v-model="path" size="small" placeholder="Путь к папке" aria-label="Путь к папке проекта" data-testid="project-path-input" @keydown.esc="cancel" />
-      <VInputText v-model="name" size="small" placeholder="Название (необязательно)" aria-label="Название проекта" data-testid="project-name-input" @keydown.esc="cancel" />
-      <VButton type="submit" label="Добавить" size="small" :disabled="!trimmedPath" :loading="busy" data-testid="project-add-submit" />
-      <VButton v-if="canCreateMissing" label="Создать папку" size="small" severity="secondary" :disabled="busy" data-testid="project-create-missing" @click="submitAdd(true)" />
-      <VButton label="Отмена" size="small" text severity="secondary" @click="cancel" />
+      <VInputText ref="pathInput" v-model="path" size="small" :placeholder="t('agents.project.path')" :aria-label="t('agents.project.pathAria')" data-testid="project-path-input" @keydown.esc="cancel" />
+      <VInputText v-model="name" size="small" :placeholder="t('agents.project.namePlaceholder')" :aria-label="t('agents.project.nameAria')" data-testid="project-name-input" @keydown.esc="cancel" />
+      <VButton type="submit" :label="t('agents.project.addSubmit')" size="small" :disabled="!trimmedPath" :loading="busy" data-testid="project-add-submit" />
+      <VButton v-if="canCreateMissing" :label="t('agents.project.createFolder')" size="small" severity="secondary" :disabled="busy" data-testid="project-create-missing" @click="submitAdd(true)" />
+      <VButton :label="t('common.cancel')" size="small" text severity="secondary" @click="cancel" />
     </form>
     <form v-else-if="mode === 'renaming'" class="inline" @submit.prevent="submitRename">
-      <VInputText ref="nameInput" v-model="name" size="small" placeholder="Имя папки" aria-label="Название проекта" data-testid="project-name-input" @keydown.esc="cancel" />
-      <span class="hint">Пустое название вернёт имя папки</span>
-      <VButton type="submit" label="Сохранить" size="small" :loading="busy" data-testid="project-rename-submit" />
-      <VButton label="Отмена" size="small" text severity="secondary" @click="cancel" />
+      <VInputText ref="nameInput" v-model="name" size="small" :placeholder="t('agents.project.folderName')" :aria-label="t('agents.project.nameAria')" data-testid="project-name-input" @keydown.esc="cancel" />
+      <span class="hint">{{ t('agents.project.renameHint') }}</span>
+      <VButton type="submit" :label="t('common.save')" size="small" :loading="busy" data-testid="project-rename-submit" />
+      <VButton :label="t('common.cancel')" size="small" text severity="secondary" @click="cancel" />
     </form>
-    <div v-else-if="mode === 'removing'" class="inline" role="alertdialog" aria-label="Подтверждение">
-      <span class="hint">Убрать «{{ current?.name }}» из pacer? Папка на диске не будет затронута.</span>
-      <VButton label="Убрать" size="small" severity="danger" :loading="busy" data-testid="confirm-remove" @click="confirmRemove" />
-      <VButton label="Отмена" size="small" text severity="secondary" @click="cancel" />
+    <div v-else-if="mode === 'removing'" class="inline" role="alertdialog" :aria-label="t('agents.project.confirm')">
+      <span class="hint">{{ t('agents.project.removeQuestion', { name: current?.name ?? '' }) }}</span>
+      <VButton :label="t('common.remove')" size="small" severity="danger" :loading="busy" data-testid="confirm-remove" @click="confirmRemove" />
+      <VButton :label="t('common.cancel')" size="small" text severity="secondary" @click="cancel" />
     </div>
     <p v-if="error" class="error" role="alert" data-testid="project-error">{{ error }}</p>
     <OrphansDialog v-if="orphansOpen && projectId" :project="projectId" @resumed="emit('resumed', $event)" @close="orphansOpen = false" />

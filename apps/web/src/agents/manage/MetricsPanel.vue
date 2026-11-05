@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue';
+import { useI18n } from '../../i18n';
 import { describeError, sessionId, sessionKey, usePacer } from '../pacer';
 import { getMetrics, type MetricsSnapshot, type SessionMetrics } from './metrics';
 
 const POLL_INTERVAL_MS = 3000;
-const BYTES_IN_MB = 1024 * 1024;
+
+const { t, formatBytes } = useI18n();
 
 type Row = { id: string; name: string; procs: number; rssBytes: number; share: number };
 
@@ -16,8 +18,8 @@ let inflight = false;
 let stopped = false;
 
 function sessionName(metrics: SessionMetrics): string {
-  if (metrics.prewarm) return `запас: ${metrics.prewarm.kind}`;
-  return pacer?.sessions.value.get(sessionKey(metrics.session))?.name ?? `сессия ${sessionId(metrics.session)}`;
+  if (metrics.prewarm) return t('agents.metrics.prewarm', { kind: metrics.prewarm.kind });
+  return pacer?.sessions.value.get(sessionKey(metrics.session))?.name ?? t('agents.metrics.unnamed', { id: sessionId(metrics.session) });
 }
 
 const rows = computed<Row[]>(() => {
@@ -40,16 +42,11 @@ const totalBytes = computed(() => {
 
 const systemBytes = computed(() => snapshot.value?.system_total_bytes ?? 0);
 
-function formatBytes(bytes: number): string {
-  const mb = bytes / BYTES_IN_MB;
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} ГБ` : `${Math.round(mb)} МБ`;
-}
-
 const totalText = computed(() => {
   const system = systemBytes.value;
   if (system <= 0) return formatBytes(totalBytes.value);
   const percent = Math.round((totalBytes.value / system) * 100);
-  return `${formatBytes(totalBytes.value)} из ${formatBytes(system)} (${percent}%)`;
+  return t('agents.metrics.ofSystem', { used: formatBytes(totalBytes.value), total: formatBytes(system), percent });
 });
 
 function schedule(): void {
@@ -98,25 +95,25 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="metrics" aria-label="Память сессий" data-testid="metrics-panel">
-    <p v-if="!pacer" class="note">Метрики доступны только в десктопном приложении Veyra</p>
+  <section class="metrics" :aria-label="t('agents.metrics.aria')" data-testid="metrics-panel">
+    <p v-if="!pacer" class="note">{{ t('agents.metrics.unavailable') }}</p>
     <template v-else>
       <p v-if="error" class="error" role="alert" data-testid="metrics-error">{{ error }}</p>
-      <p v-if="!snapshot && !error" class="note" role="status">Загрузка…</p>
+      <p v-if="!snapshot && !error" class="note" role="status">{{ t('common.loading') }}</p>
       <template v-if="snapshot">
         <header class="summary">
-          <span class="summary-label">Всего памяти</span>
+          <span class="summary-label">{{ t('agents.metrics.total') }}</span>
           <strong class="summary-value" data-testid="metrics-total" :data-bytes="totalBytes">{{ totalText }}</strong>
-          <span class="summary-detail">демон {{ formatBytes(snapshot.daemon_rss_bytes) }} + сессии {{ formatBytes(totalBytes - snapshot.daemon_rss_bytes) }}</span>
+          <span class="summary-detail">{{ t('agents.metrics.breakdown', { daemon: formatBytes(snapshot.daemon_rss_bytes), sessions: formatBytes(totalBytes - snapshot.daemon_rss_bytes) }) }}</span>
         </header>
-        <p v-if="!rows.length" class="note">Нет живых сессий</p>
+        <p v-if="!rows.length" class="note">{{ t('agents.metrics.none') }}</p>
         <table v-else class="table">
           <thead>
             <tr>
-              <th scope="col">Сессия</th>
-              <th scope="col" class="num">Процессов</th>
-              <th scope="col" class="num">Память</th>
-              <th scope="col" class="bar-cell"><span class="visually-hidden">Доля от наибольшей</span></th>
+              <th scope="col">{{ t('agents.metrics.session') }}</th>
+              <th scope="col" class="num">{{ t('agents.metrics.processes') }}</th>
+              <th scope="col" class="num">{{ t('agents.metrics.memory') }}</th>
+              <th scope="col" class="bar-cell"><span class="visually-hidden">{{ t('agents.metrics.share') }}</span></th>
             </tr>
           </thead>
           <tbody>

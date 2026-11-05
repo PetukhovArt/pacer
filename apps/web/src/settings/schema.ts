@@ -1,18 +1,22 @@
-type Category = 'appearance' | 'terminal' | 'sessions' | 'connectors';
-type Option = { readonly value: string; readonly label: string };
-type Base = { readonly label: string; readonly description: string; readonly category: Category };
+import type { MessageKey } from '../i18n';
+import { tr } from './translate';
+
+type Category = 'appearance' | 'terminal' | 'sessions' | 'connectors' | 'keymap';
+type Option = { readonly value: string; readonly label: MessageKey };
+type Base = { readonly label: MessageKey; readonly description: MessageKey; readonly category: Category };
 type BooleanDef = Base & { readonly type: 'boolean'; readonly default: boolean };
 type NumberDef = Base & { readonly type: 'number'; readonly default: number; readonly min: number; readonly max: number; readonly step: number };
-type StringDef = Base & { readonly type: 'string'; readonly default: string; readonly placeholder?: string };
+type StringDef = Base & { readonly type: 'string'; readonly default: string; readonly placeholder?: MessageKey };
 type EnumDef = Base & { readonly type: 'enum'; readonly default: string; readonly options: readonly Option[] };
 export type SettingDef = BooleanDef | NumberDef | StringDef | EnumDef;
 
-export const CATEGORIES: readonly { readonly id: Category; readonly label: string }[] = [
-  { id: 'appearance', label: 'Внешний вид' },
-  { id: 'terminal', label: 'Терминал' },
-  { id: 'sessions', label: 'Сессии' },
-  { id: 'connectors', label: 'Коннекторы' },
-];
+export const CATEGORIES = [
+  { id: 'appearance', label: 'settings.category.appearance' },
+  { id: 'terminal', label: 'settings.category.terminal' },
+  { id: 'sessions', label: 'settings.category.sessions' },
+  { id: 'connectors', label: 'settings.category.connectors' },
+  { id: 'keymap', label: 'settings.category.keymap' },
+] as const satisfies readonly { readonly id: Category; readonly label: MessageKey }[];
 
 const FALLBACK_MONO = "'JetBrains Mono', Consolas, monospace";
 const monoFont = getComputedStyle(document.documentElement).getPropertyValue('--vr-font-mono').trim() || FALLBACK_MONO;
@@ -21,37 +25,55 @@ export const SETTINGS = {
   theme: {
     type: 'enum',
     default: 'dark',
-    label: 'Тема',
-    description: 'Цветовая схема приложения. «Как в системе» следует настройке ОС.',
+    label: 'settings.def.theme.label',
+    description: 'settings.def.theme.description',
     category: 'appearance',
     options: [
-      { value: 'dark', label: 'Тёмная' },
-      { value: 'light', label: 'Светлая' },
-      { value: 'system', label: 'Как в системе' },
+      { value: 'dark', label: 'settings.def.theme.dark' },
+      { value: 'light', label: 'settings.def.theme.light' },
+      { value: 'system', label: 'settings.def.theme.system' },
+    ],
+  },
+  'ui.language': {
+    type: 'enum',
+    default: 'en',
+    label: 'settings.def.language.label',
+    description: 'settings.def.language.description',
+    category: 'appearance',
+    options: [
+      { value: 'en', label: 'common.language.en' },
+      { value: 'ru', label: 'common.language.ru' },
     ],
   },
   'ui.font_size': {
     type: 'number',
     default: 14,
-    label: 'Размер шрифта интерфейса',
-    description: 'Базовый размер текста интерфейса в пикселях. Терминал настраивается отдельно.',
+    label: 'settings.def.fontSize.label',
+    description: 'settings.def.fontSize.description',
     category: 'appearance',
     min: 12,
     max: 20,
     step: 1,
   },
+  'ui.animations': {
+    type: 'boolean',
+    default: true,
+    label: 'settings.def.animations.label',
+    description: 'settings.def.animations.description',
+    category: 'appearance',
+  },
   'terminal.font_family': {
     type: 'string',
     default: monoFont,
-    label: 'Шрифт терминала',
-    description: 'Список семейств шрифтов через запятую, как в CSS font-family.',
+    label: 'settings.def.terminalFontFamily.label',
+    description: 'settings.def.terminalFontFamily.description',
     category: 'terminal',
   },
   'terminal.font_size': {
     type: 'number',
     default: 13,
-    label: 'Размер шрифта терминала',
-    description: 'Размер текста в терминале в пикселях. Меняется также Ctrl+колесо и Ctrl+=/−/0.',
+    label: 'settings.def.terminalFontSize.label',
+    description: 'settings.def.terminalFontSize.description',
     category: 'terminal',
     min: 8,
     max: 32,
@@ -60,8 +82,8 @@ export const SETTINGS = {
   'terminal.line_height': {
     type: 'number',
     default: 1,
-    label: 'Межстрочный интервал терминала',
-    description: 'Множитель высоты строки относительно размера шрифта.',
+    label: 'settings.def.terminalLineHeight.label',
+    description: 'settings.def.terminalLineHeight.description',
     category: 'terminal',
     min: 1,
     max: 2,
@@ -70,8 +92,8 @@ export const SETTINGS = {
   'terminal.scrollback': {
     type: 'number',
     default: 10000,
-    label: 'История терминала',
-    description: 'Сколько строк прокрутки хранит каждый терминал.',
+    label: 'settings.def.terminalScrollback.label',
+    description: 'settings.def.terminalScrollback.description',
     category: 'terminal',
     min: 0,
     max: 100000,
@@ -80,38 +102,38 @@ export const SETTINGS = {
   'terminal.cursor_blink': {
     type: 'boolean',
     default: true,
-    label: 'Мигающий курсор',
-    description: 'Мигание курсора в терминале.',
+    label: 'settings.def.terminalCursorBlink.label',
+    description: 'settings.def.terminalCursorBlink.description',
     category: 'terminal',
   },
   'sessions.default_kind': {
     type: 'enum',
     default: 'claude',
-    label: 'Тип новой сессии',
-    description: 'Какой тип выбран по умолчанию в форме новой сессии.',
+    label: 'settings.def.sessionsDefaultKind.label',
+    description: 'settings.def.sessionsDefaultKind.description',
     category: 'sessions',
     options: [
-      { value: 'claude', label: 'Claude' },
-      { value: 'codex', label: 'Codex' },
-      { value: 'cursor', label: 'Cursor' },
-      { value: 'terminal', label: 'Терминал' },
+      { value: 'claude', label: 'settings.def.sessionsDefaultKind.claude' },
+      { value: 'codex', label: 'settings.def.sessionsDefaultKind.codex' },
+      { value: 'cursor', label: 'settings.def.sessionsDefaultKind.cursor' },
+      { value: 'terminal', label: 'settings.def.sessionsDefaultKind.terminal' },
     ],
   },
   'sessions.default_model': {
     type: 'string',
     default: '',
-    label: 'Модель по умолчанию',
-    description: 'Подставляется в форму новой сессии. Пусто — модель выбирает сам агент.',
+    label: 'settings.def.sessionsDefaultModel.label',
+    description: 'settings.def.sessionsDefaultModel.description',
     category: 'sessions',
-    placeholder: 'по умолчанию',
+    placeholder: 'settings.def.sessionsDefaultModel.placeholder',
   },
   'sessions.default_effort': {
     type: 'string',
     default: '',
-    label: 'Effort по умолчанию',
-    description: 'Подставляется в форму новой сессии. Пусто — значение выбирает сам агент.',
+    label: 'settings.def.sessionsDefaultEffort.label',
+    description: 'settings.def.sessionsDefaultEffort.description',
     category: 'sessions',
-    placeholder: 'по умолчанию',
+    placeholder: 'settings.def.sessionsDefaultEffort.placeholder',
   },
 } as const satisfies Record<string, SettingDef>;
 
@@ -133,14 +155,14 @@ export function defaultValues(): SettingValues {
 export function checkValue(def: SettingDef, raw: unknown): string | null {
   switch (def.type) {
     case 'boolean':
-      return typeof raw === 'boolean' ? null : 'ожидается true или false';
+      return typeof raw === 'boolean' ? null : tr('settings.problem.expectedBoolean');
     case 'number':
-      if (typeof raw !== 'number' || !Number.isFinite(raw)) return 'ожидается число';
-      return raw < def.min || raw > def.max ? `число от ${def.min} до ${def.max}` : null;
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) return tr('settings.problem.expectedNumber');
+      return raw < def.min || raw > def.max ? tr('settings.problem.range', { min: def.min, max: def.max }) : null;
     case 'string':
-      return typeof raw === 'string' ? null : 'ожидается строка';
+      return typeof raw === 'string' ? null : tr('settings.problem.expectedString');
     case 'enum':
-      return typeof raw === 'string' && def.options.some((option) => option.value === raw) ? null : `одно из: ${def.options.map((option) => option.value).join(', ')}`;
+      return typeof raw === 'string' && def.options.some((option) => option.value === raw) ? null : tr('settings.problem.oneOf', { values: def.options.map((option) => option.value).join(', ') });
   }
 }
 

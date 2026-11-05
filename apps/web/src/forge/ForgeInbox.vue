@@ -4,7 +4,8 @@ import { GitPullRequest, MessageSquare, RefreshCw, Search, X } from 'lucide-vue-
 import { VButton, VInputText } from '@ui/kit';
 import { useConnectors, type ChangeRequestRef, type InboxError, type InboxItem } from '../connectors/api';
 import PersonAvatar from '../connectors/PersonAvatar.vue';
-import { fullDate, numberLabel, PIPELINE_LABEL, relativeTime } from './format';
+import { t } from '../i18n';
+import { fullDate, numberLabel, pipelineLabel, relativeTime } from './format';
 import { useForgeInbox } from './inbox';
 import PipelineIcon from './PipelineIcon.vue';
 
@@ -22,9 +23,9 @@ const now = shallowRef(Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
 
 const GROUPS = [
-  { reason: 'reviewer', title: 'Ждут моего ревью' },
-  { reason: 'author', title: 'Мои' },
-  { reason: 'assignee', title: 'Назначены на меня' },
+  { reason: 'reviewer', title: 'forge.inbox.groupReviewer' },
+  { reason: 'author', title: 'forge.inbox.groupAuthor' },
+  { reason: 'assignee', title: 'forge.inbox.groupAssignee' },
 ] as const;
 
 const errorKey = (e: InboxError) => `${e.connector}\n${e.message}`;
@@ -72,9 +73,9 @@ const open = (item: InboxItem) => emit('open', { connector: item.connector, proj
     <header class="bar">
       <div class="search">
         <Search :size="14" />
-        <VInputText v-model="filter" class="search-input" placeholder="Фильтр: проект, номер, заголовок, автор" autocomplete="off" data-testid="forge-filter" />
+        <VInputText v-model="filter" class="search-input" :placeholder="t('forge.inbox.filter')" autocomplete="off" data-testid="forge-filter" />
       </div>
-      <VButton size="small" severity="secondary" text :loading="loading" aria-label="Обновить" title="Обновить" data-testid="forge-refresh" @click="load">
+      <VButton size="small" severity="secondary" text :loading="loading" :aria-label="t('common.refresh')" :title="t('common.refresh')" data-testid="forge-refresh" @click="load">
         <template #icon><RefreshCw :size="14" /></template>
       </VButton>
     </header>
@@ -84,28 +85,28 @@ const open = (item: InboxItem) => emit('open', { connector: item.connector, proj
     </div>
     <div v-for="e in shownErrors" :key="errorKey(e)" class="strip" role="alert" data-testid="forge-error">
       <span><b>{{ connectorLabel(e.connector) }}</b>: {{ e.message }}</span>
-      <button class="strip-close" aria-label="Скрыть" title="Скрыть" @click="dismiss(e)"><X :size="14" /></button>
+      <button class="strip-close" :aria-label="t('forge.inbox.dismiss')" :title="t('forge.inbox.dismiss')" @click="dismiss(e)"><X :size="14" /></button>
     </div>
 
-    <div class="scroll">
-      <p v-if="!loadedOnce" class="note">Загрузка…</p>
-      <p v-else-if="!items.length && !failure" class="note" data-testid="forge-empty"><GitPullRequest :size="16" />Нет открытых MR/PR, связанных с вами</p>
-      <p v-else-if="!groups.length" class="note">Ничего не найдено</p>
+    <div v-auto-animate class="scroll">
+      <p v-if="!loadedOnce" class="note">{{ t('common.loading') }}</p>
+      <p v-else-if="!items.length && !failure" class="note" data-testid="forge-empty"><GitPullRequest :size="16" />{{ t('forge.inbox.empty') }}</p>
+      <p v-else-if="!groups.length" class="note">{{ t('common.noResults') }}</p>
 
-      <section v-for="group in groups" :key="group.reason" class="group" :data-testid="`forge-group-${group.reason}`">
-        <h3>{{ group.title }} <span class="count">{{ group.items.length }}</span></h3>
+      <section v-for="group in groups" :key="group.reason" v-auto-animate class="group" :data-testid="`forge-group-${group.reason}`">
+        <h3>{{ t(group.title) }} <span class="count">{{ group.items.length }}</span></h3>
         <button v-for="item in group.items" :key="`${item.connector}/${item.project}/${item.number}`" class="row" data-testid="forge-row" @click="open(item)">
           <PersonAvatar :person="item.author" small />
           <span class="main">
             <span class="title">
-              <span v-if="item.draft" class="draft" data-testid="forge-draft">Черновик</span>{{ item.title }}
+              <span v-if="item.draft" class="draft" data-testid="forge-draft">{{ t('forge.draft') }}</span>{{ item.title }}
             </span>
             <span class="sub">{{ item.project }} · {{ numberLabel(item) }} · {{ item.source_branch }}</span>
           </span>
-          <span v-if="item.unresolved_threads" class="threads" :title="`Нерешённых обсуждений: ${item.unresolved_threads}`">
+          <span v-if="item.unresolved_threads" class="threads" :title="t('forge.unresolvedThreads', { count: item.unresolved_threads })">
             <MessageSquare :size="12" />{{ item.unresolved_threads }}
           </span>
-          <PipelineIcon v-if="item.pipeline !== 'none'" :status="item.pipeline" :title="PIPELINE_LABEL[item.pipeline]" />
+          <PipelineIcon v-if="item.pipeline !== 'none'" :status="item.pipeline" :title="pipelineLabel(item.pipeline)" />
           <span class="time" :title="fullDate(item.updated_at)">{{ relativeTime(item.updated_at, now) }}</span>
         </button>
       </section>

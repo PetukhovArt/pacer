@@ -7,6 +7,9 @@ import '@fontsource-variable/wix-madefor-text';
 import '@fontsource/jetbrains-mono/400.css';
 import '@ui/tokens/light.css';
 import '@ui/tokens/dark.css';
+import '@ui/tokens/motion.css';
+import './overlays.css';
+import { installMotion } from './motion';
 
 export const DARK_CLASS = 'vr-dark';
 
@@ -41,6 +44,7 @@ const scheme = {
 const VeyraPreset = definePreset(Aura, {
   primitive: { borderRadius: { none: '0', xs: '4px', sm: v('radius-sm'), md: v('radius-md'), lg: v('radius-lg'), xl: v('radius-xl') } },
   semantic: {
+    transitionDuration: v('motion-base'),
     primary: inkScale,
     focusRing: { color: v('color-accent') },
     colorScheme: { light: scheme, dark: scheme },
@@ -49,7 +53,10 @@ const VeyraPreset = definePreset(Aura, {
 
 export function installUiKit(app: App): void {
   app.use(PrimeVue, { theme: { preset: VeyraPreset, options: { darkModeSelector: `.${DARK_CLASS}` } } });
+  installMotion(app);
 }
+
+export { setMotionEnabled, isMotionEnabled } from './motion';
 
 export { default as VButton } from 'primevue/button';
 export { default as VInputText } from 'primevue/inputtext';

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { ExternalLink } from 'lucide-vue-next';
 import { openUrl, type Pipeline, type PipelineJob } from '../connectors/api';
+import { t } from '../i18n';
 import { formatDuration, jobTone } from './format';
 import PipelineIcon from './PipelineIcon.vue';
 
@@ -20,7 +21,7 @@ const stages = computed(() => {
 
 <template>
   <div class="jobs" data-testid="pipeline-jobs">
-    <p v-if="!pipeline.jobs.length" class="empty">В пайплайне нет задач</p>
+    <p v-if="!pipeline.jobs.length" class="empty">{{ t('forge.pipelineJobs.empty') }}</p>
     <section v-for="stage in stages" :key="stage.name" class="stage">
       <h4>{{ stage.name }}</h4>
       <a v-for="job in stage.jobs" :key="job.id" class="job" :href="job.url" :title="job.status" data-testid="pipeline-job" @click.prevent="openUrl(job.url)">

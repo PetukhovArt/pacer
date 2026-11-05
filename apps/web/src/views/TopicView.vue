@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-vue-next';
 import { VMessage } from '@ui/kit';
 import { useClient, useClientState } from '@core/vue-bindings';
 import Composer from '../Composer.vue';
+import { t } from '../i18n';
 import TaskFeed from './TaskFeed.vue';
 
 const props = defineProps<{ topicId: string }>();
@@ -11,7 +12,7 @@ const client = useClient();
 const state = useClientState();
 onScopeDispose(client.openTopic(props.topicId));
 
-const topic = computed(() => state.value.topics.find((t) => t.id === props.topicId));
+const topic = computed(() => state.value.topics.find((topicItem) => topicItem.id === props.topicId));
 const events = computed(() => state.value.events.get(props.topicId) ?? []);
 const feed = { client, state, events };
 const workspaceName = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId)?.name ?? '');
@@ -32,10 +33,10 @@ async function send() {
 <template>
   <div v-if="topic" class="topic" :data-testid="`topic-panel-${topic.name}`">
     <header>
-      <nav class="crumbs" aria-label="Путь">
+      <nav class="crumbs" :aria-label="t('tasks.path')">
         <span>{{ workspaceName }}</span>
         <ChevronRight :size="12" />
-        <span>Топики</span>
+        <span>{{ t('tasks.topic.topics') }}</span>
       </nav>
       <h1><span class="hash">#</span>{{ topic.name }}</h1>
     </header>
@@ -44,16 +45,16 @@ async function send() {
     <div class="dock">
       <Composer
         v-model="text"
-        :placeholder="`Сообщение в #${topic.name}`"
-        label="Сообщение в топик"
+        :placeholder="t('tasks.topic.placeholder', { name: topic.name })"
+        :label="t('tasks.topic.label')"
         testid="topic-text"
         send-testid="topic-send"
-        send-label="Отправить"
+        :send-label="t('tasks.send')"
         @submit="send"
       />
     </div>
   </div>
-  <div v-else class="missing vr-muted">Топик не найден в этой компании.</div>
+  <div v-else class="missing vr-muted">{{ t('tasks.topic.missing') }}</div>
 </template>
 
 <style scoped>

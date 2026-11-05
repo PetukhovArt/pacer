@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Check, Code, Copy, Maximize, ZoomIn, ZoomOut } from 'lucide-vue-next';
+import { t } from '../i18n';
 import { renderDiagram } from './mermaid';
 import { useDarkTheme } from './theme';
 
@@ -29,11 +30,11 @@ let drag: { id: number; x: number; y: number } | null = null;
 
 const percent = computed(() => Math.round(scale.value * 100));
 const transform = computed(() => `translate(${tx.value}px, ${ty.value}px) scale(${scale.value})`);
-const copyLabel = computed(() => (copyState.value === 'ok' ? 'Скопировано' : copyState.value === 'fail' ? 'Не удалось' : 'Копировать SVG'));
+const copyLabel = computed(() => (copyState.value === 'ok' ? t('content.mermaid.copied') : copyState.value === 'fail' ? t('content.mermaid.copyFailed') : t('content.mermaid.copySvg')));
 
 function describe(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
-  return typeof cause === 'string' ? cause : 'неизвестная ошибка';
+  return typeof cause === 'string' ? cause : t('content.mermaid.unknownError');
 }
 
 function naturalSize(el: SVGSVGElement): { w: number; h: number } {
@@ -143,18 +144,18 @@ onBeforeUnmount(() => {
   <div class="mermaid-view" data-testid="mermaid-view">
     <div class="bar">
       <template v-if="svg && !showSource">
-        <button type="button" class="btn icon" title="Уменьшить" aria-label="Уменьшить" data-testid="mermaid-zoom-out" @click="zoomCenter(1 / 1.25)">
+        <button type="button" class="btn icon" :title="t('content.mermaid.zoomOut')" :aria-label="t('content.mermaid.zoomOut')" data-testid="mermaid-zoom-out" @click="zoomCenter(1 / 1.25)">
           <ZoomOut :size="14" />
         </button>
         <span class="percent" data-testid="mermaid-zoom-level">{{ percent }}%</span>
-        <button type="button" class="btn icon" title="Увеличить" aria-label="Увеличить" data-testid="mermaid-zoom-in" @click="zoomCenter(1.25)">
+        <button type="button" class="btn icon" :title="t('content.mermaid.zoomIn')" :aria-label="t('content.mermaid.zoomIn')" data-testid="mermaid-zoom-in" @click="zoomCenter(1.25)">
           <ZoomIn :size="14" />
         </button>
-        <button type="button" class="btn icon" title="Вписать в ширину" aria-label="Вписать в ширину" data-testid="mermaid-fit" @click="fit">
+        <button type="button" class="btn icon" :title="t('content.mermaid.fit')" :aria-label="t('content.mermaid.fit')" data-testid="mermaid-fit" @click="fit">
           <Maximize :size="14" />
         </button>
       </template>
-      <span class="hint" v-if="svg && !showSource">Ctrl + колесо — масштаб, перетаскивание — сдвиг</span>
+      <span class="hint" v-if="svg && !showSource">{{ t('content.mermaid.hint') }}</span>
       <span class="spacer" />
       <button v-if="svg" type="button" class="btn" data-testid="mermaid-copy-svg" @click="copySvg">
         <component :is="copyState === 'ok' ? Check : Copy" :size="14" />
@@ -162,11 +163,11 @@ onBeforeUnmount(() => {
       </button>
       <button type="button" class="btn" :class="{ on: showSource }" :aria-pressed="showSource" data-testid="mermaid-source-toggle" @click="showSource = !showSource">
         <Code :size="14" />
-        Исходник
+        {{ t('content.mermaid.source') }}
       </button>
     </div>
     <div v-if="error" class="error" role="alert" data-testid="mermaid-error">
-      <strong>Диаграмма не отрисована</strong>
+      <strong>{{ t('content.mermaid.failed') }}</strong>
       <pre class="message">{{ error }}</pre>
     </div>
     <pre v-if="showSource || error" class="source" data-testid="mermaid-source">{{ source }}</pre>
@@ -183,7 +184,7 @@ onBeforeUnmount(() => {
       @pointercancel="onPointerUp"
     >
       <div ref="stage" class="stage" :style="{ transform }" v-html="svg" />
-      <div v-if="loading" class="loading">Рисуем диаграмму…</div>
+      <div v-if="loading" class="loading">{{ t('content.mermaid.loading') }}</div>
     </div>
   </div>
 </template>

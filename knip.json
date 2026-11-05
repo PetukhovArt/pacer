@@ -4,6 +4,9 @@
     ".": {
       "entry": ["scripts/*.ts", "scripts/*.mjs"],
       "ignoreDependencies": ["vue-tsc", "fastify"]
+    },
+    "apps/web": {
+      "ignoreDependencies": ["@types/katex"]
     }
   }
 }

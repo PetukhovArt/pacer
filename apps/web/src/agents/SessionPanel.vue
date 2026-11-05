@@ -6,8 +6,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { attachSession, detachSession, resizeSession, sendInput, sessionId, type SessionEvent, type SessionRef } from './pacer';
+import { t } from '../i18n';
 import { useSettings } from '../settings/store';
-import { zoomStep, zoomTerminal } from './terminalFont';
+import { zoomTerminal } from './terminalFont';
 
 const props = defineProps<{ session: SessionRef }>();
 const host = useTemplateRef<HTMLDivElement>('host');
@@ -78,14 +79,6 @@ onMounted(() => {
     queueMicrotask(() => {
       fromKeyboard = false;
     });
-    const zoom = zoomStep(event);
-    if (zoom !== null) {
-      if (event.type === 'keydown') {
-        event.preventDefault();
-        zoomTerminal(zoom);
-      }
-      return false;
-    }
     const sequence = enterSequence(event);
     if (sequence) {
       if (event.type === 'keydown') {
@@ -156,7 +149,7 @@ onMounted(() => {
         term.write(decode(event.data));
         return;
       case 'exited':
-        term.write(`\r\n${ESC}[2m[сессия завершена${event.exit_code === null ? '' : `, код ${event.exit_code}`}]${ESC}[0m\r\n`);
+        term.write(`\r\n${ESC}[2m[${event.exit_code === null ? t('agents.session.exited') : t('agents.session.exitedWithCode', { code: event.exit_code })}]${ESC}[0m\r\n`);
         return;
       default: {
         const unknown: never = event;

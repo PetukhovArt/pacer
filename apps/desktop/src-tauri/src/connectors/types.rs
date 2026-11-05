@@ -117,6 +117,7 @@ pub struct ChangeRequest {
     pub labels: Vec<String>,
     pub created_at: String,
     pub mergeable: Option<bool>,
+    pub head_sha: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

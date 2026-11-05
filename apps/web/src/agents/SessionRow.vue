@@ -2,6 +2,7 @@
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
 import { Ellipsis } from 'lucide-vue-next';
 import { VButton, VContextMenu, VInputText } from '@ui/kit';
+import { t } from '../i18n';
 import { archiveAgent, closeTerminal, deleteAgent, renameSession, restartAgent, type SessionNode, type SessionStatus } from './pacer';
 import { useAction } from './useAction';
 import MoveAgentDialog from './manage/MoveAgentDialog.vue';
@@ -10,16 +11,9 @@ import StatusDot from './StatusDot.vue';
 const props = defineProps<{ session: SessionNode; active: boolean }>();
 const emit = defineEmits<{ open: [] }>();
 
-const STATUS_LABELS: Record<SessionStatus, string> = {
-  fresh: 'новая',
-  running: 'работает',
-  needs_feedback: 'ждёт меня',
-  finished: 'закончил',
-  terminated: 'упал',
-  disconnected: 'отключена',
-  shell: 'терминал',
-  closed: 'закрыт',
-};
+function statusLabel(status: SessionStatus): string {
+  return t(`agents.status.${status}`);
+}
 
 type Mode = 'idle' | 'renaming' | 'confirming-delete';
 type MenuAction = { key: string; label: string; command: () => void };
@@ -36,15 +30,15 @@ const menuItems = computed<MenuAction[]>(() => {
   const session = props.session.ref;
   if ('Terminal' in session)
     return [
-      { key: 'rename', label: 'Переименовать', command: startRename },
-      { key: 'close', label: 'Закрыть', command: () => void action.run(() => closeTerminal(session.Terminal)) },
+      { key: 'rename', label: t('common.rename'), command: startRename },
+      { key: 'close', label: t('common.close'), command: () => void action.run(() => closeTerminal(session.Terminal)) },
     ];
   return [
-    { key: 'rename', label: 'Переименовать', command: startRename },
-    { key: 'restart', label: 'Перезапустить', command: () => void action.run(() => restartAgent(session.Agent)) },
-    { key: 'move', label: 'Перенести…', command: () => (moving.value = true) },
-    { key: 'archive', label: 'В архив', command: () => void action.run(() => archiveAgent(session.Agent)) },
-    { key: 'delete', label: 'Удалить', command: () => (mode.value = 'confirming-delete') },
+    { key: 'rename', label: t('common.rename'), command: startRename },
+    { key: 'restart', label: t('agents.session.restart'), command: () => void action.run(() => restartAgent(session.Agent)) },
+    { key: 'move', label: t('agents.session.move'), command: () => (moving.value = true) },
+    { key: 'archive', label: t('agents.session.archive'), command: () => void action.run(() => archiveAgent(session.Agent)) },
+    { key: 'delete', label: t('common.delete'), command: () => (mode.value = 'confirming-delete') },
   ];
 });
 
@@ -89,7 +83,7 @@ async function confirmDelete() {
       v-model="draft"
       class="rename"
       size="small"
-      aria-label="Новое имя сессии"
+      :aria-label="t('agents.session.newName')"
       data-testid="session-rename-input"
       :readonly="action.busy.value"
       @keydown.enter.prevent="saveRename"
@@ -103,25 +97,25 @@ async function confirmDelete() {
         :data-status="session.status"
         :data-unseen="session.unseen"
         :data-active="active"
-        :title="`${session.name} — ${STATUS_LABELS[session.status]}`"
+        :title="`${session.name} — ${statusLabel(session.status)}`"
         @click="emit('open')"
         @contextmenu.prevent="showMenu"
       >
         <StatusDot :status="session.status" :unseen="session.unseen" />
         <span class="name">{{ session.name }}</span>
-        <span class="label">{{ STATUS_LABELS[session.status] }}</span>
+        <span class="label">{{ statusLabel(session.status) }}</span>
       </button>
-      <button class="more" title="Действия" aria-label="Действия" aria-haspopup="menu" data-testid="session-menu" @click="showMenu"><Ellipsis :size="14" /></button>
+      <button class="more" :title="t('agents.session.actions')" :aria-label="t('agents.session.actions')" aria-haspopup="menu" data-testid="session-menu" @click="showMenu"><Ellipsis :size="14" /></button>
     </template>
     <VContextMenu ref="menu" :model="menuItems">
       <template #item="{ item, props: itemProps }">
         <a v-bind="itemProps.action" :data-testid="`session-menu-${item.key}`">{{ item.label }}</a>
       </template>
     </VContextMenu>
-    <div v-if="mode === 'confirming-delete'" class="confirm" role="group" aria-label="Подтверждение удаления" data-testid="session-delete-confirm">
-      <span>Удалить «{{ session.name }}» насовсем?</span>
-      <VButton label="Удалить" size="small" severity="danger" :loading="action.busy.value" data-testid="session-delete-yes" @click="confirmDelete" />
-      <VButton label="Отмена" size="small" text data-testid="session-delete-no" @click="cancel" />
+    <div v-if="mode === 'confirming-delete'" class="confirm" role="group" :aria-label="t('agents.session.confirmDeleteLabel')" data-testid="session-delete-confirm">
+      <span>{{ t('agents.session.confirmDelete', { name: session.name }) }}</span>
+      <VButton :label="t('common.delete')" size="small" severity="danger" :loading="action.busy.value" data-testid="session-delete-yes" @click="confirmDelete" />
+      <VButton :label="t('common.cancel')" size="small" text data-testid="session-delete-no" @click="cancel" />
     </div>
     <MoveAgentDialog v-if="moving && movableAgent" :agent="movableAgent" @moved="moving = false" @close="moving = false" />
     <p v-if="action.error.value" class="row-error" role="alert" data-testid="session-error">{{ action.error.value }}</p>

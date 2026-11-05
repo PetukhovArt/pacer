@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue';
-import { CheckCircle2, ChevronDown, ChevronRight, MessageSquare } from 'lucide-vue-next';
+import { CheckCircle2, ChevronRight, MessageSquare } from 'lucide-vue-next';
 import type { Discussion } from '../connectors/api';
 import PersonAvatar from '../connectors/PersonAvatar.vue';
 import RichContent from '../content/RichContent.vue';
+import { t } from '../i18n';
 import { fullDate, relativeTime } from './format';
 
 const props = defineProps<{ discussion: Discussion; connector?: string; showPosition?: boolean }>();
@@ -30,9 +31,9 @@ defineExpose({ expand });
 <template>
   <article class="thread" :data-resolved="discussion.resolved" :data-thread-id="discussion.id" :data-unresolved="discussion.resolvable && !discussion.resolved" data-testid="thread">
     <button v-if="discussion.resolved" class="fold" :aria-expanded="!folded" data-testid="thread-fold" @click="folded = !folded">
-      <component :is="folded ? ChevronRight : ChevronDown" :size="14" />
+      <ChevronRight :size="14" class="vr-chevron" :data-open="!folded" />
       <CheckCircle2 :size="14" class="resolved-icon" />
-      <span class="fold-text">Решено<template v-if="first"> · {{ first.author.name || first.author.username }}: {{ preview }}</template></span>
+      <span class="fold-text">{{ t('forge.thread.resolved') }}<template v-if="first"> · {{ first.author.name || first.author.username }}: {{ preview }}</template></span>
     </button>
     <template v-if="!folded">
       <button v-if="showPosition && position" class="position" :title="position" data-testid="thread-position" @click="emit('goto', discussion)">

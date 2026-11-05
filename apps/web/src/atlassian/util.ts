@@ -1,33 +1,6 @@
 import { connectorAsset } from '../connectors/api';
 import { escapeHtml } from '../content/highlight';
 
-const rtf = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ['year', 31536000],
-  ['month', 2592000],
-  ['week', 604800],
-  ['day', 86400],
-  ['hour', 3600],
-  ['minute', 60],
-];
-
-export function relativeTime(iso: string): string {
-  const time = Date.parse(iso);
-  if (Number.isNaN(time)) return '';
-  const seconds = Math.round((time - Date.now()) / 1000);
-  const abs = Math.abs(seconds);
-  if (abs < 45) return 'только что';
-  for (const [unit, size] of UNITS) {
-    if (abs >= size) return rtf.format(Math.round(seconds / size), unit);
-  }
-  return rtf.format(Math.round(seconds / 60), 'minute');
-}
-
-export function absoluteTime(iso: string): string {
-  const time = Date.parse(iso);
-  return Number.isNaN(time) ? iso : new Date(time).toLocaleString('ru');
-}
-
 export async function copyText(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }

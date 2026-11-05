@@ -1,6 +1,8 @@
 import { computed, onActivated, onBeforeUnmount, onDeactivated, shallowRef, watch } from 'vue';
 import type { DockviewApi, DockviewReadyEvent } from 'dockview-vue';
+import { t } from '../../i18n';
 import { markSeen, sessionKey, usePacer, type SessionNode, type SessionRef, type WorktreeNode } from '../pacer';
+import { FILE_PANEL_PREFIX, fileNameOf, filePanelId, isFilePanel, normalizePath } from './markdownFiles';
 import { sessionPaths, type SessionPath } from './nav';
 
 export const METRICS_PANEL = 'metrics';
@@ -28,11 +30,25 @@ export function useAgentsDock(options: Options = {}) {
 
   const paths = computed(() => sessionPaths(pacer?.tree.value ?? []));
   const activePath = computed(() => (activeKey.value ? paths.value.get(activeKey.value) : undefined));
-  const creatingWorktree = computed<WorktreeNode | null>(() => {
-    const id = creatingIn.value;
+  function findWorktree(id: string | null | undefined): WorktreeNode | null {
     if (!id) return null;
     for (const workspace of pacer?.tree.value ?? []) for (const project of workspace.projects) for (const worktree of project.worktrees) if (worktree.id === id) return worktree;
     return null;
+  }
+  const creatingWorktree = computed(() => findWorktree(creatingIn.value));
+  const activeWorktree = computed(() => {
+    const byPath = findWorktree(activePath.value?.worktree.id);
+    const key = activeKey.value;
+    if (byPath || !key || !isFilePanel(key)) return byPath;
+    const file = key.slice(FILE_PANEL_PREFIX.length);
+    let best: WorktreeNode | null = null;
+    for (const workspace of pacer?.tree.value ?? [])
+      for (const project of workspace.projects)
+        for (const worktree of project.worktrees) {
+          const root = normalizePath(worktree.path).replace(/\/+$/, '');
+          if (file.startsWith(`${root}/`) && (!best || root.length > best.path.length)) best = worktree;
+        }
+    return best;
   });
 
   const activeUnseenAgent = computed(() => {
@@ -49,7 +65,7 @@ export function useAgentsDock(options: Options = {}) {
     (sessions) => {
       const api = dock.value;
       if (!api || !sessions || pacer?.connection.value.state !== 'connected') return;
-      for (const panel of api.panels) if (!RESERVED_PANELS.has(panel.id) && !sessions.has(panel.id)) panel.api.close();
+      for (const panel of api.panels) if (!RESERVED_PANELS.has(panel.id) && !isFilePanel(panel.id) && !sessions.has(panel.id)) panel.api.close();
       const opening = openingKey.value ? sessions.get(openingKey.value) : undefined;
       if (!opening) return;
       openingKey.value = null;
@@ -82,8 +98,35 @@ export function useAgentsDock(options: Options = {}) {
     });
   }
 
+  function openFile(path: string, options: { hash?: string; worktreeId?: string; from?: string } = {}) {
+    const api = dock.value;
+    if (!api) return;
+    const id = filePanelId(path);
+    const hash = options.hash ?? '';
+    const existing = api.getPanel(id);
+    if (existing) {
+      existing.api.updateParameters({ path: normalizePath(path), hash });
+      existing.api.setActive();
+      return;
+    }
+    const anchor =
+      options.from && api.getPanel(options.from)
+        ? options.from
+        : options.worktreeId
+          ? api.panels.find((panel) => paths.value.get(panel.id)?.worktree.id === options.worktreeId)?.id
+          : undefined;
+    let position: PanelPosition | undefined = anchor ? { referencePanel: anchor, direction: 'within' } : undefined;
+    if (!position) {
+      const last = api.panels.filter((panel) => !RESERVED_PANELS.has(panel.id)).at(-1);
+      const navigator = api.getPanel(NAVIGATOR_PANEL);
+      if (last) position = { referencePanel: last.id, direction: 'within' };
+      else if (navigator && navigator.group.api.location.type === 'grid') position = { referencePanel: NAVIGATOR_PANEL, direction: 'right' };
+    }
+    api.addPanel({ id, component: 'markdown', title: fileNameOf(path), params: { path: normalizePath(path), hash }, renderer: 'always', ...(position ? { position } : {}) });
+  }
+
   function openMetrics() {
-    openPanel({ id: METRICS_PANEL, component: 'metrics', title: 'Память' });
+    openPanel({ id: METRICS_PANEL, component: 'metrics', title: t('agents.metrics.title') });
   }
 
   function openWhenListed(session: SessionRef) {
@@ -107,6 +150,7 @@ export function useAgentsDock(options: Options = {}) {
     const sessions = pacer?.sessions.value;
     for (const key of carried.keys) {
       if (key === METRICS_PANEL) openMetrics();
+      else if (isFilePanel(key)) openFile(key.slice(FILE_PANEL_PREFIX.length));
       else {
         const node = sessions?.get(key);
         if (node) open(node);
@@ -127,5 +171,5 @@ export function useAgentsDock(options: Options = {}) {
     activeChange?.dispose();
   });
 
-  return { pacer, dock, activeKey, visible, paths, activePath, creatingIn, creatingWorktree, open, openMetrics, openWhenListed, onCreated, onReady };
+  return { pacer, dock, activeKey, visible, paths, activePath, creatingIn, creatingWorktree, activeWorktree, open, openFile, openMetrics, openWhenListed, onCreated, onReady };
 }

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { DiffFile, Discussion } from '../connectors/api';
 import { escapeHtml, highlightLines } from '../content/highlight';
+import { t } from '../i18n';
 import { parsePatch, sideTexts, splitRows, type PatchLine, type SplitRow } from './patch';
 import ThreadView from './ThreadView.vue';
 
@@ -116,7 +117,7 @@ const codeOf = (line: PatchLine | null) => (line ? model.value.html[line.index] 
       </template>
     </div>
 
-    <button v-if="truncated" class="more" data-testid="diff-show-all" @click="emit('expand')">Показать весь файл</button>
+    <button v-if="truncated" class="more" data-testid="diff-show-all" @click="emit('expand')">{{ t('forge.diff.showAll') }}</button>
   </div>
 </template>
 

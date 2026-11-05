@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue';
 import { forgeForWorktree, type ChangeRequestRef, type ChangeRequestSummary } from '../connectors/api';
-import { numberLabel, PIPELINE_LABEL } from './format';
+import { t } from '../i18n';
+import { numberLabel, pipelineLabel } from './format';
 import PipelineIcon from './PipelineIcon.vue';
 
 const props = defineProps<{ path: string; branch: string }>();
@@ -35,8 +36,8 @@ watch(
 const title = computed(() => {
   const s = summary.value;
   if (!s) return '';
-  const parts = [`${numberLabel(s)} ${s.title}`, s.project, PIPELINE_LABEL[s.pipeline]];
-  if (s.unresolved_threads) parts.push(`Нерешённых обсуждений: ${s.unresolved_threads}`);
+  const parts = [`${numberLabel(s)} ${s.title}`, s.project, pipelineLabel(s.pipeline)];
+  if (s.unresolved_threads) parts.push(t('forge.unresolvedThreads', { count: s.unresolved_threads }));
   return parts.join('\n');
 });
 

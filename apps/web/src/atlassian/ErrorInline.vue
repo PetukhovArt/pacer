@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { VButton } from '@ui/kit';
+import { t } from '../i18n';
 
 defineProps<{ message: string }>();
 defineEmits<{ retry: [] }>();
@@ -8,7 +9,7 @@ defineEmits<{ retry: [] }>();
 <template>
   <div class="error" role="alert">
     <span class="text">{{ message }}</span>
-    <VButton label="Повторить" size="small" severity="secondary" @click="$emit('retry')" />
+    <VButton :label="t('common.retry')" size="small" severity="secondary" @click="$emit('retry')" />
   </div>
 </template>
 

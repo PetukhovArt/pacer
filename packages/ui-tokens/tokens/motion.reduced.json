@@ -1,0 +1,10 @@
+{
+  "motion": {
+    "instant": { "$type": "duration", "$value": "0ms" },
+    "fast": { "$type": "duration", "$value": "1ms" },
+    "base": { "$type": "duration", "$value": "1ms" },
+    "slow": { "$type": "duration", "$value": "1ms" },
+    "overlay-in": { "$type": "duration", "$value": "1ms" },
+    "overlay-out": { "$type": "duration", "$value": "1ms" }
+  }
+}

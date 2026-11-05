@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { VButton } from '@ui/kit';
 import RichContent from '../content/RichContent.vue';
+import { t, useI18n } from '../i18n';
 import { describeError, jiraIssue, openUrl, type JiraIssue } from '../connectors/api';
 import ErrorInline from './ErrorInline.vue';
 import PersonAvatar from './PersonAvatar.vue';
@@ -9,7 +10,9 @@ import PriorityMark from './PriorityMark.vue';
 import Skeleton from './Skeleton.vue';
 import StatusChip from './StatusChip.vue';
 import TypeIcon from './TypeIcon.vue';
-import { absoluteTime, copyText, relativeTime } from './util';
+import { copyText } from './util';
+
+const { formatRelative, formatDate } = useI18n();
 
 const props = defineProps<{ connector: string; issueKey: string }>();
 const emit = defineEmits<{ open: [payload: { connector: string; key: string }] }>();
@@ -62,38 +65,38 @@ watch(() => [props.connector, props.issueKey], load, { immediate: true });
           <span class="key">{{ issue.key }}</span>
           <span class="type">{{ issue.issue_type }}</span>
           <span class="spacer" />
-          <VButton :label="copied ? 'Скопировано' : 'Копировать ключ'" size="small" severity="secondary" text @click="copyKey" />
-          <VButton label="Открыть в браузере" size="small" severity="secondary" @click="openUrl(issue.url)" />
+          <VButton :label="copied ? t('jira.issue.copied') : t('jira.issue.copyKey')" size="small" severity="secondary" text @click="copyKey" />
+          <VButton :label="t('common.openInBrowser')" size="small" severity="secondary" @click="openUrl(issue.url)" />
         </div>
         <h1 class="title">{{ issue.summary }}</h1>
         <dl class="fields">
-          <dt>Статус</dt>
+          <dt>{{ t('jira.issue.status') }}</dt>
           <dd><StatusChip :status="issue.status" :category="issue.status_category" /></dd>
-          <dt>Приоритет</dt>
+          <dt>{{ t('jira.issue.priority') }}</dt>
           <dd><PriorityMark :priority="issue.priority" /></dd>
-          <dt>Исполнитель</dt>
+          <dt>{{ t('jira.issue.assignee') }}</dt>
           <dd>
             <span v-if="issue.assignee" class="person"><PersonAvatar :connector="issue.connector" :person="issue.assignee" small />{{ issue.assignee.name }}</span>
-            <span v-else class="muted">Не назначен</span>
+            <span v-else class="muted">{{ t('jira.issue.unassigned') }}</span>
           </dd>
-          <dt>Автор</dt>
+          <dt>{{ t('jira.issue.reporter') }}</dt>
           <dd>
             <span v-if="issue.reporter" class="person"><PersonAvatar :connector="issue.connector" :person="issue.reporter" small />{{ issue.reporter.name }}</span>
             <span v-else class="muted">-</span>
           </dd>
-          <dt>Обновлено</dt>
-          <dd :title="absoluteTime(issue.updated)">{{ relativeTime(issue.updated) }}</dd>
-          <dt>Версии</dt>
+          <dt>{{ t('jira.issue.updated') }}</dt>
+          <dd :title="formatDate(issue.updated)">{{ formatRelative(issue.updated) }}</dd>
+          <dt>{{ t('jira.issue.versions') }}</dt>
           <dd>
             <span v-for="version in issue.fix_versions" :key="version" class="tag">{{ version }}</span>
             <span v-if="!issue.fix_versions.length" class="muted">-</span>
           </dd>
-          <dt>Компоненты</dt>
+          <dt>{{ t('jira.issue.components') }}</dt>
           <dd>
             <span v-for="component in issue.components" :key="component" class="tag">{{ component }}</span>
             <span v-if="!issue.components.length" class="muted">-</span>
           </dd>
-          <dt>Метки</dt>
+          <dt>{{ t('jira.issue.labels') }}</dt>
           <dd>
             <span v-for="label in issue.labels" :key="label" class="tag">{{ label }}</span>
             <span v-if="!issue.labels.length" class="muted">-</span>
@@ -102,13 +105,13 @@ watch(() => [props.connector, props.issueKey], load, { immediate: true });
       </header>
 
       <section class="section">
-        <h2>Описание</h2>
+        <h2>{{ t('jira.issue.description') }}</h2>
         <RichContent v-if="issue.description_html" :html="issue.description_html" :connector="issue.connector" />
-        <p v-else class="muted">Описания нет</p>
+        <p v-else class="muted">{{ t('jira.issue.noDescription') }}</p>
       </section>
 
       <section v-if="issue.subtasks.length" class="section">
-        <h2>Подзадачи <span class="count">{{ issue.subtasks.length }}</span></h2>
+        <h2>{{ t('jira.issue.subtasks') }} <span class="count">{{ issue.subtasks.length }}</span></h2>
         <button v-for="sub in issue.subtasks" :key="sub.key" class="row" @click="openKey(sub.key)">
           <TypeIcon :type="sub.issue_type" />
           <span class="row-key">{{ sub.key }}</span>
@@ -118,7 +121,7 @@ watch(() => [props.connector, props.issueKey], load, { immediate: true });
       </section>
 
       <section v-if="issue.links.length" class="section">
-        <h2>Связи <span class="count">{{ issue.links.length }}</span></h2>
+        <h2>{{ t('jira.issue.links') }} <span class="count">{{ issue.links.length }}</span></h2>
         <button v-for="link in issue.links" :key="`${link.relation}-${link.key}`" class="row" @click="openKey(link.key)">
           <span class="relation">{{ link.relation }}</span>
           <span class="row-key">{{ link.key }}</span>
@@ -128,21 +131,21 @@ watch(() => [props.connector, props.issueKey], load, { immediate: true });
       </section>
 
       <section class="section">
-        <h2>Связанные MR</h2>
+        <h2>{{ t('jira.issue.relatedMr') }}</h2>
         <slot name="related">
-          <p class="muted">Нет связанных запросов на слияние</p>
+          <p class="muted">{{ t('jira.issue.noRelatedMr') }}</p>
         </slot>
       </section>
 
       <section class="section">
-        <h2>Комментарии <span class="count">{{ issue.comments.length }}</span></h2>
-        <p v-if="!issue.comments.length" class="muted">Комментариев нет</p>
+        <h2>{{ t('jira.issue.comments') }} <span class="count">{{ issue.comments.length }}</span></h2>
+        <p v-if="!issue.comments.length" class="muted">{{ t('jira.issue.noComments') }}</p>
         <article v-for="comment in issue.comments" :key="comment.id" class="comment">
           <PersonAvatar :connector="issue.connector" :person="comment.author" />
           <div class="comment-main">
             <div class="comment-head">
               <strong>{{ comment.author.name }}</strong>
-              <span class="muted" :title="absoluteTime(comment.created)">{{ relativeTime(comment.created) }}</span>
+              <span class="muted" :title="formatDate(comment.created)">{{ formatRelative(comment.created) }}</span>
             </div>
             <RichContent :html="comment.body_html" :connector="issue.connector" />
           </div>

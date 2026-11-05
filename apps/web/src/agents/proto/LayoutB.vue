@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue';
 import { ChevronRight, Folder } from 'lucide-vue-next';
+import { t } from '../../i18n';
 import NewSessionForm from '../NewSessionForm.vue';
 import StatusDot from '../StatusDot.vue';
 import ProjectActions from '../manage/ProjectActions.vue';
@@ -76,24 +77,24 @@ function projectRollup(projectId: string) {
         @click="select(item.id)"
       >
         {{ item.initials }}
-        <span v-if="item.rollup.feedback" class="badge" title="ждут ответа" data-testid="workspace-badge">{{ item.rollup.feedback }}</span>
-        <span v-else-if="item.rollup.unseen" class="badge unseen" title="есть непрочитанное" data-testid="workspace-badge-unseen" />
+        <span v-if="item.rollup.feedback" class="badge" :title="t('agents.layouts.waitingReply')" data-testid="workspace-badge">{{ item.rollup.feedback }}</span>
+        <span v-else-if="item.rollup.unseen" class="badge unseen" :title="t('agents.layouts.unread')" data-testid="workspace-badge-unseen" />
       </button>
     </nav>
     <SidePane storage-key="veyra.agents.b.width" :default-width="300">
       <div class="head">
-        <h2 class="title" data-testid="workspace-title">{{ selected?.name ?? 'Workspace' }}</h2>
+        <h2 class="title" data-testid="workspace-title">{{ selected?.name ?? t('agents.workspace.fallback') }}</h2>
         <WorkspaceActions v-if="selected" :key="selected.id" class="head-actions" :workspace-id="selected.id" />
-        <button class="text-button" title="Использование памяти" data-testid="open-metrics" @click="state.openMetrics()">Память</button>
+        <button class="text-button" :title="t('agents.metrics.open')" data-testid="open-metrics" @click="state.openMetrics()">{{ t('agents.metrics.title') }}</button>
       </div>
-      <div class="scroll">
+      <div v-auto-animate class="scroll">
         <NavNotices />
         <template v-if="selected">
-          <section v-for="project in selected.projects" :key="project.id" class="card" data-testid="project-card">
+          <section v-for="project in selected.projects" :key="project.id" v-auto-animate class="card" data-testid="project-card">
             <div class="card-head">
               <Folder :size="14" class="folder" />
               <h3 class="card-title" :title="project.name">{{ project.name }}</h3>
-              <span v-if="projectRollup(project.id).running" class="running" title="работает">{{ projectRollup(project.id).running }}</span>
+              <span v-if="projectRollup(project.id).running" class="running" :title="t('agents.layouts.running')">{{ projectRollup(project.id).running }}</span>
               <ProjectActions :project-id="project.id" @resumed="state.openWhenListed({ Agent: $event })" />
             </div>
             <WorktreeBlock
@@ -103,16 +104,17 @@ function projectRollup(projectId: string) {
               :active-key="activeKey"
               @open="state.open"
               @create="state.creatingIn.value = worktree.id"
+              @open-file="state.openFile($event, { worktreeId: worktree.id })"
             />
           </section>
           <ProjectActions :workspace-id="selected.id" />
         </template>
-        <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">Нет сессий</p>
+        <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">{{ t('agents.layouts.noSessions') }}</p>
         <WorkspaceActions class="new-workspace" />
       </div>
     </SidePane>
     <div class="main">
-      <nav class="crumbs" aria-label="Путь к сессии" data-testid="breadcrumb">
+      <nav class="crumbs" :aria-label="t('agents.layouts.sessionPath')" data-testid="breadcrumb">
         <template v-if="activePath">
           <button class="crumb" data-testid="crumb-workspace" @click="select(activePath.workspace.id)">{{ activePath.workspace.name }}</button>
           <ChevronRight :size="12" class="sep" />
@@ -123,9 +125,9 @@ function projectRollup(projectId: string) {
           <StatusDot :status="activePath.session.status" :unseen="activePath.session.unseen" />
           <strong class="crumb current" data-testid="crumb-session">{{ activePath.session.name }}</strong>
         </template>
-        <span v-else class="hint">workspace › проект › ветка › сессия</span>
+        <span v-else class="hint">{{ t('agents.layouts.pathHint') }}</span>
       </nav>
-      <DockArea :active-key="activeKey" :paths="paths" @ready="state.onReady" />
+      <DockArea :active-key="activeKey" :paths="paths" @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })" />
     </div>
     <NewSessionForm v-if="state.creatingWorktree.value" :key="state.creatingWorktree.value.id" :worktree="state.creatingWorktree.value" @close="state.creatingIn.value = null" @created="state.onCreated" />
   </div>

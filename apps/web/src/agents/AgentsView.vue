@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue';
+import { t } from '../i18n';
 import { usePacer } from './pacer';
 import LayoutA from './proto/LayoutA.vue';
 import LayoutB from './proto/LayoutB.vue';
 import LayoutC from './proto/LayoutC.vue';
 
 const LAYOUT_KEY = 'veyra.agents.layout';
-const LAYOUTS = [
-  { id: 'A', title: 'Проводник: единое дерево' },
-  { id: 'B', title: 'Рейка workspace и панель проектов' },
-  { id: 'C', title: 'Dock-first: навигатор как панель, группа на ветку, Ctrl+P' },
-] as const;
+const LAYOUTS = [{ id: 'A' }, { id: 'B' }, { id: 'C' }] as const;
 type LayoutId = (typeof LAYOUTS)[number]['id'];
 
 const pacer = usePacer();
@@ -24,25 +21,25 @@ function choose(id: LayoutId) {
 </script>
 
 <template>
-  <div v-if="!pacer" class="unavailable" data-testid="pacer-banner" data-state="unavailable">Сессии pacer работают только в десктопном приложении Veyra</div>
+  <div v-if="!pacer" class="unavailable" data-testid="pacer-banner" data-state="unavailable">{{ t('agents.unavailable') }}</div>
   <div v-else class="agents">
     <header class="head">
-      <span class="caption">Раскладка</span>
-      <div class="switch" role="radiogroup" aria-label="Раскладка экрана агентов" data-testid="layout-switch">
+      <span class="caption">{{ t('agents.layout.label') }}</span>
+      <div class="switch" role="radiogroup" :aria-label="t('agents.layout.aria')" data-testid="layout-switch">
         <button
           v-for="item in LAYOUTS"
           :key="item.id"
           class="option"
           role="radio"
           :aria-checked="layout === item.id"
-          :title="item.title"
+          :title="t(`agents.layout.titles.${item.id}`)"
           :data-testid="`layout-switch-${item.id}`"
           @click="choose(item.id)"
         >
           {{ item.id }}
         </button>
       </div>
-      <span class="caption">{{ LAYOUTS.find((item) => item.id === layout)?.title }}</span>
+      <span class="caption">{{ t(`agents.layout.titles.${layout}`) }}</span>
     </header>
     <LayoutA v-if="layout === 'A'" />
     <LayoutB v-else-if="layout === 'B'" />

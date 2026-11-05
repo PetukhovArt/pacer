@@ -1,0 +1,18 @@
+import type { Translation } from './types';
+import type { en } from './en';
+import { agents } from './ru/agents';
+import { atlassian } from './ru/atlassian';
+import { commands } from './ru/commands';
+import { common } from './ru/common';
+import { confluence } from './ru/confluence';
+import { connectors } from './ru/connectors';
+import { content } from './ru/content';
+import { files } from './ru/files';
+import { forge } from './ru/forge';
+import { jira } from './ru/jira';
+import { reviews } from './ru/reviews';
+import { settings } from './ru/settings';
+import { shell } from './ru/shell';
+import { tasks } from './ru/tasks';
+
+export const ru: Translation<typeof en> = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files };

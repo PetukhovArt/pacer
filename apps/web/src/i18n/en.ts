@@ -1,0 +1,16 @@
+import { agents } from './en/agents';
+import { atlassian } from './en/atlassian';
+import { commands } from './en/commands';
+import { common } from './en/common';
+import { confluence } from './en/confluence';
+import { connectors } from './en/connectors';
+import { content } from './en/content';
+import { files } from './en/files';
+import { forge } from './en/forge';
+import { jira } from './en/jira';
+import { reviews } from './en/reviews';
+import { settings } from './en/settings';
+import { shell } from './en/shell';
+import { tasks } from './en/tasks';
+
+export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, tasks, forge, content, files } as const;

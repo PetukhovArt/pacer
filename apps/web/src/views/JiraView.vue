@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { Ticket } from 'lucide-vue-next';
 import JiraIssues from '../atlassian/JiraIssues.vue';
 import JiraIssueView from '../atlassian/JiraIssueView.vue';
+import { t } from '../i18n';
+import { withViewTransition } from '../motion';
 import { view } from '../nav';
 import ConnectorPage from './ConnectorPage.vue';
 
@@ -11,7 +13,9 @@ const KINDS = ['jira'] as const;
 const open = computed(() => (view.value.kind === 'jira' ? view.value.open : undefined));
 
 function select(target: { connector: string; key: string }) {
-  view.value = { kind: 'jira', open: target };
+  void withViewTransition(() => {
+    view.value = { kind: 'jira', open: target };
+  });
 }
 </script>
 
@@ -20,8 +24,8 @@ function select(target: { connector: string; key: string }) {
     :kinds="KINDS"
     title="Jira"
     :icon="Ticket"
-    empty-text="Подключите Jira, чтобы видеть здесь задачи"
-    placeholder="Выберите задачу слева"
+    :empty-text="t('jira.view.empty')"
+    :placeholder="t('jira.view.placeholder')"
     test-id="jira-view"
     storage-key="veyra.jira"
     picker

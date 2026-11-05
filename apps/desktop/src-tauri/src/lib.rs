@@ -1,4 +1,5 @@
 mod connectors;
+mod files;
 mod pacer;
 mod settings;
 
@@ -34,10 +35,25 @@ pub fn run() {
             connectors::forge::forge_diff,
             connectors::forge::forge_discussions,
             connectors::forge::forge_pipeline,
+            connectors::forge::forge_file,
+            files::fs_read_text,
+            files::fs_read_binary,
+            files::fs_watch,
+            files::fs_unwatch,
+            files::fs_list_markdown,
+            files::fs_open_external,
             connectors::jira::jira_search,
             connectors::jira::jira_issue,
             connectors::confluence::confluence_search,
             connectors::confluence::confluence_page,
+            connectors::ai::ai_list,
+            connectors::ai::ai_check,
+            connectors::ai::ai_refresh,
+            connectors::ai::ai_login,
+            connectors::ai::ai_logout,
+            connectors::ai::ai_key_set,
+            connectors::ai::ai_key_remove,
+            connectors::ai::ai_env,
         ])
         .run(tauri::generate_context!())
         .expect("error while running veyra desktop");

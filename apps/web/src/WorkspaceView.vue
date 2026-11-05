@@ -2,8 +2,10 @@
 import { watch } from 'vue';
 import { useClient, useClientState } from '@core/vue-bindings';
 import AgentsView from './agents/AgentsView.vue';
+import CommandPalette from './commands/CommandPalette.vue';
+import { paletteOpen } from './commands/context';
 import Sidebar from './Sidebar.vue';
-import { view, type View } from './nav';
+import { navigate, view, type View } from './nav';
 import { isDark, toggleTheme } from './settings/appearance';
 import SettingsView from './settings/SettingsView.vue';
 import ConfluenceView from './views/ConfluenceView.vue';
@@ -27,16 +29,15 @@ watch(view, (value) => localStorage.setItem(viewKey, JSON.stringify(value)));
 
 function switchWorkspace(id: string) {
   localStorage.setItem(WORKSPACE_KEY, id);
-  if (view.value.kind !== 'tasks') view.value = { kind: 'tasks' };
+  if (view.value.kind !== 'tasks') void navigate({ kind: 'tasks' });
   client.setWorkspace(id);
 }
-
 </script>
 
 <template>
   <div class="shell">
     <Sidebar :dark="isDark" @switch="switchWorkspace" @theme="toggleTheme" />
-    <main class="card">
+    <main class="card vt-main">
       <KeepAlive include="AgentsView">
         <AgentsView v-if="view.kind === 'agents'" />
         <ReviewsView v-else-if="view.kind === 'reviews'" />
@@ -48,6 +49,9 @@ function switchWorkspace(id: string) {
         <TasksView v-else />
       </KeepAlive>
     </main>
+    <Transition name="palette">
+      <CommandPalette v-if="paletteOpen" />
+    </Transition>
   </div>
 </template>
 

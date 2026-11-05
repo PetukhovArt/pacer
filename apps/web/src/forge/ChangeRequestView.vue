@@ -17,8 +17,9 @@ import {
 } from '../connectors/api';
 import PersonAvatar from '../connectors/PersonAvatar.vue';
 import RichContent from '../content/RichContent.vue';
+import { t } from '../i18n';
 import DiffView from './DiffView.vue';
-import { fullDate, numberLabel, PIPELINE_LABEL, relativeTime } from './format';
+import { fullDate, numberLabel, pipelineLabel, relativeTime } from './format';
 import PipelineIcon from './PipelineIcon.vue';
 import PipelineJobs from './PipelineJobs.vue';
 import ThreadView from './ThreadView.vue';
@@ -27,7 +28,7 @@ const props = defineProps<{ connector: string; project: string; number: number }
 
 type Tab = 'overview' | 'diff' | 'pipeline';
 
-const STATE_LABEL = { open: 'Открыт', merged: 'Влит', closed: 'Закрыт' } as const;
+const STATE_KEY = { open: 'forge.request.state.open', merged: 'forge.request.state.merged', closed: 'forge.request.state.closed' } as const;
 
 const cr = shallowRef<ChangeRequest | null>(null);
 const discussions = shallowRef<Discussion[]>([]);
@@ -130,46 +131,46 @@ onMounted(() => void load());
 <template>
   <section class="cr" data-testid="change-request">
     <p v-if="failure" class="failure" role="alert" data-testid="cr-failure">{{ failure }}</p>
-    <p v-else-if="!cr" class="loading">Загрузка…</p>
+    <p v-else-if="!cr" class="loading">{{ t('common.loading') }}</p>
 
     <template v-if="cr">
       <header class="head">
         <div class="title-row">
           <component :is="cr.state === 'merged' ? GitMerge : cr.state === 'closed' ? GitPullRequestClosed : cr.draft ? GitPullRequestDraft : GitPullRequest" :size="20" class="state-icon" :data-state="cr.state" />
           <h2 class="title">{{ cr.title }} <span class="num">{{ numberLabel(cr) }}</span></h2>
-          <VButton size="small" severity="secondary" text :loading="loading" aria-label="Обновить" title="Обновить" data-testid="cr-refresh" @click="load">
+          <VButton size="small" severity="secondary" text :loading="loading" :aria-label="t('common.refresh')" :title="t('common.refresh')" data-testid="cr-refresh" @click="load">
             <template #icon><RefreshCw :size="14" /></template>
           </VButton>
-          <VButton size="small" severity="secondary" label="Открыть в браузере" data-testid="cr-open-browser" @click="openUrl(cr.url)">
+          <VButton size="small" severity="secondary" :label="t('common.openInBrowser')" data-testid="cr-open-browser" @click="openUrl(cr.url)">
             <template #icon><ExternalLink :size="14" /></template>
           </VButton>
         </div>
 
         <div class="meta">
-          <span class="chip state" :data-state="cr.state" data-testid="cr-state">{{ STATE_LABEL[cr.state] }}</span>
-          <span v-if="cr.draft" class="chip" data-testid="cr-draft">Черновик</span>
-          <span v-if="cr.mergeable === false" class="chip warn" title="Есть конфликты слияния"><TriangleAlert :size="12" />Конфликты</span>
+          <span class="chip state" :data-state="cr.state" data-testid="cr-state">{{ t(STATE_KEY[cr.state]) }}</span>
+          <span v-if="cr.draft" class="chip" data-testid="cr-draft">{{ t('forge.draft') }}</span>
+          <span v-if="cr.mergeable === false" class="chip warn" :title="t('forge.request.conflictsTitle')"><TriangleAlert :size="12" />{{ t('forge.request.conflicts') }}</span>
           <span class="branches" :title="`${cr.source_branch} → ${cr.target_branch}`">
             <code>{{ cr.source_branch }}</code><ArrowRight :size="12" /><code>{{ cr.target_branch }}</code>
           </span>
           <span class="person"><PersonAvatar :person="cr.author" small />{{ cr.author.name || cr.author.username }}</span>
-          <span class="muted" :title="fullDate(cr.updated_at)">обновлён {{ relativeTime(cr.updated_at) }}</span>
+          <span class="muted" :title="fullDate(cr.updated_at)">{{ t('forge.request.updated', { time: relativeTime(cr.updated_at) }) }}</span>
         </div>
 
         <div class="meta">
           <span v-if="cr.reviewers.length" class="person" data-testid="cr-reviewers">
-            <span class="muted">Ревьюеры:</span>
+            <span class="muted">{{ t('forge.request.reviewers') }}</span>
             <PersonAvatar v-for="r in cr.reviewers" :key="r.username" :person="r" small />
           </span>
           <span v-for="label in cr.labels" :key="label" class="chip label"><Tag :size="10" />{{ label }}</span>
           <button v-if="pipeline" class="chip pipeline" :aria-expanded="pipelineOpen" data-testid="cr-pipeline-chip" @click="pipelineOpen = !pipelineOpen">
-            <PipelineIcon :status="pipeline.status" />{{ PIPELINE_LABEL[pipeline.status] }}
+            <PipelineIcon :status="pipeline.status" />{{ pipelineLabel(pipeline.status) }}
           </button>
-          <span v-else-if="cr.pipeline !== 'none'" class="chip pipeline"><PipelineIcon :status="cr.pipeline" />{{ PIPELINE_LABEL[cr.pipeline] }}</span>
+          <span v-else-if="cr.pipeline !== 'none'" class="chip pipeline"><PipelineIcon :status="cr.pipeline" />{{ pipelineLabel(cr.pipeline) }}</span>
         </div>
 
         <div v-if="pipeline && pipelineOpen" class="pipeline-pop" data-testid="cr-pipeline-jobs">
-          <a class="link" :href="pipeline.url" @click.prevent="openUrl(pipeline.url)">Пайплайн #{{ pipeline.id }} <ExternalLink :size="12" /></a>
+          <a class="link" :href="pipeline.url" @click.prevent="openUrl(pipeline.url)">{{ t('forge.request.pipelineNumber', { id: pipeline.id }) }} <ExternalLink :size="12" /></a>
           <PipelineJobs :pipeline="pipeline" />
         </div>
         <p v-if="sideFailure" class="side-failure" role="alert">{{ sideFailure }}</p>
@@ -177,40 +178,40 @@ onMounted(() => void load());
 
       <nav class="tabs" role="tablist">
         <button class="tab" role="tab" :aria-selected="tab === 'overview'" data-testid="cr-tab-overview" @click="selectTab('overview')">
-          Обзор<span v-if="unresolved" class="badge" :title="`Нерешённых обсуждений: ${unresolved}`">{{ unresolved }}</span>
+          {{ t('forge.request.tabOverview') }}<span v-if="unresolved" class="badge" :title="t('forge.unresolvedThreads', { count: unresolved })">{{ unresolved }}</span>
         </button>
         <button class="tab" role="tab" :aria-selected="tab === 'diff'" data-testid="cr-tab-diff" @click="selectTab('diff')">
-          Изменения<span v-if="diffLoaded" class="badge muted-badge">{{ files.length }}</span>
+          {{ t('forge.request.tabChanges') }}<span v-if="diffLoaded" class="badge muted-badge">{{ files.length }}</span>
         </button>
-        <button class="tab" role="tab" :aria-selected="tab === 'pipeline'" data-testid="cr-tab-pipeline" @click="selectTab('pipeline')">Пайплайн</button>
+        <button class="tab" role="tab" :aria-selected="tab === 'pipeline'" data-testid="cr-tab-pipeline" @click="selectTab('pipeline')">{{ t('forge.request.tabPipeline') }}</button>
       </nav>
 
       <div v-show="tab === 'overview'" class="pane scroll" data-testid="cr-overview">
-        <RichContent v-if="cr.description.trim()" :markdown="cr.description" :connector="connector" />
-        <p v-else class="muted">Описание не заполнено</p>
+        <RichContent v-if="cr.description.trim()" :markdown="cr.description" :connector="connector" variant="document" />
+        <p v-else class="muted">{{ t('forge.request.noDescription') }}</p>
 
-        <h3 v-if="conversation.length" class="section">Обсуждения <span class="count">{{ conversation.length }}</span></h3>
+        <h3 v-if="conversation.length" class="section">{{ t('forge.request.discussions') }} <span class="count">{{ conversation.length }}</span></h3>
         <div class="threads">
           <ThreadView v-for="d in conversation" :key="d.id" :discussion="d" :connector="connector" show-position @goto="gotoThread" />
         </div>
-        <p v-if="anchored" class="hint muted">Клавиши в «Изменениях»: j/k — файлы, n/p — нерешённые обсуждения</p>
+        <p v-if="anchored" class="hint muted">{{ t('forge.request.keysHint') }}</p>
       </div>
 
       <div v-if="tab === 'diff' || diffLoaded" v-show="tab === 'diff'" class="pane" data-testid="cr-diff">
         <p v-if="diffFailure" class="failure" role="alert">{{ diffFailure }}</p>
-        <p v-else-if="diffLoading && !diffLoaded" class="loading">Загрузка изменений…</p>
-        <DiffView v-else ref="diff" :files="files" :discussions="discussions" :connector="connector" />
+        <p v-else-if="diffLoading && !diffLoaded" class="loading">{{ t('forge.request.loadingChanges') }}</p>
+        <DiffView v-else ref="diff" :files="files" :discussions="discussions" :connector="connector" :project="project" :head-sha="cr.head_sha" :request-url="cr.url" />
       </div>
 
       <div v-show="tab === 'pipeline'" class="pane scroll" data-testid="cr-pipeline">
         <template v-if="pipeline">
           <p class="pipeline-head">
-            <PipelineIcon :status="pipeline.status" :size="16" />{{ PIPELINE_LABEL[pipeline.status] }}
-            <a class="link" :href="pipeline.url" @click.prevent="openUrl(pipeline.url)">Открыть <ExternalLink :size="12" /></a>
+            <PipelineIcon :status="pipeline.status" :size="16" />{{ pipelineLabel(pipeline.status) }}
+            <a class="link" :href="pipeline.url" @click.prevent="openUrl(pipeline.url)">{{ t('common.open') }} <ExternalLink :size="12" /></a>
           </p>
           <PipelineJobs :pipeline="pipeline" />
         </template>
-        <p v-else class="muted">У этого запроса нет пайплайна</p>
+        <p v-else class="muted">{{ t('forge.request.noPipeline') }}</p>
       </div>
     </template>
   </section>

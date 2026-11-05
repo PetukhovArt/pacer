@@ -2,19 +2,22 @@
 import { computed, shallowRef, watch } from 'vue';
 import { RotateCcw } from 'lucide-vue-next';
 import { VInputText, VSelect, VToggleSwitch } from '@ui/kit';
+import { useI18n } from '../i18n';
+import LanguageSwitch from '../i18n/LanguageSwitch.vue';
 import { SETTINGS, type SettingKey } from './schema';
 import { useSettings } from './store';
 
 const props = defineProps<{ settingKey: SettingKey }>();
 
+const { t } = useI18n();
 const { values, set, reset, isModified } = useSettings();
 const def = computed(() => SETTINGS[props.settingKey]);
 const value = computed(() => values.value[props.settingKey]);
 const modified = computed(() => isModified(props.settingKey));
 const draft = shallowRef(String(value.value));
-const placeholder = computed(() => ('placeholder' in def.value ? def.value.placeholder : undefined));
+const placeholder = computed(() => ('placeholder' in def.value && def.value.placeholder ? t(def.value.placeholder) : undefined));
 const testId = computed(() => `setting-${props.settingKey}`);
-const options = computed(() => (def.value.type === 'enum' ? def.value.options.map((option) => ({ value: option.value, label: option.label })) : []));
+const options = computed(() => (def.value.type === 'enum' ? def.value.options.map((option) => ({ value: option.value, label: t(option.label) })) : []));
 
 watch(value, (next) => {
   draft.value = String(next);
@@ -34,12 +37,13 @@ function commit() {
 <template>
   <div class="row" :data-modified="modified" :data-testid="`setting-row-${settingKey}`">
     <div class="meta">
-      <label class="label" :for="testId">{{ def.label }}</label>
-      <p class="description">{{ def.description }}</p>
+      <label class="label" :for="testId">{{ t(def.label) }}</label>
+      <p class="description">{{ t(def.description) }}</p>
       <code class="key">{{ settingKey }}</code>
     </div>
     <div class="control">
       <VToggleSwitch v-if="def.type === 'boolean'" :input-id="testId" :model-value="value === true" :data-testid="testId" @update:model-value="set(settingKey, $event)" />
+      <div v-else-if="settingKey === 'ui.language'"><LanguageSwitch /></div>
       <VSelect
         v-else-if="def.type === 'enum'"
         :model-value="value"
@@ -48,7 +52,7 @@ function commit() {
         option-value="value"
         size="small"
         :input-id="testId"
-        :aria-label="def.label"
+        :aria-label="t(def.label)"
         :data-testid="testId"
         @update:model-value="set(settingKey, $event)"
       />
@@ -65,7 +69,7 @@ function commit() {
         @change="commit"
       />
       <VInputText v-else v-model="draft" size="small" :placeholder="placeholder" :id="testId" :data-testid="testId" @change="commit" />
-      <button v-if="modified" class="reset" title="Сбросить к значению по умолчанию" aria-label="Сбросить" :data-testid="`setting-reset-${settingKey}`" @click="reset(settingKey)">
+      <button v-if="modified" class="reset" :title="t('settings.resetTitle')" :aria-label="t('settings.resetLabel')" :data-testid="`setting-reset-${settingKey}`" @click="reset(settingKey)">
         <RotateCcw :size="14" />
       </button>
     </div>

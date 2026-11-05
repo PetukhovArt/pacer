@@ -2,6 +2,7 @@
 import { computed, onMounted, shallowRef, watch, type Component } from 'vue';
 import { VButton, VSelect } from '@ui/kit';
 import { useConnectors, type ConnectorKind } from '../connectors/api';
+import { t } from '../i18n';
 import { openSettings } from '../nav';
 import SidePane from '../SidePane.vue';
 
@@ -80,22 +81,22 @@ const selectedId = computed({
         :options="options"
         option-label="label"
         option-value="id"
-        aria-label="Подключение"
+        :aria-label="t('reviews.connectorPage.connection')"
         :data-testid="`${testId}-connector`"
       />
     </header>
 
-    <p v-if="!settled" class="state" data-testid="connector-page-loading">Загрузка…</p>
+    <p v-if="!settled" class="state" data-testid="connector-page-loading">{{ t('common.loading') }}</p>
     <div v-else-if="!current" class="state empty" data-testid="connector-required">
       <component :is="icon" :size="32" />
       <p>{{ emptyText }}</p>
-      <VButton label="Подключить" size="small" data-testid="connector-required-connect" @click="openSettings('connectors')" />
+      <VButton :label="t('reviews.connectorPage.connect')" size="small" data-testid="connector-required-connect" @click="openSettings('connectors')" />
     </div>
     <div v-else class="split">
-      <SidePane :storage-key="`${storageKey}.width`" :default-width="380" label="Ширина списка" :handle-testid="`${testId}-resize-handle`">
+      <SidePane :storage-key="`${storageKey}.width`" :default-width="380" :label="t('reviews.connectorPage.listWidth')" :handle-testid="`${testId}-resize-handle`">
         <slot name="list" :connector="current.id" />
       </SidePane>
-      <div class="detail">
+      <div class="detail vt-detail">
         <slot v-if="selected && (!picker || selected.connector === current.id)" name="detail" :connector="current.id" />
         <p v-else class="placeholder" data-testid="connector-page-placeholder">{{ placeholder }}</p>
       </div>

@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./light.css": "./generated/light.css",
-    "./dark.css": "./generated/dark.css"
+    "./dark.css": "./generated/dark.css",
+    "./motion.css": "./generated/motion.css"
   },
   "scripts": {
     "build": "tsx scripts/build.ts",

@@ -167,3 +167,19 @@ pub async fn forge_pipeline(
     }
     .map_err(String::from)
 }
+
+#[tauri::command]
+pub async fn forge_file(
+    state: State<'_, Connectors>,
+    connector: String,
+    project: String,
+    r#ref: String,
+    path: String,
+) -> Result<String, String> {
+    let ctx = forge_ctx(&state, &connector).await?;
+    match ctx.kind {
+        Kind::Github => github::file(&ctx, &project, &r#ref, &path).await,
+        _ => gitlab::file(&ctx, &project, &r#ref, &path).await,
+    }
+    .map_err(String::from)
+}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue';
 import { Archive, ChevronRight, Folder, FolderOpen, GitBranch, Layers, Plus } from 'lucide-vue-next';
+import { t } from '../../i18n';
 import WorktreeBadge from '../../forge/WorktreeBadge.vue';
 import { openReview } from '../../nav';
 import type { SessionNode } from '../pacer';
@@ -11,6 +12,7 @@ import StatusDot from '../StatusDot.vue';
 import ProjectActions from '../manage/ProjectActions.vue';
 import WorkspaceActions from '../manage/WorkspaceActions.vue';
 import DockArea from './DockArea.vue';
+import MarkdownPicker from './MarkdownPicker.vue';
 import NavNotices from './NavNotices.vue';
 import SidePane from '../../SidePane.vue';
 import { rollupOf, workspaceSessions, type Rollup } from './nav';
@@ -98,7 +100,7 @@ const rows = computed<Row[]>(() => {
         for (const session of worktree.sessions) out.push({ kind: 'session', id: session.key, depth: 3, parent: wtId, session });
         if (worktree.archived.length) {
           const arId = `ar:${worktree.id}`;
-          out.push({ kind: 'archive', id: arId, depth: 3, parent: wtId, label: 'Архив', entityId: worktree.id, expanded: open.has(arId), rollup: rollupOf([]), archived: worktree.archived.length });
+          out.push({ kind: 'archive', id: arId, depth: 3, parent: wtId, label: t('agents.layouts.archive'), entityId: worktree.id, expanded: open.has(arId), rollup: rollupOf([]), archived: worktree.archived.length });
           if (open.has(arId)) for (const session of worktree.archived) out.push({ kind: 'archived', id: `arch:${session.key}`, depth: 4, parent: arId, session });
         }
       }
@@ -208,12 +210,12 @@ function countOf(row: GroupRow): string {
   <div class="layout">
     <SidePane storage-key="veyra.agents.a.width" :default-width="300">
       <div class="head">
-        <span>Проводник</span>
-        <button class="text-button" title="Использование памяти" data-testid="open-metrics" @click="state.openMetrics()">Память</button>
+        <span>{{ t('agents.layouts.explorer') }}</span>
+        <button class="text-button" :title="t('agents.metrics.open')" data-testid="open-metrics" @click="state.openMetrics()">{{ t('agents.metrics.title') }}</button>
       </div>
       <div class="scroll">
         <NavNotices />
-        <div ref="tree" class="tree" role="tree" tabindex="0" aria-label="Сессии pacer" data-testid="explorer-tree" @keydown="onKey">
+        <div ref="tree" v-auto-animate class="tree" role="tree" tabindex="0" :aria-label="t('agents.layouts.pacerSessions')" data-testid="explorer-tree" @keydown="onKey">
           <template v-for="row in rows" :key="row.id">
             <div v-if="row.kind === 'add-project'" class="node extra" :style="{ '--depth': row.depth }">
               <i v-for="level in row.depth" :key="level" class="guide" :style="{ '--level': level - 1 }" />
@@ -251,30 +253,31 @@ function countOf(row: GroupRow): string {
             >
               <i v-for="level in row.depth" :key="level" class="guide" :style="{ '--level': level - 1 }" />
               <button class="toggle" :title="row.label" :data-testid="`node-${row.kind}`" @click="onGroupClick(row)">
-                <ChevronRight :size="14" class="chevron" :data-open="row.expanded" />
+                <ChevronRight :size="14" class="chevron vr-chevron" :data-open="row.expanded" />
                 <Layers v-if="row.kind === 'workspace'" :size="14" class="kind-icon" />
                 <component :is="row.expanded ? FolderOpen : Folder" v-else-if="row.kind === 'project'" :size="14" class="kind-icon" />
                 <GitBranch v-else-if="row.kind === 'worktree'" :size="14" class="kind-icon" />
                 <Archive v-else :size="14" class="kind-icon" />
                 <span class="label" :data-kind="row.kind">{{ row.label }}</span>
                 <template v-if="!row.expanded && (row.kind === 'archive' || row.rollup.total)">
-                  <span class="count" :title="row.kind === 'archive' ? 'в архиве' : 'работает / всего'" data-testid="node-count">{{ countOf(row) }}</span>
+                  <span class="count" :title="row.kind === 'archive' ? t('agents.layouts.archivedCount') : t('agents.layouts.runningTotal')" data-testid="node-count">{{ countOf(row) }}</span>
                   <StatusDot v-if="row.kind !== 'archive'" :status="row.rollup.status" :unseen="row.rollup.unseen" />
                 </template>
               </button>
               <template v-if="row.kind === 'worktree'">
                 <WorktreeBadge v-if="row.path" :path="row.path" :branch="row.label" @open="openReview" />
-                <button class="add" title="Новая сессия" aria-label="Новая сессия" data-testid="worktree-new-session" @click="state.creatingIn.value = row.entityId"><Plus :size="14" /></button>
+                <MarkdownPicker v-if="row.path" :root="row.path" @open="state.openFile($event, { worktreeId: row.entityId })" />
+                <button class="add" :title="t('agents.newSession.action')" :aria-label="t('agents.newSession.action')" data-testid="worktree-new-session" @click="state.creatingIn.value = row.entityId"><Plus :size="14" /></button>
               </template>
               <WorkspaceActions v-else-if="row.kind === 'workspace'" class="node-actions" :workspace-id="row.entityId" />
               <ProjectActions v-else-if="row.kind === 'project'" class="node-actions" :project-id="row.entityId" @resumed="state.openWhenListed({ Agent: $event })" />
             </div>
           </template>
-          <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">Нет сессий</p>
+          <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">{{ t('agents.layouts.noSessions') }}</p>
         </div>
       </div>
     </SidePane>
-    <DockArea :active-key="activeKey" :paths="paths" @ready="state.onReady" />
+    <DockArea :active-key="activeKey" :paths="paths" @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })" />
     <NewSessionForm v-if="state.creatingWorktree.value" :key="state.creatingWorktree.value.id" :worktree="state.creatingWorktree.value" @close="state.creatingIn.value = null" @created="state.onCreated" />
   </div>
 </template>
@@ -384,11 +387,6 @@ function countOf(row: GroupRow): string {
 .chevron {
   flex: none;
   color: var(--vr-color-text-muted);
-  transition: transform 0.1s;
-}
-
-.chevron[data-open='true'] {
-  transform: rotate(90deg);
 }
 
 .kind-icon {

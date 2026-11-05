@@ -2,29 +2,43 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
 import { describeError, jiraSearch, type JiraIssueSummary } from '../connectors/api';
+import { t, useI18n } from '../i18n';
 import ErrorInline from './ErrorInline.vue';
 import PersonAvatar from './PersonAvatar.vue';
 import PriorityMark from './PriorityMark.vue';
 import Skeleton from './Skeleton.vue';
 import StatusChip from './StatusChip.vue';
 import TypeIcon from './TypeIcon.vue';
-import { absoluteTime, readStored, relativeTime, writeStored } from './util';
+import { readStored, writeStored } from './util';
 
 type Filter = { id: string; name: string; jql: string };
 
 const props = defineProps<{ connector: string }>();
 const emit = defineEmits<{ open: [payload: { connector: string; key: string }] }>();
 
+const { formatRelative, formatDate } = useI18n();
+
 const PAGE = 50;
 const FILTERS_KEY = 'veyra.jira.filters';
 const HISTORY_KEY = 'veyra.jira.history';
 
-const PRESETS: Filter[] = [
-  { id: 'mine', name: 'Мои открытые', jql: 'assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC' },
-  { id: 'reported', name: 'Сообщил я', jql: 'reporter = currentUser() ORDER BY created DESC' },
-  { id: 'recent', name: 'Недавно обновлённые', jql: 'updated >= -7d ORDER BY updated DESC' },
-  { id: 'sprint', name: 'Текущий спринт', jql: 'sprint in openSprints() AND assignee = currentUser()' },
+const PRESETS: Omit<Filter, 'name'>[] = [
+  { id: 'mine', jql: 'assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC' },
+  { id: 'reported', jql: 'reporter = currentUser() ORDER BY created DESC' },
+  { id: 'recent', jql: 'updated >= -7d ORDER BY updated DESC' },
+  { id: 'sprint', jql: 'sprint in openSprints() AND assignee = currentUser()' },
 ];
+
+const PRESET_NAMES: Record<string, () => string> = {
+  mine: () => t('jira.list.presets.mine'),
+  reported: () => t('jira.list.presets.reported'),
+  recent: () => t('jira.list.presets.recent'),
+  sprint: () => t('jira.list.presets.sprint'),
+};
+
+function presetName(id: string): string {
+  return PRESET_NAMES[id]?.() ?? id;
+}
 
 const vFocus = { mounted: (el: HTMLElement) => el.focus() };
 
@@ -90,7 +104,7 @@ function run(jql: string, id: string | null) {
   void load(false);
 }
 
-function applyFilter(filter: Filter) {
+function applyFilter(filter: Pick<Filter, 'id' | 'jql'>) {
   run(filter.jql, filter.id);
 }
 
@@ -214,12 +228,12 @@ onMounted(() => void load(false));
 
 <template>
   <div ref="root" class="jira-issues" tabindex="0" data-testid="jira-issues" @keydown="onKey">
-    <aside class="filters" aria-label="Фильтры">
-      <div class="group-title">Фильтры</div>
+    <aside class="filters" :aria-label="t('jira.list.filters')">
+      <div class="group-title">{{ t('jira.list.filters') }}</div>
       <button v-for="filter in PRESETS" :key="filter.id" class="chip" :class="{ active: activeId === filter.id }" :title="filter.jql" @click="applyFilter(filter)">
-        {{ filter.name }}
+        {{ presetName(filter.id) }}
       </button>
-      <div class="group-title">Мои фильтры</div>
+      <div class="group-title">{{ t('jira.list.myFilters') }}</div>
       <div v-for="filter in custom" :key="filter.id" class="chip-row">
         <VInputText
           v-if="editing?.id === filter.id"
@@ -227,7 +241,7 @@ onMounted(() => void load(false));
           v-focus
           size="small"
           class="rename"
-          aria-label="Название фильтра"
+          :aria-label="t('jira.list.filterName')"
           @keydown.enter.prevent="commitEdit"
           @keydown.esc.prevent="editing = null"
           @blur="commitEdit"
@@ -236,8 +250,8 @@ onMounted(() => void load(false));
           <button class="chip" :class="{ active: activeId === filter.id }" :title="filter.jql" @click="applyFilter(filter)" @dblclick="startRename(filter)">
             {{ filter.name }}
           </button>
-          <button class="mini" title="Переименовать" aria-label="Переименовать фильтр" @click="startRename(filter)">✎</button>
-          <button class="mini" title="Удалить" aria-label="Удалить фильтр" @click="removeFilter(filter)">×</button>
+          <button class="mini" :title="t('common.rename')" :aria-label="t('jira.list.renameFilter')" @click="startRename(filter)">✎</button>
+          <button class="mini" :title="t('common.delete')" :aria-label="t('jira.list.deleteFilter')" @click="removeFilter(filter)">×</button>
         </template>
       </div>
       <VInputText
@@ -246,13 +260,13 @@ onMounted(() => void load(false));
         v-focus
         size="small"
         class="rename"
-        placeholder="Название фильтра"
-        aria-label="Название нового фильтра"
+        :placeholder="t('jira.list.filterName')"
+        :aria-label="t('jira.list.newFilterName')"
         @keydown.enter.prevent="commitEdit"
         @keydown.esc.prevent="editing = null"
         @blur="commitEdit"
       />
-      <div v-if="!custom.length && editing?.id !== ''" class="hint">Введите JQL и нажмите «Сохранить фильтр»</div>
+      <div v-if="!custom.length && editing?.id !== ''" class="hint">{{ t('jira.list.hint') }}</div>
     </aside>
 
     <section class="main">
@@ -262,7 +276,7 @@ onMounted(() => void load(false));
             ref="search"
             v-model="draft"
             class="jql"
-            placeholder="JQL, например project = ABC AND status = Open   ( / )"
+            :placeholder="t('jira.list.jqlPlaceholder')"
             aria-label="JQL"
             data-testid="jira-jql"
             spellcheck="false"
@@ -285,14 +299,14 @@ onMounted(() => void load(false));
             </li>
           </ul>
         </div>
-        <VButton label="Найти" size="small" :disabled="!draft.trim()" @click="submit" />
-        <VButton label="Сохранить фильтр" size="small" severity="secondary" :disabled="!draft.trim()" @click="startAdd" />
+        <VButton :label="t('jira.list.find')" size="small" :disabled="!draft.trim()" @click="submit" />
+        <VButton :label="t('jira.list.saveFilter')" size="small" severity="secondary" :disabled="!draft.trim()" @click="startAdd" />
       </div>
 
       <div class="body">
         <ErrorInline v-if="error" :message="error" @retry="load(issues.length > 0)" />
         <Skeleton v-if="loading" :rows="10" />
-        <div v-else-if="!issues.length && !error" class="empty">Ничего не найдено</div>
+        <div v-else-if="!issues.length && !error" class="empty">{{ t('jira.list.empty') }}</div>
         <table v-else-if="issues.length" class="table">
           <colgroup>
             <col class="c-type" />
@@ -305,16 +319,16 @@ onMounted(() => void load(false));
           </colgroup>
           <thead>
             <tr>
-              <th aria-label="Тип" />
-              <th>Ключ</th>
-              <th>Тема</th>
-              <th>Статус</th>
-              <th>Приоритет</th>
-              <th>Исп.</th>
-              <th>Обновлено</th>
+              <th :aria-label="t('jira.list.columns.type')" />
+              <th>{{ t('jira.list.columns.key') }}</th>
+              <th>{{ t('jira.list.columns.summary') }}</th>
+              <th>{{ t('jira.list.columns.status') }}</th>
+              <th>{{ t('jira.list.columns.priority') }}</th>
+              <th>{{ t('jira.list.columns.assignee') }}</th>
+              <th>{{ t('jira.list.columns.updated') }}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody v-auto-animate>
             <tr v-for="(issue, index) in issues" :key="issue.key" :data-row="index" :class="{ cursor: index === cursor }" data-testid="jira-row" @click="clickRow(index)">
               <td><TypeIcon :type="issue.issue_type" /></td>
               <td class="key">{{ issue.key }}</td>
@@ -325,13 +339,13 @@ onMounted(() => void load(false));
                 <PersonAvatar v-if="issue.assignee" :connector="issue.connector" :person="issue.assignee" small />
                 <span v-else class="muted">-</span>
               </td>
-              <td class="muted" :title="absoluteTime(issue.updated)">{{ relativeTime(issue.updated) }}</td>
+              <td class="muted" :title="formatDate(issue.updated)">{{ formatRelative(issue.updated) }}</td>
             </tr>
           </tbody>
         </table>
         <div v-if="issues.length && !loading" class="more">
-          <span class="muted">Показано {{ issues.length }} из {{ total }}</span>
-          <VButton v-if="issues.length < total" label="Загрузить ещё" size="small" severity="secondary" :loading="loadingMore" @click="load(true)" />
+          <span class="muted">{{ t('jira.list.shown', { shown: issues.length, total }) }}</span>
+          <VButton v-if="issues.length < total" :label="t('jira.list.loadMore')" size="small" severity="secondary" :loading="loadingMore" @click="load(true)" />
         </div>
       </div>
     </section>

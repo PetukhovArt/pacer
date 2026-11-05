@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue';
 import { ChevronRight, GitBranch, Plus } from 'lucide-vue-next';
+import { t } from '../../i18n';
 import WorktreeBadge from '../../forge/WorktreeBadge.vue';
 import { openReview } from '../../nav';
 import type { SessionNode, WorktreeNode } from '../pacer';
 import ArchivedRow from '../ArchivedRow.vue';
 import SessionRow from '../SessionRow.vue';
+import MarkdownPicker from './MarkdownPicker.vue';
 
 defineProps<{ worktree: WorktreeNode; activeKey: string | null }>();
-const emit = defineEmits<{ open: [session: SessionNode]; create: [] }>();
+const emit = defineEmits<{ open: [session: SessionNode]; create: []; 'open-file': [path: string] }>();
 
 const archiveOpen = shallowRef(false);
 </script>
@@ -19,14 +21,15 @@ const archiveOpen = shallowRef(false);
       <GitBranch :size="12" class="branch-icon" />
       <span class="branch-name" :title="worktree.branch">{{ worktree.branch }}</span>
       <WorktreeBadge :path="worktree.path" :branch="worktree.branch" @open="openReview" />
-      <button class="add" title="Новая сессия" aria-label="Новая сессия" data-testid="worktree-new-session" @click="emit('create')"><Plus :size="14" /></button>
+      <MarkdownPicker :root="worktree.path" @open="emit('open-file', $event)" />
+      <button class="add" :title="t('agents.newSession.action')" :aria-label="t('agents.newSession.action')" data-testid="worktree-new-session" @click="emit('create')"><Plus :size="14" /></button>
     </div>
-    <div class="sessions">
+    <div v-auto-animate class="sessions">
       <SessionRow v-for="session in worktree.sessions" :key="session.key" :session="session" :active="session.key === activeKey" @open="emit('open', session)" />
       <template v-if="worktree.archived.length">
         <button class="archive-toggle" :aria-expanded="archiveOpen" data-testid="archive-toggle" @click="archiveOpen = !archiveOpen">
-          <ChevronRight :size="12" class="chevron" />
-          <span>Архив ({{ worktree.archived.length }})</span>
+          <ChevronRight :size="12" class="vr-chevron" />
+          <span>{{ t('agents.worktree.archive', { count: worktree.archived.length }) }}</span>
         </button>
         <template v-if="archiveOpen">
           <ArchivedRow v-for="session in worktree.archived" :key="session.key" :session="session" />
@@ -111,13 +114,5 @@ const archiveOpen = shallowRef(false);
 
 .archive-toggle:hover {
   background: var(--vr-color-nav-hover);
-}
-
-.chevron {
-  transition: transform 0.1s;
-}
-
-.archive-toggle[aria-expanded='true'] .chevron {
-  transform: rotate(90deg);
 }
 </style>

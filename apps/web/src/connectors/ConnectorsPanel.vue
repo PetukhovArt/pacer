@@ -2,10 +2,16 @@
 import { computed, onMounted, reactive, ref, shallowRef, type Component } from 'vue';
 import { BookOpen, ExternalLink, Github, Gitlab, Plug, Plus, RefreshCw, Ticket } from 'lucide-vue-next';
 import { VButton, VInputText, VMessage, VSelect } from '@ui/kit';
+import { t } from '../i18n';
+import AiAccounts from './AiAccounts.vue';
 import PersonAvatar from './PersonAvatar.vue';
+import { useAiAccounts } from './ai';
 import { describeError, openUrl, useConnectors, type ConnectorKind, type ConnectorStatus, type ConnectorView, type Detected } from './api';
 
 const { connectors, detected, loading, checking, error, check, add, update, remove, refresh } = useConnectors();
+const ai = useAiAccounts();
+const checkingAll = computed(() => checking.value || ai.checking.value);
+const checkAll = () => Promise.all([check(), ai.check()]);
 
 const KINDS: { value: ConnectorKind; label: string; icon: Component; cli: boolean }[] = [
   { value: 'github', label: 'GitHub', icon: Github, cli: true },
@@ -14,8 +20,7 @@ const KINDS: { value: ConnectorKind; label: string; icon: Component; cli: boolea
   { value: 'confluence', label: 'Confluence', icon: BookOpen, cli: false },
 ];
 
-const STATUS_TEXT: Record<ConnectorStatus, string> = { ok: 'ok', error: 'ошибка', unreachable: 'нет связи', unchecked: 'не проверен' };
-const statusText = (status: ConnectorStatus) => STATUS_TEXT[status];
+const statusText = (status: ConnectorStatus) => t(`connectors.status.${status}`);
 
 const kindMeta = (kind: ConnectorKind) => KINDS.find((k) => k.value === kind)!;
 const hostOf = (url: string) => {
@@ -158,12 +163,12 @@ onMounted(() => void refresh());
 <template>
   <section class="connectors" data-testid="connectors-panel">
     <header class="head">
-      <h2>Коннекторы</h2>
+      <h2>{{ t('connectors.panel.title') }}</h2>
       <div class="head-actions">
-        <VButton size="small" severity="secondary" text label="Проверить все" :loading="checking" data-testid="connectors-check" @click="check">
+        <VButton size="small" severity="secondary" text :label="t('connectors.panel.checkAll')" :loading="checkingAll" data-testid="connectors-check" @click="checkAll">
           <template #icon><RefreshCw :size="14" /></template>
         </VButton>
-        <VButton v-if="!adding" size="small" label="Добавить" data-testid="connectors-add-open" @click="openForm">
+        <VButton v-if="!adding" size="small" :label="t('connectors.panel.add')" data-testid="connectors-add-open" @click="openForm">
           <template #icon><Plus :size="14" /></template>
         </VButton>
       </div>
@@ -171,8 +176,12 @@ onMounted(() => void refresh());
 
     <VMessage v-if="error" severity="error" size="small" data-testid="connectors-error">{{ error }}</VMessage>
 
-    <div v-if="detected.length" class="block" data-testid="connectors-detected">
-      <h3>Найдено на машине</h3>
+    <AiAccounts />
+
+    <h3 class="group-title">{{ t('connectors.panel.gitGroup') }}</h3>
+
+    <div v-if="detected.length" v-auto-animate class="block" data-testid="connectors-detected">
+      <h3>{{ t('connectors.panel.detectedTitle') }}</h3>
       <div v-for="d in detected" :key="detectKey(d)" class="detected" :data-testid="`detected-${d.kind}`">
         <component :is="kindMeta(d.kind).icon" :size="16" class="kind-icon" />
         <span class="detected-main">
@@ -180,14 +189,14 @@ onMounted(() => void refresh());
           <span class="muted">{{ hostOf(d.base_url) }}</span>
           <span v-if="d.account" class="muted">· {{ d.account }}</span>
         </span>
-        <VButton size="small" label="Подключить" :loading="detectBusy === detectKey(d)" :disabled="detectBusy !== null" data-testid="detected-connect" @click="connectDetected(d)" />
+        <VButton size="small" :label="t('connectors.panel.connect')" :loading="detectBusy === detectKey(d)" :disabled="detectBusy !== null" data-testid="detected-connect" @click="connectDetected(d)" />
       </div>
       <VMessage v-if="detectError" severity="error" size="small">{{ detectError }}</VMessage>
     </div>
 
     <form v-if="adding" class="block form" data-testid="connector-form" @submit.prevent="submit">
-      <h3>Новый коннектор</h3>
-      <div class="kinds" role="radiogroup" aria-label="Тип">
+      <h3>{{ t('connectors.panel.newTitle') }}</h3>
+      <div class="kinds" role="radiogroup" :aria-label="t('connectors.panel.typeLabel')">
         <button
           v-for="k in KINDS"
           :key="k.value"
@@ -204,17 +213,17 @@ onMounted(() => void refresh());
       </div>
 
       <label class="field">
-        <span>Адрес</span>
+        <span>{{ t('connectors.panel.url') }}</span>
         <VInputText v-model="form.url" placeholder="https://host" autocomplete="off" data-testid="connector-url" />
       </label>
 
       <div v-if="canCli" class="field">
-        <span>Вход</span>
+        <span>{{ t('connectors.panel.signIn') }}</span>
         <VSelect
           v-model="form.auth"
           :options="[
-            { value: 'cli', label: form.kind === 'github' ? 'Через gh (CLI)' : 'Через glab (CLI)' },
-            { value: 'token', label: 'Токен' },
+            { value: 'cli', label: form.kind === 'github' ? t('connectors.panel.signInGh') : t('connectors.panel.signInGlab') },
+            { value: 'token', label: t('connectors.panel.token') },
           ]"
           option-label="label"
           option-value="value"
@@ -223,36 +232,36 @@ onMounted(() => void refresh());
       </div>
 
       <label v-if="form.auth === 'token'" class="field">
-        <span>Токен</span>
-        <VInputText v-model="form.token" type="password" autocomplete="new-password" placeholder="Personal access token" data-testid="connector-token" />
+        <span>{{ t('connectors.panel.token') }}</span>
+        <VInputText v-model="form.token" type="password" autocomplete="new-password" :placeholder="t('connectors.panel.tokenPlaceholder')" data-testid="connector-token" />
         <a v-if="formTokenPage" class="link" :href="formTokenPage" data-testid="connector-token-help" @click.prevent="openUrl(formTokenPage)">
-          как получить токен <ExternalLink :size="12" />
+          {{ t('connectors.panel.howToGetToken') }} <ExternalLink :size="12" />
         </a>
       </label>
 
       <label v-if="formCloud" class="field">
-        <span>Email Atlassian</span>
+        <span>{{ t('connectors.panel.atlassianEmail') }}</span>
         <VInputText v-model="form.email" type="email" autocomplete="off" placeholder="you@company.com" data-testid="connector-email" />
       </label>
 
       <label class="field">
-        <span>Название</span>
-        <VInputText v-model="form.label" :placeholder="hostOf(form.url) || 'Название'" autocomplete="off" data-testid="connector-label" />
+        <span>{{ t('connectors.panel.name') }}</span>
+        <VInputText v-model="form.label" :placeholder="hostOf(form.url) || t('connectors.panel.name')" autocomplete="off" data-testid="connector-label" />
       </label>
 
       <VMessage v-if="formError" severity="error" size="small" data-testid="connector-form-error">{{ formError }}</VMessage>
 
       <div class="form-actions">
-        <VButton type="submit" size="small" label="Подключить" :loading="formBusy" :disabled="!formValid" data-testid="connector-submit" />
-        <VButton type="button" size="small" label="Отмена" severity="secondary" text @click="adding = false" />
+        <VButton type="submit" size="small" :label="t('connectors.panel.connect')" :loading="formBusy" :disabled="!formValid" data-testid="connector-submit" />
+        <VButton type="button" size="small" :label="t('common.cancel')" severity="secondary" text @click="adding = false" />
       </div>
     </form>
 
     <p v-if="!connectors.length && !loading && !adding" class="empty" data-testid="connectors-empty">
-      <Plug :size="18" />Коннекторов пока нет. Подключите GitHub, GitLab, Jira или Confluence.
+      <Plug :size="18" />{{ t('connectors.panel.empty') }}
     </p>
 
-    <ul class="cards">
+    <ul v-auto-animate class="cards">
       <li v-for="c in connectors" :key="c.id" class="card" :data-testid="`connector-${c.id}`" :data-status="c.status">
         <div class="card-row">
           <component :is="kindMeta(c.kind).icon" :size="20" class="kind-icon" />
@@ -261,7 +270,7 @@ onMounted(() => void refresh());
               <b>{{ c.label }}</b>
               <span class="chip" :data-status="c.status" data-testid="connector-status">{{ statusText(c.status) }}</span>
             </div>
-            <div class="muted host">{{ hostOf(c.base_url) }} · {{ c.auth === 'cli' ? 'CLI' : 'токен' }}</div>
+            <div class="muted host">{{ hostOf(c.base_url) }} · {{ c.auth === 'cli' ? t('connectors.panel.authCli') : t('connectors.panel.authToken') }}</div>
           </div>
           <div v-if="c.account" class="account">
             <PersonAvatar :person="c.account" small />
@@ -273,38 +282,38 @@ onMounted(() => void refresh());
 
         <form v-if="editingId === c.id" class="edit" @submit.prevent="saveEdit(c)">
           <label class="field">
-            <span>Название</span>
+            <span>{{ t('connectors.panel.name') }}</span>
             <VInputText v-model="editForm.label" autocomplete="off" />
           </label>
           <label v-if="c.auth === 'token'" class="field">
-            <span>Новый токен</span>
-            <VInputText v-model="editForm.token" type="password" autocomplete="new-password" placeholder="оставьте пустым, чтобы не менять" />
+            <span>{{ t('connectors.panel.newToken') }}</span>
+            <VInputText v-model="editForm.token" type="password" autocomplete="new-password" :placeholder="t('connectors.panel.keepEmpty')" />
             <a class="link" :href="tokenPage(c.kind, c.base_url)" @click.prevent="openUrl(tokenPage(c.kind, c.base_url))">
-              как получить токен <ExternalLink :size="12" />
+              {{ t('connectors.panel.howToGetToken') }} <ExternalLink :size="12" />
             </a>
           </label>
           <label v-if="isCloud(c.kind, c.base_url)" class="field">
-            <span>Email Atlassian</span>
-            <VInputText v-model="editForm.email" type="email" autocomplete="off" placeholder="оставьте пустым, чтобы не менять" />
+            <span>{{ t('connectors.panel.atlassianEmail') }}</span>
+            <VInputText v-model="editForm.email" type="email" autocomplete="off" :placeholder="t('connectors.panel.keepEmpty')" />
           </label>
           <VMessage v-if="editError" severity="error" size="small">{{ editError }}</VMessage>
           <div class="form-actions">
-            <VButton type="submit" size="small" label="Сохранить" :loading="editBusy" />
-            <VButton type="button" size="small" label="Отмена" severity="secondary" text @click="editingId = null" />
+            <VButton type="submit" size="small" :label="t('common.save')" :loading="editBusy" />
+            <VButton type="button" size="small" :label="t('common.cancel')" severity="secondary" text @click="editingId = null" />
           </div>
         </form>
 
-        <div v-else-if="confirmingId === c.id" class="confirm" role="group" aria-label="Подтверждение отключения" data-testid="connector-remove-confirm">
-          <span>Отключить «{{ c.label }}»? Токен будет удалён из связки ключей.</span>
-          <VButton size="small" severity="danger" label="Отключить" :loading="removeBusy" data-testid="connector-remove-yes" @click="confirmRemove(c)" />
-          <VButton size="small" severity="secondary" text label="Отмена" @click="confirmingId = null" />
+        <div v-else-if="confirmingId === c.id" class="confirm" role="group" :aria-label="t('connectors.panel.disconnectConfirmLabel')" data-testid="connector-remove-confirm">
+          <span>{{ t('connectors.panel.disconnectConfirm', { name: c.label }) }}</span>
+          <VButton size="small" severity="danger" :label="t('connectors.panel.disconnect')" :loading="removeBusy" data-testid="connector-remove-yes" @click="confirmRemove(c)" />
+          <VButton size="small" severity="secondary" text :label="t('common.cancel')" @click="confirmingId = null" />
           <span v-if="removeError" class="card-error">{{ removeError }}</span>
         </div>
 
         <div v-else class="card-actions">
-          <VButton size="small" severity="secondary" text label="Проверить" :disabled="checking" data-testid="connector-check" @click="check" />
-          <VButton size="small" severity="secondary" text label="Изменить" data-testid="connector-edit" @click="startEdit(c)" />
-          <VButton size="small" severity="danger" text label="Отключить" data-testid="connector-remove" @click="askRemove(c)" />
+          <VButton size="small" severity="secondary" text :label="t('connectors.panel.check')" :disabled="checking" data-testid="connector-check" @click="check" />
+          <VButton size="small" severity="secondary" text :label="t('connectors.panel.edit')" data-testid="connector-edit" @click="startEdit(c)" />
+          <VButton size="small" severity="danger" text :label="t('connectors.panel.disconnect')" data-testid="connector-remove" @click="askRemove(c)" />
         </div>
       </li>
     </ul>
@@ -340,6 +349,10 @@ h3 {
   margin: 0 0 var(--vr-space-2);
   font-size: var(--vr-font-size-sm);
   color: var(--vr-color-text-muted);
+}
+
+.group-title {
+  margin: var(--vr-space-2) 0 0;
 }
 
 .head-actions {

@@ -49,6 +49,7 @@ export type ChangeRequest = ChangeRequestSummary & {
   labels: string[];
   created_at: string;
   mergeable: boolean | null;
+  head_sha: string;
 };
 
 export type DiffFile = {
@@ -152,6 +153,7 @@ export const forgeChangeRequest = (ref: ChangeRequestRef) => invoke<ChangeReques
 export const forgeDiff = (ref: ChangeRequestRef) => invoke<DiffFile[]>('forge_diff', { ...ref });
 export const forgeDiscussions = (ref: ChangeRequestRef) => invoke<Discussion[]>('forge_discussions', { ...ref });
 export const forgePipeline = (ref: ChangeRequestRef) => invoke<Pipeline | null>('forge_pipeline', { ...ref });
+export const forgeFile = (connector: string, project: string, ref: string, path: string) => invoke<string>('forge_file', { connector, project, ref, path });
 
 export const jiraSearch = (connector: string, jql: string, start: number, limit: number) =>
   invoke<{ total: number; issues: JiraIssueSummary[] }>('jira_search', { connector, jql, start, limit });

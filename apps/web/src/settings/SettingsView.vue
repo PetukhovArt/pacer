@@ -1,32 +1,37 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch, type Component } from 'vue';
-import { ExternalLink, FileJson, History, Palette, Plug, Search, SlidersHorizontal, SquareTerminal } from 'lucide-vue-next';
+import { ExternalLink, FileJson, History, Keyboard, Palette, Plug, Search, SlidersHorizontal, SquareTerminal } from 'lucide-vue-next';
 import { VButton, VInputText, VMessage } from '@ui/kit';
 import ConnectorsPanel from '../connectors/ConnectorsPanel.vue';
+import { useI18n } from '../i18n';
+import { withViewTransition } from '../motion';
 import { requestedSettingsCategory } from '../nav';
 import SettingRow from './SettingRow.vue';
+import KeymapPanel from './KeymapPanel.vue';
 import SettingsJsonEditor from './SettingsJsonEditor.vue';
 import { CATEGORIES, SETTINGS, SETTING_KEYS } from './schema';
 import { useSettings } from './store';
 import { describeFailure } from './parse';
 
-const { parseError, issues, ioError, openExternal, canOpenExternal } = useSettings();
+const { t } = useI18n();
+const { parseError, issues, ioError, text, saveText, openExternal, canOpenExternal } = useSettings();
 
 const query = shallowRef('');
 type CategoryId = (typeof CATEGORIES)[number]['id'];
 const category = shallowRef<CategoryId>('appearance');
 const rawMode = shallowRef(false);
 
-const CATEGORY_ICONS: Record<CategoryId, Component> = { appearance: Palette, terminal: SquareTerminal, sessions: History, connectors: Plug };
-const CONNECTOR_KEYWORDS = 'коннекторы коннектор github gitlab jira confluence токен токены подключение аккаунт';
+const CATEGORY_ICONS: Record<CategoryId, Component> = { appearance: Palette, terminal: SquareTerminal, sessions: History, connectors: Plug, keymap: Keyboard };
 
 const normalizedQuery = computed(() => query.value.trim().toLowerCase());
 watch(normalizedQuery, (value) => {
   if (value) rawMode.value = false;
 });
+const showKeymap = computed(() => !normalizedQuery.value && category.value === 'keymap');
 const showConnectors = computed(() => {
   if (!normalizedQuery.value) return category.value === 'connectors';
-  return normalizedQuery.value.split(/\s+/).every((word) => CONNECTOR_KEYWORDS.includes(word));
+  const keywords = t('settings.connectorKeywords');
+  return normalizedQuery.value.split(/\s+/).every((word) => keywords.includes(word));
 });
 const groups = computed(() =>
   CATEGORIES.map((entry) => ({
@@ -35,15 +40,25 @@ const groups = computed(() =>
       const def = SETTINGS[key];
       if (def.category !== entry.id) return false;
       if (!normalizedQuery.value) return entry.id === category.value;
-      return [def.label, key, def.description].some((field) => field.toLowerCase().includes(normalizedQuery.value));
+      return [t(def.label), key, t(def.description)].some((field) => field.toLowerCase().includes(normalizedQuery.value));
     }),
   })).filter((group) => group.keys.length),
 );
 
-function pickCategory(id: CategoryId) {
+function applyCategory(id: CategoryId) {
   category.value = id;
   query.value = '';
   rawMode.value = false;
+}
+
+function pickCategory(id: CategoryId) {
+  void withViewTransition(() => applyCategory(id));
+}
+
+function toggleRaw() {
+  void withViewTransition(() => {
+    rawMode.value = !rawMode.value;
+  });
 }
 
 watch(
@@ -52,7 +67,7 @@ watch(
     if (!id) return;
     requestedSettingsCategory.value = null;
     const entry = CATEGORIES.find((item) => item.id === id);
-    if (entry) pickCategory(entry.id);
+    if (entry) applyCategory(entry.id);
   },
   { immediate: true },
 );
@@ -63,29 +78,29 @@ function onSearchKey(event: KeyboardEvent) {
 </script>
 
 <template>
-  <section class="page" data-testid="settings-view" aria-label="Настройки">
+  <section class="page" data-testid="settings-view" :aria-label="t('settings.title')">
     <header class="header">
-      <h1><SlidersHorizontal :size="18" />Настройки</h1>
+      <h1><SlidersHorizontal :size="18" />{{ t('settings.title') }}</h1>
       <label class="search">
         <Search :size="16" />
-        <VInputText v-model="query" size="small" placeholder="Найти настройку" aria-label="Найти настройку" data-testid="settings-search" @keydown="onSearchKey" />
+        <VInputText v-model="query" size="small" :placeholder="t('settings.search')" :aria-label="t('settings.search')" data-testid="settings-search" @keydown="onSearchKey" />
       </label>
       <VButton
-        :label="rawMode ? 'К настройкам' : 'Открыть settings.json'"
+        :label="rawMode ? t('settings.backToSettings') : t('settings.openJson')"
         size="small"
         severity="secondary"
         data-testid="settings-open-json"
-        @click="rawMode = !rawMode"
+        @click="toggleRaw"
       >
         <template #icon><FileJson :size="14" /></template>
       </VButton>
       <VButton
-        label="Открыть в редакторе"
+        :label="t('settings.openExternal')"
         size="small"
         severity="secondary"
         text
         :disabled="!canOpenExternal"
-        :title="canOpenExternal ? 'Открыть файл в редакторе по умолчанию' : 'Доступно только в приложении'"
+        :title="canOpenExternal ? t('settings.openExternalTitle') : t('settings.appOnly')"
         data-testid="settings-open-external"
         @click="openExternal"
       >
@@ -95,14 +110,14 @@ function onSearchKey(event: KeyboardEvent) {
 
     <div class="notices">
       <VMessage v-if="parseError" severity="error" size="small" data-testid="settings-parse-error">
-        settings.json не разобран, действуют последние верные значения. {{ describeFailure(parseError) }}
+        {{ t('settings.parseError') }} {{ describeFailure(parseError) }}
       </VMessage>
-      <VMessage v-if="issues.length" severity="warn" size="small" data-testid="settings-issues">Для этих ключей взято значение по умолчанию: {{ issues.join('; ') }}</VMessage>
+      <VMessage v-if="issues.length" severity="warn" size="small" data-testid="settings-issues">{{ t('settings.issues') }} {{ issues.join('; ') }}</VMessage>
       <VMessage v-if="ioError" severity="error" size="small" data-testid="settings-io-error">{{ ioError }}</VMessage>
     </div>
 
     <div class="body">
-      <nav class="categories" aria-label="Категории настроек">
+      <nav class="categories" :aria-label="t('settings.categoriesLabel')">
         <button
           v-for="entry in CATEGORIES"
           :key="entry.id"
@@ -112,20 +127,23 @@ function onSearchKey(event: KeyboardEvent) {
           @click="pickCategory(entry.id)"
         >
           <component :is="CATEGORY_ICONS[entry.id]" :size="14" />
-          {{ entry.label }}
+          {{ t(entry.label) }}
         </button>
       </nav>
 
-      <SettingsJsonEditor v-if="rawMode" />
-      <div v-else class="list" :class="{ locked: parseError }" data-testid="settings-list">
-        <section v-if="showConnectors" class="group" data-testid="settings-connectors">
-          <ConnectorsPanel />
-        </section>
-        <section v-for="group in groups" :key="group.id" class="group">
-          <h2 v-if="normalizedQuery">{{ group.label }}</h2>
-          <SettingRow v-for="key in group.keys" :key="key" :setting-key="key" />
-        </section>
-        <p v-if="!groups.length && !showConnectors" class="empty" data-testid="settings-empty">Ничего не найдено</p>
+      <div class="content vt-detail">
+        <SettingsJsonEditor v-if="rawMode" name="settings.json" :text="text" :save="saveText" />
+        <KeymapPanel v-else-if="showKeymap" />
+        <div v-else class="list" :class="{ locked: parseError }" data-testid="settings-list">
+          <section v-if="showConnectors" class="group" data-testid="settings-connectors">
+            <ConnectorsPanel />
+          </section>
+          <section v-for="group in groups" :key="group.id" v-auto-animate class="group">
+            <h2 v-if="normalizedQuery">{{ t(group.label) }}</h2>
+            <SettingRow v-for="key in group.keys" :key="key" :setting-key="key" />
+          </section>
+          <p v-if="!groups.length && !showConnectors" class="empty" data-testid="settings-empty">{{ t('settings.empty') }}</p>
+        </div>
       </div>
     </div>
   </section>
@@ -225,7 +243,15 @@ h1 {
   background: var(--vr-color-nav-active);
 }
 
+.content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .list {
+  flex: 1;
   min-height: 0;
   padding: var(--vr-space-2) var(--vr-space-6) var(--vr-space-6);
   overflow-y: auto;

@@ -1,137 +1,129 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
-import { ChevronRight } from 'lucide-vue-next';
+import { computed, onMounted, shallowRef, useTemplateRef } from 'vue';
+import { ChevronRight, FileText } from 'lucide-vue-next';
 import type { SessionNode } from '../pacer';
+import { subsequenceScore } from '../../commands/fuzzy';
+import { usePickerList } from '../../commands/usePickerList';
+import { t } from '../../i18n';
 import StatusDot from '../StatusDot.vue';
+import type { MarkdownEntry } from './markdownFiles';
 import type { SessionPath } from './nav';
 
-const props = defineProps<{ entries: readonly SessionPath[] }>();
-const emit = defineEmits<{ select: [session: SessionNode]; close: [] }>();
+type Item = { kind: 'session'; key: string; entry: SessionPath } | { kind: 'file'; key: string; file: MarkdownEntry };
 
-const SEPARATORS = ' ›-_/.';
+const props = withDefaults(defineProps<{ entries: readonly SessionPath[]; files?: readonly MarkdownEntry[]; fileScope?: string }>(), { files: () => [], fileScope: '' });
+const emit = defineEmits<{ select: [session: SessionNode]; 'select-file': [path: string]; close: [] }>();
 
 const input = useTemplateRef<HTMLInputElement>('input');
 const list = useTemplateRef<HTMLElement>('list');
 const query = shallowRef('');
-const index = shallowRef(0);
-
-function subsequenceScore(word: string, text: string): number | null {
-  let matched = 0;
-  let last = -2;
-  let score = 0;
-  for (let position = 0; position < text.length && matched < word.length; position++) {
-    if (text[position] !== word[matched]) continue;
-    score += position === last + 1 ? 3 : 1;
-    if (position === 0 || SEPARATORS.includes(text[position - 1] ?? '')) score += 2;
-    last = position;
-    matched++;
-  }
-  return matched === word.length ? score : null;
-}
 
 function fullText(entry: SessionPath): string {
   return `${entry.workspace.name} › ${entry.project.name} › ${entry.worktree.branch} › ${entry.session.name}`.toLowerCase();
 }
 
-const results = computed(() => {
+const results = computed<Item[]>(() => {
   const words = query.value.toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return [...props.entries];
-  return props.entries
-    .map((entry, order) => {
-      const text = fullText(entry);
+  const sessions: Item[] = props.entries.map((entry) => ({ kind: 'session', key: entry.session.key, entry }));
+  if (!words.length) return sessions;
+  const files: Item[] = props.files.map((file) => ({ kind: 'file', key: file.path, file }));
+  return [...sessions, ...files]
+    .map((item, order) => {
+      const text = item.kind === 'session' ? fullText(item.entry) : item.file.rel.toLowerCase();
       let total = 0;
       for (const word of words) {
         const score = subsequenceScore(word, text);
         if (score === null) return null;
         total += score;
       }
-      return { entry, order, total };
+      return { item, order, total };
     })
-    .filter((item): item is { entry: SessionPath; order: number; total: number } => item !== null)
+    .filter((match): match is { item: Item; order: number; total: number } => match !== null)
     .sort((a, b) => b.total - a.total || a.order - b.order)
-    .map((item) => item.entry);
+    .map((match) => match.item);
 });
 
-watch(query, () => {
-  index.value = 0;
-});
-
-function move(delta: number) {
-  const count = results.value.length;
-  if (!count) return;
-  index.value = (index.value + delta + count) % count;
-  void nextTick(() => list.value?.querySelector('[data-current="true"]')?.scrollIntoView({ block: 'nearest' }));
+function choose(item: Item | undefined) {
+  if (!item) return;
+  if (item.kind === 'session') emit('select', item.entry.session);
+  else emit('select-file', item.file.path);
 }
 
-function choose(entry: SessionPath | undefined) {
-  if (entry) emit('select', entry.session);
-}
-
-function onKey(event: KeyboardEvent) {
-  switch (event.key) {
-    case 'ArrowDown':
-      move(1);
-      break;
-    case 'ArrowUp':
-      move(-1);
-      break;
-    case 'Enter':
-      choose(results.value[index.value]);
-      break;
-    case 'Escape':
-      emit('close');
-      break;
-    default:
-      return;
-  }
-  event.preventDefault();
-}
+const { index, onKey } = usePickerList({ results, query, list, choose, close: () => emit('close') });
 
 onMounted(() => input.value?.focus());
 </script>
 
 <template>
   <div class="overlay" data-testid="quick-switcher" @pointerdown.self="emit('close')">
-    <div class="panel" role="dialog" aria-label="Быстрый переход к сессии">
+    <div class="panel" role="dialog" :aria-label="t('files.switcher.dialog')">
       <input
         ref="input"
         v-model="query"
         class="query"
         type="text"
-        placeholder="workspace › проект › ветка › сессия"
-        aria-label="Поиск сессии"
+        :placeholder="fileScope ? t('files.switcher.placeholderFiles', { scope: fileScope }) : t('agents.layouts.pathHint')"
+        :aria-label="t('files.switcher.search')"
         data-testid="quick-switcher-input"
         @keydown="onKey"
       />
-      <ul ref="list" class="results" role="listbox">
+      <ul ref="list" v-auto-animate class="results" role="listbox">
         <li
-          v-for="(entry, position) in results"
-          :key="entry.session.key"
+          v-for="(item, position) in results"
+          :key="item.key"
           class="item"
           role="option"
           :aria-selected="position === index"
           :data-current="position === index"
-          data-testid="quick-switcher-item"
-          :data-session-id="entry.session.id"
+          :data-testid="item.kind === 'session' ? 'quick-switcher-item' : 'quick-switcher-file'"
+          :data-session-id="item.kind === 'session' ? item.entry.session.id : undefined"
           @pointermove="index = position"
-          @click="choose(entry)"
+          @click="choose(item)"
         >
-          <StatusDot :status="entry.session.status" :unseen="entry.session.unseen" />
-          <span class="path">{{ entry.workspace.name }}</span>
-          <ChevronRight :size="11" />
-          <span class="path">{{ entry.project.name }}</span>
-          <ChevronRight :size="11" />
-          <span class="path mono">{{ entry.worktree.branch }}</span>
-          <ChevronRight :size="11" />
-          <span class="session">{{ entry.session.name }}</span>
+          <template v-if="item.kind === 'session'">
+            <StatusDot :status="item.entry.session.status" :unseen="item.entry.session.unseen" />
+            <span class="path">{{ item.entry.workspace.name }}</span>
+            <ChevronRight :size="11" />
+            <span class="path">{{ item.entry.project.name }}</span>
+            <ChevronRight :size="11" />
+            <span class="path mono">{{ item.entry.worktree.branch }}</span>
+            <ChevronRight :size="11" />
+            <span class="session">{{ item.entry.session.name }}</span>
+          </template>
+          <template v-else>
+            <FileText :size="14" class="file-icon" />
+            <span class="session">{{ item.file.name }}</span>
+            <span class="path mono">{{ item.file.rel }}</span>
+          </template>
         </li>
-        <li v-if="!results.length" class="none">Ничего не найдено</li>
+        <li v-if="!results.length" class="none">{{ t('common.noResults') }}</li>
       </ul>
     </div>
   </div>
 </template>
 
 <style scoped>
+.qs-enter-active {
+  transition: opacity var(--vr-motion-overlay-in) var(--vr-motion-ease-standard);
+}
+
+.qs-leave-active {
+  transition: opacity var(--vr-motion-overlay-out) var(--vr-motion-ease-accelerate);
+}
+
+.qs-enter-active .panel {
+  transition: transform var(--vr-motion-overlay-in) var(--vr-motion-ease-standard);
+}
+
+.qs-enter-from,
+.qs-leave-to {
+  opacity: 0;
+}
+
+.qs-enter-from .panel {
+  transform: scale(0.98);
+}
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -203,6 +195,10 @@ onMounted(() => input.value?.focus());
   font-weight: 600;
   color: var(--vr-color-text);
   text-overflow: ellipsis;
+}
+
+.file-icon {
+  flex: none;
 }
 
 .none {

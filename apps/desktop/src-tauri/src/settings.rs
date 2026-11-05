@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -5,18 +6,46 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::async_runtime::JoinHandle;
 use tauri::ipc::Channel;
 use tauri::State;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
-const FILE_NAME: &str = "settings.json";
-const TEMP_NAME: &str = "settings.json.tmp";
-const EMPTY_SETTINGS: &str = "{}\n";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConfigFile {
+    #[default]
+    Settings,
+    Keymap,
+}
+
+impl ConfigFile {
+    fn file_name(self) -> &'static str {
+        match self {
+            Self::Settings => "settings.json",
+            Self::Keymap => "keymap.json",
+        }
+    }
+
+    fn temp_name(self) -> &'static str {
+        match self {
+            Self::Settings => "settings.json.tmp",
+            Self::Keymap => "keymap.json.tmp",
+        }
+    }
+
+    fn empty_text(self) -> &'static str {
+        match self {
+            Self::Settings => "{}\n",
+            Self::Keymap => "[]\n",
+        }
+    }
+}
 
 #[derive(Default)]
-pub struct SettingsWatch(Mutex<Option<JoinHandle<()>>>);
+pub struct SettingsWatch(Mutex<HashMap<ConfigFile, JoinHandle<()>>>);
 
 #[derive(Debug, Serialize)]
 pub struct SettingsChanged {
@@ -36,8 +65,8 @@ fn veyra_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| format!("не задана переменная {var}"))
 }
 
-fn settings_path() -> Result<PathBuf, String> {
-    Ok(veyra_dir()?.join(FILE_NAME))
+fn config_path(file: ConfigFile) -> Result<PathBuf, String> {
+    Ok(veyra_dir()?.join(file.file_name()))
 }
 
 fn read_text(path: &Path) -> io::Result<String> {
@@ -55,32 +84,42 @@ fn signature(path: &Path) -> Option<Signature> {
     })
 }
 
-fn write_atomic(dir: &Path, text: &str) -> io::Result<()> {
+fn write_atomic(dir: &Path, file: ConfigFile, text: &str) -> io::Result<()> {
     fs::create_dir_all(dir)?;
-    let temp = dir.join(TEMP_NAME);
+    let temp = dir.join(file.temp_name());
     fs::write(&temp, text.as_bytes())?;
-    fs::rename(&temp, dir.join(FILE_NAME)).inspect_err(|_| {
+    fs::rename(&temp, dir.join(file.file_name())).inspect_err(|_| {
         let _ = fs::remove_file(&temp);
     })
 }
 
 #[tauri::command]
-pub async fn settings_read() -> Result<String, String> {
-    let path = settings_path()?;
+pub async fn settings_read(file: Option<ConfigFile>) -> Result<String, String> {
+    let path = config_path(file.unwrap_or_default())?;
     read_text(&path).map_err(|e| format!("не удалось прочитать {}: {e}", path.display()))
 }
 
 #[tauri::command]
-pub async fn settings_write(text: String) -> Result<(), String> {
+pub async fn settings_write(text: String, file: Option<ConfigFile>) -> Result<(), String> {
+    let file = file.unwrap_or_default();
     let dir = veyra_dir()?;
-    write_atomic(&dir, &text)
-        .map_err(|e| format!("не удалось записать {}: {e}", dir.join(FILE_NAME).display()))
+    write_atomic(&dir, file, &text).map_err(|e| {
+        format!(
+            "не удалось записать {}: {e}",
+            dir.join(file.file_name()).display()
+        )
+    })
 }
 
 #[tauri::command]
-pub fn settings_watch(watch: State<'_, SettingsWatch>, on_event: Channel<SettingsChanged>) {
+pub fn settings_watch(
+    watch: State<'_, SettingsWatch>,
+    on_event: Channel<SettingsChanged>,
+    file: Option<ConfigFile>,
+) {
+    let file = file.unwrap_or_default();
     let task = tauri::async_runtime::spawn(async move {
-        let Ok(path) = settings_path() else { return };
+        let Ok(path) = config_path(file) else { return };
         let mut seen = signature(&path);
         loop {
             tokio::time::sleep(POLL_INTERVAL).await;
@@ -96,17 +135,18 @@ pub fn settings_watch(watch: State<'_, SettingsWatch>, on_event: Channel<Setting
         }
     });
     let mut slot = watch.0.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(previous) = slot.replace(task) {
+    if let Some(previous) = slot.insert(file, task) {
         previous.abort();
     }
 }
 
 #[tauri::command]
-pub async fn settings_open_external() -> Result<(), String> {
+pub async fn settings_open_external(file: Option<ConfigFile>) -> Result<(), String> {
+    let file = file.unwrap_or_default();
     let dir = veyra_dir()?;
-    let path = dir.join(FILE_NAME);
+    let path = dir.join(file.file_name());
     if !path.exists() {
-        write_atomic(&dir, EMPTY_SETTINGS)
+        write_atomic(&dir, file, file.empty_text())
             .map_err(|e| format!("не удалось создать {}: {e}", path.display()))?;
     }
     open_in_default_app(&path).map_err(|e| format!("не удалось открыть редактор: {e}"))

@@ -2,6 +2,7 @@
 import { shallowRef } from 'vue';
 import { ArchiveRestore, Trash2 } from 'lucide-vue-next';
 import { VButton } from '@ui/kit';
+import { t } from '../i18n';
 import { deleteAgent, unarchiveAgent, type SessionNode } from './pacer';
 import { useAction } from './useAction';
 
@@ -24,14 +25,14 @@ async function confirmDelete() {
     <div class="line">
       <span class="name" :title="session.name">{{ session.name }}</span>
       <template v-if="!confirming">
-        <button class="icon" title="Восстановить" aria-label="Восстановить" :disabled="action.busy.value" data-testid="archived-restore" @click="restore"><ArchiveRestore :size="14" /></button>
-        <button class="icon danger" title="Удалить" aria-label="Удалить" :disabled="action.busy.value" data-testid="archived-delete" @click="confirming = true"><Trash2 :size="14" /></button>
+        <button class="icon" :title="t('agents.session.restore')" :aria-label="t('agents.session.restore')" :disabled="action.busy.value" data-testid="archived-restore" @click="restore"><ArchiveRestore :size="14" /></button>
+        <button class="icon danger" :title="t('common.delete')" :aria-label="t('common.delete')" :disabled="action.busy.value" data-testid="archived-delete" @click="confirming = true"><Trash2 :size="14" /></button>
       </template>
     </div>
-    <div v-if="confirming" class="confirm" role="group" aria-label="Подтверждение удаления" data-testid="session-delete-confirm">
-      <span>Удалить «{{ session.name }}» насовсем?</span>
-      <VButton label="Удалить" size="small" severity="danger" :loading="action.busy.value" data-testid="session-delete-yes" @click="confirmDelete" />
-      <VButton label="Отмена" size="small" text data-testid="session-delete-no" @click="confirming = false" />
+    <div v-if="confirming" class="confirm" role="group" :aria-label="t('agents.session.confirmDeleteLabel')" data-testid="session-delete-confirm">
+      <span>{{ t('agents.session.confirmDelete', { name: session.name }) }}</span>
+      <VButton :label="t('common.delete')" size="small" severity="danger" :loading="action.busy.value" data-testid="session-delete-yes" @click="confirmDelete" />
+      <VButton :label="t('common.cancel')" size="small" text data-testid="session-delete-no" @click="confirming = false" />
     </div>
     <p v-if="action.error.value" class="row-error" role="alert" data-testid="session-error">{{ action.error.value }}</p>
   </div>

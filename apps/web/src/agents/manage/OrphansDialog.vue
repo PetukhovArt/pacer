@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { shallowRef, watch } from 'vue';
 import { VButton, VDialog, VMessage, VSelect } from '@ui/kit';
+import { useI18n } from '../../i18n';
 import { describeError, usePacer } from '../pacer';
 import { useAction } from '../useAction';
 import { listOrphans, resumeOrphan, type OrphanedSession } from './orphans';
@@ -9,7 +10,7 @@ import { useWorktreeOptions } from './worktrees';
 const props = defineProps<{ project: string }>();
 const emit = defineEmits<{ resumed: [agent: string]; close: [] }>();
 
-const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
+const { t, formatDate } = useI18n();
 
 const orphans = shallowRef<readonly OrphanedSession[]>([]);
 const loading = shallowRef(true);
@@ -51,7 +52,7 @@ function pick(session: string, worktree: unknown) {
 }
 
 function startedAt(orphan: OrphanedSession): string | null {
-  return orphan.created_at > 0 ? dateFormat.format(orphan.created_at) : null;
+  return orphan.created_at > 0 ? formatDate(orphan.created_at) : null;
 }
 
 async function resumeSession(session: string) {
@@ -67,10 +68,10 @@ async function resumeSession(session: string) {
 </script>
 
 <template>
-  <VDialog v-if="pacer" :visible="true" modal dismissable-mask header="Старые разговоры" :style="{ width: '46rem', maxWidth: '95vw' }" data-testid="orphans-dialog" @update:visible="emit('close')">
+  <VDialog v-if="pacer" :visible="true" modal dismissable-mask :header="t('agents.orphans.title')" :style="{ width: '46rem', maxWidth: '95vw' }" data-testid="orphans-dialog" @update:visible="emit('close')">
     <VMessage v-if="loadError" severity="error" size="small" data-testid="orphans-error">{{ loadError }}</VMessage>
-    <p v-else-if="loading" class="state" role="status">Загрузка…</p>
-    <p v-else-if="!orphans.length" class="state" role="status" data-testid="orphans-empty">Старых разговоров нет</p>
+    <p v-else-if="loading" class="state" role="status">{{ t('common.loading') }}</p>
+    <p v-else-if="!orphans.length" class="state" role="status" data-testid="orphans-empty">{{ t('agents.orphans.empty') }}</p>
     <ul v-else class="list">
       <li v-for="orphan in orphans" :key="orphan.session_id" class="row" data-testid="orphan-row" :data-session-id="orphan.session_id">
         <div class="info">
@@ -88,12 +89,12 @@ async function resumeSession(session: string) {
           :options="options"
           option-label="label"
           option-value="id"
-          aria-label="Worktree для продолжения"
+          :aria-label="t('agents.orphans.worktree')"
           data-testid="orphan-worktree"
           @update:model-value="pick(orphan.session_id, $event)"
         />
         <VButton
-          label="Продолжить"
+          :label="t('agents.orphans.resume')"
           size="small"
           data-testid="orphan-resume"
           :loading="resume.busy.value && resuming === orphan.session_id"

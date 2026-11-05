@@ -1,15 +1,24 @@
-import { createApp } from 'vue';
+import { createApp, watchEffect } from 'vue';
 import { parseRunnerInfo, VeyraClient } from '@core/client-sdk';
 import { installClient } from '@core/vue-bindings';
 import { installUiKit } from '@ui/kit';
 import './app.css';
+import { installKeymap } from './commands/dispatcher';
+import { t } from './i18n';
+import { setMotionEnabled } from './motion';
 import { installAppearance } from './settings/appearance';
+import { useSettings } from './settings/store';
+import { setTranslator } from './settings/translate';
 import WorkspaceView from './WorkspaceView.vue';
 
-if (!__VEYRA_DEV_KEY__) throw new Error('Нет ключа пользователя: вход появится в следующих этапах');
+if (!__VEYRA_DEV_KEY__) throw new Error('No user key: sign-in arrives in a later stage');
+setTranslator(t);
 const app = createApp(WorkspaceView);
 installUiKit(app);
 installAppearance();
+const { values } = useSettings();
+watchEffect(() => setMotionEnabled(values.value['ui.animations']));
+installKeymap();
 const client = new VeyraClient(__VEYRA_RELAY__, __VEYRA_DEV_KEY__, parseRunnerInfo(__VEYRA_RUNNER__));
 installClient(app, client);
 client.setWorkspace(localStorage.getItem('veyra.workspace'));

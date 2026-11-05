@@ -1,5 +1,6 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue';
+import { t } from '../i18n';
 
 export type AgentKind = 'claude' | 'codex' | 'cursor';
 type AgentStatus = 'fresh' | 'running' | 'finished' | 'needs_feedback' | 'terminated' | 'disconnected';
@@ -271,13 +272,13 @@ export async function call(request: PacerRequest): Promise<PacerReply> {
   const reply = await invoke<unknown>('pacer_call', { request }).catch((e: unknown) => {
     throw new PacerCallError(describeError(e));
   });
-  if (!isPacerReply(reply)) throw new PacerCallError(`неожиданный ответ pacer: ${JSON.stringify(reply)}`);
+  if (!isPacerReply(reply)) throw new PacerCallError(t('agents.errors.unexpectedReply', { reply: JSON.stringify(reply) }));
   return reply;
 }
 
 export async function acknowledged(request: PacerRequest): Promise<EntityId | null> {
   const reply = await call(request);
-  if (!('Ack' in reply)) throw new PacerCallError(`pacer ответил ${Object.keys(reply).join('')} вместо Ack`);
+  if (!('Ack' in reply)) throw new PacerCallError(t('agents.errors.expectedAck', { reply: Object.keys(reply).join('') }));
   return reply.Ack.created;
 }
 

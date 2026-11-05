@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
+import { t } from '../../i18n';
 import { usePacer } from '../pacer';
 import ActionMenu from './ActionMenu.vue';
 import { useAction } from '../useAction';
@@ -53,21 +54,21 @@ async function confirmRemove() {
     <ActionMenu
       v-if="workspaceId"
       testid="workspace-menu"
-      label="Действия workspace"
-      remove-label="Удалить"
+      :label="t('agents.workspace.actions')"
+      :remove-label="t('common.delete')"
       @rename="open('renaming', current?.name ?? '')"
       @remove="clear(), (mode = 'removing')"
     />
-    <VButton v-else label="Новый workspace" size="small" text severity="secondary" data-testid="workspace-new" @click="open('creating', '')" />
+    <VButton v-else :label="t('agents.workspace.new')" size="small" text severity="secondary" data-testid="workspace-new" @click="open('creating', '')" />
     <form v-if="editing" class="inline" @submit.prevent="submit">
-      <VInputText ref="input" v-model="draft" size="small" placeholder="Название" aria-label="Название workspace" data-testid="workspace-name-input" @keydown.esc="cancel" />
-      <VButton type="submit" label="Сохранить" size="small" :disabled="!name" :loading="busy" data-testid="workspace-submit" />
-      <VButton label="Отмена" size="small" text severity="secondary" @click="cancel" />
+      <VInputText ref="input" v-model="draft" size="small" :placeholder="t('agents.workspace.name')" :aria-label="t('agents.workspace.nameAria')" data-testid="workspace-name-input" @keydown.esc="cancel" />
+      <VButton type="submit" :label="t('common.save')" size="small" :disabled="!name" :loading="busy" data-testid="workspace-submit" />
+      <VButton :label="t('common.cancel')" size="small" text severity="secondary" @click="cancel" />
     </form>
-    <div v-else-if="mode === 'removing'" class="inline" role="alertdialog" aria-label="Подтверждение удаления">
-      <span class="question">Удалить workspace «{{ current?.name }}»?</span>
-      <VButton label="Удалить" size="small" severity="danger" :loading="busy" data-testid="confirm-remove" @click="confirmRemove" />
-      <VButton label="Отмена" size="small" text severity="secondary" @click="cancel" />
+    <div v-else-if="mode === 'removing'" class="inline" role="alertdialog" :aria-label="t('agents.session.confirmDeleteLabel')">
+      <span class="question">{{ t('agents.workspace.removeQuestion', { name: current?.name ?? '' }) }}</span>
+      <VButton :label="t('common.delete')" size="small" severity="danger" :loading="busy" data-testid="confirm-remove" @click="confirmRemove" />
+      <VButton :label="t('common.cancel')" size="small" text severity="secondary" @click="cancel" />
     </div>
     <p v-if="error" class="error" role="alert" data-testid="workspace-error">{{ error }}</p>
   </div>

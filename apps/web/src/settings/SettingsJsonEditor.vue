@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue';
 import { VButton, VMessage, VTextarea } from '@ui/kit';
-import { useSettings } from './store';
+import { useI18n } from '../i18n';
 
-const EMPTY = '{}\n';
+const { t } = useI18n();
 
-const { text, saveText } = useSettings();
+const props = withDefaults(defineProps<{ name: string; text: string; save: (candidate: string) => string | null; empty?: string; testPrefix?: string }>(), {
+  empty: '{}\n',
+  testPrefix: 'settings',
+});
+
+const EMPTY = props.empty;
+const text = computed(() => props.text);
 const draft = shallowRef(text.value.trim() ? text.value : EMPTY);
 const error = shallowRef<string | null>(null);
 const saved = shallowRef(false);
@@ -21,8 +27,8 @@ function onInput(value: string | undefined) {
   saved.value = false;
 }
 
-function save() {
-  const problem = saveText(draft.value);
+function commit() {
+  const problem = props.save(draft.value);
   error.value = problem;
   saved.value = problem === null;
 }
@@ -30,7 +36,7 @@ function save() {
 function onKey(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
     event.preventDefault();
-    save();
+    commit();
   }
 }
 </script>
@@ -38,13 +44,13 @@ function onKey(event: KeyboardEvent) {
 <template>
   <div class="editor" @keydown="onKey">
     <div class="bar">
-      <span class="path">~/.veyra/settings.json</span>
-      <span v-if="dirty" class="status">есть несохранённые изменения</span>
-      <span v-else-if="saved" class="status" data-testid="settings-json-saved">сохранено</span>
-      <VButton label="Сохранить" size="small" :disabled="!dirty" title="Ctrl+S" data-testid="settings-json-save" @click="save" />
+      <span class="path">~/.veyra/{{ name }}</span>
+      <span v-if="dirty" class="status">{{ t('settings.json.unsaved') }}</span>
+      <span v-else-if="saved" class="status" :data-testid="`${testPrefix}-json-saved`">{{ t('settings.json.saved') }}</span>
+      <VButton :label="t('common.save')" size="small" :disabled="!dirty" title="Ctrl+S" :data-testid="`${testPrefix}-json-save`" @click="commit" />
     </div>
-    <VMessage v-if="error" severity="error" size="small" data-testid="settings-json-error">{{ error }}</VMessage>
-    <VTextarea :model-value="draft" class="area" spellcheck="false" wrap="off" aria-label="settings.json" data-testid="settings-json-editor" @update:model-value="onInput" />
+    <VMessage v-if="error" severity="error" size="small" :data-testid="`${testPrefix}-json-error`">{{ error }}</VMessage>
+    <VTextarea :model-value="draft" class="area" spellcheck="false" wrap="off" :aria-label="name" :data-testid="`${testPrefix}-json-editor`" @update:model-value="onInput" />
   </div>
 </template>
 

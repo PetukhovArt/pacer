@@ -278,7 +278,20 @@ pub async fn change_request(ctx: &Ctx, project: &str, number: u64) -> ApiResult<
             .collect(),
         created_at: text(&mr["created_at"]),
         mergeable,
+        head_sha: opt(&mr["diff_refs"]["head_sha"])
+            .or_else(|| opt(&mr["sha"]))
+            .unwrap_or_default(),
     })
+}
+
+pub async fn file(ctx: &Ctx, project: &str, git_ref: &str, path: &str) -> ApiResult<String> {
+    let url = format!(
+        "{}/projects/{}/repository/files/{}/raw",
+        api(ctx),
+        encode_segment(project),
+        encode_segment(path)
+    );
+    ctx.api.get_text(&url, &[("ref", git_ref)], "*/*").await
 }
 
 fn diff_file(entry: &Value) -> DiffFile {

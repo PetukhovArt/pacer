@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue';
 import { VButton, VDialog, VMessage, VSelect } from '@ui/kit';
+import { t } from '../../i18n';
 import { usePacer } from '../pacer';
 import { useAction } from '../useAction';
 import { moveAgent } from './orphans';
@@ -31,21 +32,21 @@ async function submit() {
 </script>
 
 <template>
-  <VDialog v-if="pacer" :visible="true" modal dismissable-mask header="Перенести в другой worktree" :style="{ width: '28rem', maxWidth: '95vw' }" data-testid="move-agent-dialog" @update:visible="emit('close')">
-    <p v-if="!options.length" class="state" role="status">В проекте нет других worktree</p>
+  <VDialog v-if="pacer" :visible="true" modal dismissable-mask :header="t('agents.move.title')" :style="{ width: '28rem', maxWidth: '95vw' }" data-testid="move-agent-dialog" @update:visible="emit('close')">
+    <p v-if="!options.length" class="state" role="status">{{ t('agents.move.none') }}</p>
     <form v-else class="form" @submit.prevent="submit">
       <VSelect
         :model-value="target"
         :options="options"
         option-label="label"
         option-value="id"
-        aria-label="Целевой worktree"
+        :aria-label="t('agents.move.target')"
         data-testid="move-agent-worktree"
         @update:model-value="pick"
       />
       <VMessage v-if="error" severity="error" size="small" data-testid="move-agent-error">{{ error }}</VMessage>
       <div class="actions">
-        <VButton type="submit" label="Перенести" size="small" data-testid="move-agent-submit" :loading="busy" :disabled="!target || busy" />
+        <VButton type="submit" :label="t('agents.move.submit')" size="small" data-testid="move-agent-submit" :loading="busy" :disabled="!target || busy" />
       </div>
     </form>
   </VDialog>

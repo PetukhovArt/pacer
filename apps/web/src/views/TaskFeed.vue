@@ -5,10 +5,12 @@ import { marked } from 'marked';
 import { Wrench } from 'lucide-vue-next';
 import type { FeedEvent } from '@core/client-sdk';
 import Avatar from '../Avatar.vue';
+import { t, useI18n } from '../i18n';
 import type { TaskContext } from './task';
 
 const props = defineProps<{ ctx: Pick<TaskContext, 'client' | 'state' | 'events'> }>();
 const { client, state, events } = props.ctx;
+const { formatDate } = useI18n();
 
 type ToolCall = Extract<FeedEvent, { type: 'agent.tool_call' }>;
 type Item = { id: string; actorId: string; at: string; head: boolean } & ({ kind: 'event'; event: FeedEvent } | { kind: 'tools'; calls: ToolCall[] });
@@ -35,7 +37,7 @@ function markdown(text: string): string {
 }
 
 function time(at: string) {
-  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatDate(at, { hour: '2-digit', minute: '2-digit' });
 }
 
 function describe(event: FeedEvent): string {
@@ -47,17 +49,17 @@ function describe(event: FeedEvent): string {
     case 'agent.tool_call':
       return `${event.tool} ${event.summary}`;
     case 'agent.file_changed':
-      return `изменён ${event.path}`;
+      return t('tasks.feed.fileChanged', { path: event.path });
     case 'agent.status':
-      return `статус: ${event.status}${event.detail ? ` — ${event.detail}` : ''}`;
+      return `${t('tasks.feed.status', { status: event.status })}${event.detail ? ` — ${event.detail}` : ''}`;
     case 'agent.cost':
-      return `стоимость $${event.usd.toFixed(4)}`;
+      return t('tasks.feed.cost', { usd: event.usd.toFixed(4) });
     case 'agent.session':
-      return `сессия ${event.sessionId}`;
+      return t('tasks.feed.session', { id: event.sessionId });
     case 'agent.step':
-      return `jig · ${event.unit}: ${event.status}`;
+      return t('tasks.feed.step', { unit: event.unit, status: event.status });
     case 'agent.todos':
-      return `план: ${event.items.filter((i) => i.status === 'completed').length}/${event.items.length}`;
+      return t('tasks.feed.todos', { done: event.items.filter((i) => i.status === 'completed').length, total: event.items.length });
     default:
       return event satisfies never;
   }
@@ -88,7 +90,7 @@ onMounted(toBottom);
 
 <template>
   <div ref="scroller" class="scroller">
-    <p v-if="!items.length" class="vr-muted intro">Здесь появятся сообщения команды и ход работы агентов.</p>
+    <p v-if="!items.length" class="vr-muted intro">{{ t('tasks.feed.intro') }}</p>
     <ol class="feed" data-testid="feed">
       <li v-for="item in items" :key="item.id" class="row" :class="{ head: item.head }" :data-kind="item.kind === 'event' ? item.event.type : 'tools'">
         <Avatar v-if="item.head" :id="item.actorId" :name="client.actorName(item.actorId)" :picture="state.profiles.get(item.actorId)?.picture" :agent="isAgent(item) || state.profiles.get(item.actorId)?.bot" />
@@ -99,7 +101,7 @@ onMounted(toBottom);
             <time :datetime="item.at">{{ time(item.at) }}</time>
           </div>
           <details v-if="item.kind === 'tools'" class="tools">
-            <summary><Wrench :size="12" /><span class="count">инструменты: {{ item.calls.length }}</span><span class="last">{{ item.calls[item.calls.length - 1]!.tool }} {{ item.calls[item.calls.length - 1]!.summary }}</span></summary>
+            <summary><Wrench :size="12" /><span class="count">{{ t('tasks.feed.tools', { count: item.calls.length }) }}</span><span class="last">{{ item.calls[item.calls.length - 1]!.tool }} {{ item.calls[item.calls.length - 1]!.summary }}</span></summary>
             <div v-for="call in item.calls" :key="call.id" class="tool-call">
               <code class="tool-name">{{ call.tool }}</code>
               <span class="tool-summary" :title="call.summary">{{ call.summary }}</span>

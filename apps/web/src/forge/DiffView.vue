@@ -3,9 +3,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useTemplate
 import { ChevronDown, ChevronRight, ChevronUp, Columns2, Folder, FolderOpen, Rows2, Search, WrapText } from 'lucide-vue-next';
 import { VInputText } from '@ui/kit';
 import type { DiffFile, Discussion } from '../connectors/api';
+import { t } from '../i18n';
 import DiffFileBody from './DiffFileBody.vue';
+import { isMarkdownPath } from './fileBase';
+import MarkdownPreview from './MarkdownPreview.vue';
 
-const props = defineProps<{ files: DiffFile[]; discussions: Discussion[]; connector?: string }>();
+const props = defineProps<{ files: DiffFile[]; discussions: Discussion[]; connector?: string; project?: string; headSha?: string; requestUrl?: string }>();
 
 type Mode = 'unified' | 'split';
 type IndexSet = ShallowRef<ReadonlySet<number>>;
@@ -44,6 +47,7 @@ const pinned = shallowRef(-1);
 const collapsed: IndexSet = shallowRef(new Set<number>());
 const shown: IndexSet = shallowRef(new Set<number>());
 const expanded: IndexSet = shallowRef(new Set<number>());
+const previewing: IndexSet = shallowRef(new Set<number>());
 const closedDirs = shallowRef<ReadonlySet<string>>(new Set());
 const activeIndex = shallowRef(0);
 const threadCursor = shallowRef(-1);
@@ -96,6 +100,15 @@ function exclude(set: IndexSet, index: number) {
 const toggleCollapsed = (index: number) => toggle(collapsed, index);
 const expandFile = (index: number) => include(expanded, index);
 
+function canPreview(file: DiffFile): boolean {
+  return Boolean(props.connector && props.project && props.headSha && props.requestUrl) && file.status !== 'deleted' && isMarkdownPath(file.new_path);
+}
+
+function setPreview(index: number, on: boolean) {
+  if (on) include(previewing, index);
+  else exclude(previewing, index);
+}
+
 const totals = computed(() => props.files.reduce((acc, f) => ({ additions: acc.additions + f.additions, deletions: acc.deletions + f.deletions }), { additions: 0, deletions: 0 }));
 
 const query = computed(() => filter.value.trim().toLowerCase());
@@ -138,14 +151,14 @@ const fileDiscussions = computed<Discussion[][]>(() => {
 });
 
 function note(file: DiffFile): string | null {
-  if (file.binary) return 'Бинарный файл';
-  if (file.too_large) return 'Файл слишком большой для показа, откройте его в браузере';
-  if (!file.patch) return file.status === 'renamed' ? 'Файл переименован без изменений содержимого' : 'Нет изменений в содержимом';
+  if (file.binary) return t('forge.diff.note.binary');
+  if (file.too_large) return t('forge.diff.note.tooLarge');
+  if (!file.patch) return file.status === 'renamed' ? t('forge.diff.note.renamed') : t('forge.diff.note.unchanged');
   return null;
 }
 
 const STATUS_MARK: Record<DiffFile['status'], string> = { added: 'A', deleted: 'D', modified: 'M', renamed: 'R' };
-const STATUS_TITLE: Record<DiffFile['status'], string> = { added: 'Добавлен', deleted: 'Удалён', modified: 'Изменён', renamed: 'Переименован' };
+const STATUS_TITLE_KEY = { added: 'forge.diff.status.added', deleted: 'forge.diff.status.deleted', modified: 'forge.diff.status.modified', renamed: 'forge.diff.status.renamed' } as const;
 
 function buildTree(): TreeNode {
   const top: TreeNode = { name: '', path: '', dirs: new Map(), files: [] };
@@ -437,9 +450,9 @@ defineExpose({ focusThread, root });
     <aside class="tree" data-testid="diff-tree">
       <div class="tree-filter">
         <Search :size="14" />
-        <VInputText v-model="filter" class="tree-input" placeholder="Фильтр файлов" autocomplete="off" data-testid="diff-filter" />
+        <VInputText v-model="filter" class="tree-input" :placeholder="t('forge.diff.filter')" autocomplete="off" data-testid="diff-filter" />
       </div>
-      <div class="tree-list">
+      <div v-auto-animate class="tree-list">
         <template v-for="row in treeRows" :key="row.key">
           <button v-if="row.kind === 'dir'" class="tree-row dir" :style="{ paddingLeft: `${8 + row.depth * 12}px` }" @click="toggleDir(row)">
             <component :is="row.open ? FolderOpen : Folder" :size="14" />
@@ -455,46 +468,58 @@ defineExpose({ focusThread, root });
             data-testid="diff-tree-file"
             @click="scrollToFile(row.index)"
           >
-            <span class="mark" :data-status="files[row.index]!.status" :title="STATUS_TITLE[files[row.index]!.status]">{{ STATUS_MARK[files[row.index]!.status] }}</span>
+            <span class="mark" :data-status="files[row.index]!.status" :title="t(STATUS_TITLE_KEY[files[row.index]!.status])">{{ STATUS_MARK[files[row.index]!.status] }}</span>
             <span class="tree-name">{{ row.name }}</span>
             <span class="counts"><span class="add">+{{ row.additions }}</span> <span class="del">−{{ row.deletions }}</span></span>
           </button>
         </template>
-        <p v-if="!treeRows.length" class="tree-empty">Ничего не найдено</p>
+        <p v-if="!treeRows.length" class="tree-empty">{{ t('common.noResults') }}</p>
       </div>
     </aside>
 
     <div class="main">
       <header class="toolbar">
-        <span class="summary">{{ files.length }} файлов <span class="add">+{{ totals.additions }}</span> <span class="del">−{{ totals.deletions }}</span></span>
+        <span class="summary">{{ t('forge.diff.fileCount', { count: files.length }) }} <span class="add">+{{ totals.additions }}</span> <span class="del">−{{ totals.deletions }}</span></span>
         <span class="spacer" />
         <span v-if="unresolved.length" class="group">
-          <button class="icon" title="Предыдущее обсуждение (p)" aria-label="Предыдущее обсуждение" data-testid="diff-prev-thread" @click="stepThread(-1)"><ChevronUp :size="14" /></button>
-          <span>{{ unresolved.length }} нерешённых</span>
-          <button class="icon" title="Следующее обсуждение (n)" aria-label="Следующее обсуждение" data-testid="diff-next-thread" @click="stepThread(1)"><ChevronDown :size="14" /></button>
+          <button class="icon" :title="t('forge.diff.prevThreadTitle')" :aria-label="t('forge.diff.prevThread')" data-testid="diff-prev-thread" @click="stepThread(-1)"><ChevronUp :size="14" /></button>
+          <span>{{ t('forge.diff.unresolvedCount', { count: unresolved.length }) }}</span>
+          <button class="icon" :title="t('forge.diff.nextThreadTitle')" :aria-label="t('forge.diff.nextThread')" data-testid="diff-next-thread" @click="stepThread(1)"><ChevronDown :size="14" /></button>
         </span>
-        <button class="mode" :data-active="wrap" :aria-pressed="wrap" title="Переносить строки" data-testid="diff-wrap" @click="toggleWrap"><WrapText :size="14" />Переносить строки</button>
-        <span class="group" role="group" aria-label="Режим диффа">
-          <button class="mode" :data-active="mode === 'unified'" title="Единый" data-testid="diff-mode-unified" @click="setMode('unified')"><Rows2 :size="14" />Единый</button>
-          <button class="mode" :data-active="mode === 'split'" title="Рядом" data-testid="diff-mode-split" @click="setMode('split')"><Columns2 :size="14" />Рядом</button>
+        <button class="mode" :data-active="wrap" :aria-pressed="wrap" :title="t('forge.diff.wrap')" data-testid="diff-wrap" @click="toggleWrap"><WrapText :size="14" />{{ t('forge.diff.wrap') }}</button>
+        <span class="group" role="group" :aria-label="t('forge.diff.modeLabel')">
+          <button class="mode" :data-active="mode === 'unified'" :title="t('forge.diff.unified')" data-testid="diff-mode-unified" @click="setMode('unified')"><Rows2 :size="14" />{{ t('forge.diff.unified') }}</button>
+          <button class="mode" :data-active="mode === 'split'" :title="t('forge.diff.split')" data-testid="diff-mode-split" @click="setMode('split')"><Columns2 :size="14" />{{ t('forge.diff.split') }}</button>
         </span>
       </header>
 
-      <div ref="scroller" class="files" data-testid="diff-files" @scroll.passive="onScroll" @wheel.passive="release" @pointerdown="release" @touchstart.passive="release">
-        <p v-if="!files.length" class="empty">Нет изменённых файлов</p>
-        <p v-else-if="!visible.length" class="empty">Ничего не найдено</p>
+      <div ref="scroller" v-auto-animate class="files" data-testid="diff-files" @scroll.passive="onScroll" @wheel.passive="release" @pointerdown="release" @touchstart.passive="release">
+        <p v-if="!files.length" class="empty">{{ t('forge.diff.noFiles') }}</p>
+        <p v-else-if="!visible.length" class="empty">{{ t('common.noResults') }}</p>
         <section v-for="{ file, i } in entries" :key="`${file.old_path}>${file.new_path}`" :ref="(el) => (fileEls[i] = el as HTMLElement | null)" class="file" :data-index="i" data-testid="diff-file">
           <header class="file-head" @click="toggleCollapsed(i)">
-            <component :is="collapsed.has(i) ? ChevronRight : ChevronDown" :size="14" class="chev" />
-            <span class="mark" :data-status="file.status" :title="STATUS_TITLE[file.status]">{{ STATUS_MARK[file.status] }}</span>
+            <ChevronRight :size="14" class="chev vr-chevron" :data-open="!collapsed.has(i)" />
+            <span class="mark" :data-status="file.status" :title="t(STATUS_TITLE_KEY[file.status])">{{ STATUS_MARK[file.status] }}</span>
             <span class="path" :title="file.new_path">
               <template v-if="file.status === 'renamed' && file.old_path !== file.new_path">{{ file.old_path }} → </template>{{ file.new_path }}
+            </span>
+            <span v-if="canPreview(file)" class="group" role="group" :aria-label="t('forge.diff.fileView')" @click.stop>
+              <button class="mode" :data-active="!previewing.has(i)" data-testid="diff-file-code" @click="setPreview(i, false)">{{ t('forge.diff.code') }}</button>
+              <button class="mode" :data-active="previewing.has(i)" data-testid="diff-file-preview" @click="setPreview(i, true)">{{ t('forge.diff.preview') }}</button>
             </span>
             <span class="counts"><span class="add">+{{ file.additions }}</span> <span class="del">−{{ file.deletions }}</span></span>
           </header>
 
           <template v-if="!collapsed.has(i)">
-            <p v-if="note(file)" class="file-note" data-testid="diff-note">{{ note(file) }}</p>
+            <MarkdownPreview
+              v-if="previewing.has(i) && canPreview(file)"
+              :connector="connector!"
+              :project="project!"
+              :sha="headSha!"
+              :path="file.new_path"
+              :request-url="requestUrl!"
+            />
+            <p v-else-if="note(file)" class="file-note" data-testid="diff-note">{{ note(file) }}</p>
             <DiffFileBody
               v-else-if="shown.has(i)"
               :file="file"

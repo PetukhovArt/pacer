@@ -4,6 +4,7 @@ import { Bot, ChevronRight, ExternalLink, GitMerge, MessageSquare, Square } from
 import { VButton, VMessage, VSelect } from '@ui/kit';
 import Avatar from '../Avatar.vue';
 import Composer from '../Composer.vue';
+import { t } from '../i18n';
 import { view } from '../nav';
 import TaskFeed from './TaskFeed.vue';
 import TaskSide from './TaskSide.vue';
@@ -31,7 +32,7 @@ async function startAgent() {
   const agent = agentKind.value;
   const project = projectId.value;
   if (!agent || !project) {
-    error.value = client.runner ? 'Выберите агента и проект' : 'Раннер не найден: запустите veyra-runner и перезапустите vite';
+    error.value = client.runner ? t('tasks.task.pickAgentAndProject') : t('tasks.task.runnerMissing');
     return;
   }
   await run(async () => {
@@ -55,16 +56,16 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
 <template>
   <div v-if="task" class="task" :data-testid="`task-panel-${task.externalRef}`">
     <header>
-      <nav class="crumbs" aria-label="Путь">
+      <nav class="crumbs" :aria-label="t('tasks.path')">
         <span>{{ workspaceName() }}</span>
         <ChevronRight :size="12" />
-        <button @click="view = { kind: 'tasks' }">Задачи</button>
+        <button @click="view = { kind: 'tasks' }">{{ t('tasks.title') }}</button>
         <ChevronRight :size="12" />
         <span>{{ task.externalRef }}</span>
       </nav>
       <div class="title-row">
         <h1 :title="task.title">
-          <a v-if="task.webUrl" :href="task.webUrl" target="_blank" rel="noopener" class="key" data-testid="task-tracker-link" title="Открыть в трекере">
+          <a v-if="task.webUrl" :href="task.webUrl" target="_blank" rel="noopener" class="key" data-testid="task-tracker-link" :title="t('tasks.task.openInTracker')">
             {{ task.externalRef }}<ExternalLink :size="12" />
           </a>
           <span v-else class="key">{{ task.externalRef }}</span>
@@ -72,8 +73,8 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
         </h1>
       </div>
       <div class="vr-pills" role="tablist">
-        <button role="tab" :aria-selected="tab === 'feed'" data-testid="tab-feed" @click="tab = 'feed'">Лента</button>
-        <button role="tab" :aria-selected="tab === 'agents'" data-testid="tab-agents" @click="tab = 'agents'">Агенты {{ agents.length || '' }}</button>
+        <button role="tab" :aria-selected="tab === 'feed'" data-testid="tab-feed" @click="tab = 'feed'">{{ t('tasks.tabs.feed') }}</button>
+        <button role="tab" :aria-selected="tab === 'agents'" data-testid="tab-agents" @click="tab = 'agents'">{{ t('tasks.tabs.agents') }} {{ agents.length || '' }}</button>
         <button role="tab" :aria-selected="tab === 'mr'" data-testid="tab-mr" @click="tab = 'mr'">MR {{ mergeRequests.length || '' }}</button>
       </div>
     </header>
@@ -85,7 +86,7 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
         <TaskFeed v-if="tab === 'feed'" :ctx="ctx" />
 
         <div v-else-if="tab === 'agents'" class="pane">
-          <p v-if="!agents.length" class="vr-muted">Агенты ещё не работали над задачей.</p>
+          <p v-if="!agents.length" class="vr-muted">{{ t('tasks.task.noAgents') }}</p>
           <ul class="vr-list" data-testid="activities">
             <li v-for="id in agents" :key="id" class="activity" :data-testid="`activity-${statusOf(id)}`">
               <div class="who">
@@ -99,7 +100,7 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
                   size="small"
                   severity="danger"
                   text
-                  label="Остановить"
+                  :label="t('tasks.task.stop')"
                   data-testid="agent-stop"
                   @click="run(() => client.stopAgent(taskId, id))"
                 >
@@ -126,7 +127,7 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
         </div>
 
         <div v-else class="pane">
-          <p v-if="!mergeRequests.length" class="vr-muted">Merge requests с ключом {{ task.externalRef }} пока нет.</p>
+          <p v-if="!mergeRequests.length" class="vr-muted">{{ t('tasks.task.noMergeRequests', { key: task.externalRef }) }}</p>
           <ul v-else class="vr-list" data-testid="merge-requests">
             <li v-for="mr in mergeRequests" :key="mr.id" :data-testid="`merge-request-${mr.iid}`">
               <a class="vr-row mr" :href="mr.webUrl" target="_blank" rel="noopener" data-testid="merge-request-link">
@@ -146,37 +147,37 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
           <Composer
             v-if="mode === 'chat'"
             v-model="chatText"
-            :placeholder="`Сообщение в ${task.externalRef}`"
-            label="Сообщение в чат"
+            :placeholder="t('tasks.task.chatPlaceholder', { key: task.externalRef })"
+            :label="t('tasks.task.chatLabel')"
             testid="chat-text"
             send-testid="chat-send"
-            send-label="Отправить"
+            :send-label="t('tasks.send')"
             @submit="sendChat"
           >
-            <button type="button" class="mode" aria-pressed="true" title="Сообщение команде"><MessageSquare :size="16" /></button>
-            <button type="button" class="mode" aria-pressed="false" title="Задание агенту" data-testid="composer-agent" @click="mode = 'agent'"><Bot :size="16" /></button>
+            <button type="button" class="mode" aria-pressed="true" :title="t('tasks.task.messageToTeam')"><MessageSquare :size="16" /></button>
+            <button type="button" class="mode" aria-pressed="false" :title="t('tasks.task.taskForAgent')" data-testid="composer-agent" @click="mode = 'agent'"><Bot :size="16" /></button>
           </Composer>
           <Composer
             v-else
             v-model="prompt"
-            placeholder="Что сделать агенту"
-            label="Задание агенту"
+            :placeholder="t('tasks.task.agentPlaceholder')"
+            :label="t('tasks.task.taskForAgent')"
             testid="agent-prompt"
             send-testid="agent-start"
-            send-label="Запустить агента"
+            :send-label="t('tasks.task.startAgent')"
             @submit="startAgent"
           >
-            <button type="button" class="mode" aria-pressed="false" title="Сообщение команде" data-testid="composer-chat" @click="mode = 'chat'"><MessageSquare :size="16" /></button>
-            <button type="button" class="mode" aria-pressed="true" title="Задание агенту"><Bot :size="16" /></button>
-            <VSelect v-model="agentKind" :options="agentKinds" size="small" placeholder="Агент" aria-label="Агент" data-testid="agent-kind" />
+            <button type="button" class="mode" aria-pressed="false" :title="t('tasks.task.messageToTeam')" data-testid="composer-chat" @click="mode = 'chat'"><MessageSquare :size="16" /></button>
+            <button type="button" class="mode" aria-pressed="true" :title="t('tasks.task.taskForAgent')"><Bot :size="16" /></button>
+            <VSelect v-model="agentKind" :options="agentKinds" size="small" :placeholder="t('tasks.task.agent')" :aria-label="t('tasks.task.agent')" data-testid="agent-kind" />
             <VSelect
               v-model="projectId"
               :options="projects"
               option-label="name"
               option-value="id"
               size="small"
-              placeholder="Проект"
-              aria-label="Проект агента"
+              :placeholder="t('tasks.task.project')"
+              :aria-label="t('tasks.task.agentProject')"
               data-testid="agent-project"
             />
           </Composer>
@@ -185,7 +186,7 @@ const workspaceName = () => state.value.workspaces.find((w) => w.id === state.va
       <TaskSide :ctx="ctx" />
     </div>
   </div>
-  <div v-else class="missing vr-muted">Задача не найдена в этой компании.</div>
+  <div v-else class="missing vr-muted">{{ t('tasks.task.missing') }}</div>
 </template>
 
 <style scoped>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue';
 import type { DockviewApi } from 'dockview-vue';
 import { Folder, Layers, PanelLeft, Search, SquareArrowOutUpRight } from 'lucide-vue-next';
 import type { SessionNode } from '../pacer';
+import { t } from '../../i18n';
 import NewSessionForm from '../NewSessionForm.vue';
 import ProjectActions from '../manage/ProjectActions.vue';
 import WorkspaceActions from '../manage/WorkspaceActions.vue';
 import DockArea from './DockArea.vue';
 import NavNotices from './NavNotices.vue';
+import { listWorktreeMarkdown, type MarkdownEntry } from './markdownFiles';
+import { provideQuickOpen } from './quickOpen';
 import QuickSwitcher from './QuickSwitcher.vue';
 import WorktreeBlock from './WorktreeBlock.vue';
 import { NAVIGATOR_PANEL, useAgentsDock } from './useAgentsDock';
@@ -33,7 +36,7 @@ const switching = shallowRef(false);
 const entries = computed(() => [...paths.value.values()]);
 
 function addNavigator(api: DockviewApi) {
-  api.addPanel({ id: NAVIGATOR_PANEL, component: 'navigator', title: 'Навигатор', initialWidth: NAVIGATOR_WIDTH });
+  api.addPanel({ id: NAVIGATOR_PANEL, component: 'navigator', title: t('agents.layouts.navigator'), initialWidth: NAVIGATOR_WIDTH });
 }
 
 function showNavigator() {
@@ -41,7 +44,7 @@ function showNavigator() {
   if (!api) return;
   const existing = api.getPanel(NAVIGATOR_PANEL);
   if (existing) existing.api.setActive();
-  else api.addPanel({ id: NAVIGATOR_PANEL, component: 'navigator', title: 'Навигатор', initialWidth: NAVIGATOR_WIDTH, position: { direction: 'left' } });
+  else api.addPanel({ id: NAVIGATOR_PANEL, component: 'navigator', title: t('agents.layouts.navigator'), initialWidth: NAVIGATOR_WIDTH, position: { direction: 'left' } });
 }
 
 function floatNavigator() {
@@ -56,43 +59,61 @@ function floatNavigator() {
   api.addFloatingGroup(panel, { x: 24, y: 48, width: NAVIGATOR_WIDTH + 40, height: 520 });
 }
 
+const switcherFiles = shallowRef<MarkdownEntry[]>([]);
+
+watch(switching, async (on) => {
+  switcherFiles.value = [];
+  const worktree = state.activeWorktree.value;
+  if (!on || !worktree) return;
+  try {
+    const files = await listWorktreeMarkdown(worktree.path);
+    if (switching.value) switcherFiles.value = files;
+  } catch {
+    switcherFiles.value = [];
+  }
+});
+
 function pick(session: SessionNode) {
   switching.value = false;
   state.open(session);
 }
 
-function onWindowKey(event: KeyboardEvent) {
-  if (!state.visible.value || !event.ctrlKey || event.shiftKey || event.altKey || event.metaKey || event.code !== 'KeyP') return;
-  event.preventDefault();
-  event.stopPropagation();
-  switching.value = !switching.value;
+function pickFile(path: string) {
+  switching.value = false;
+  state.openFile(path, { worktreeId: state.activeWorktree.value?.id });
 }
 
-onMounted(() => window.addEventListener('keydown', onWindowKey, true));
-onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey, true));
+let stopQuickOpen = () => {};
+
+onMounted(() => {
+  stopQuickOpen = provideQuickOpen(() => {
+    if (state.visible.value) switching.value = !switching.value;
+  });
+});
+onBeforeUnmount(() => stopQuickOpen());
 </script>
 
 <template>
   <div class="layout">
     <div class="toolbar">
-      <button class="tool" title="Показать навигатор" data-testid="navigator-show" @click="showNavigator"><PanelLeft :size="14" />Навигатор</button>
-      <button class="tool" title="Вынести навигатор в плавающее окно" data-testid="navigator-float" @click="floatNavigator"><SquareArrowOutUpRight :size="14" />Плавающий</button>
-      <button class="tool" title="Быстрый переход (Ctrl+P)" data-testid="quick-switch-open" @click="switching = true"><Search :size="14" />Перейти<kbd>Ctrl+P</kbd></button>
+      <button class="tool" :title="t('agents.layouts.showNavigator')" data-testid="navigator-show" @click="showNavigator"><PanelLeft :size="14" />{{ t('agents.layouts.navigator') }}</button>
+      <button class="tool" :title="t('agents.layouts.floatNavigatorTitle')" data-testid="navigator-float" @click="floatNavigator"><SquareArrowOutUpRight :size="14" />{{ t('agents.layouts.floating') }}</button>
+      <button class="tool" :title="t('agents.layouts.quickOpenTitle')" data-testid="quick-switch-open" @click="switching = true"><Search :size="14" />{{ t('agents.layouts.quickOpen') }}<kbd>Ctrl+P</kbd></button>
       <span class="spacer" />
-      <span class="tip">Shift + перетаскивание вкладки: плавающая группа</span>
-      <button class="tool" title="Использование памяти" data-testid="open-metrics" @click="state.openMetrics()">Память</button>
+      <span class="tip">{{ t('agents.layouts.dragTip') }}</span>
+      <button class="tool" :title="t('agents.metrics.open')" data-testid="open-metrics" @click="state.openMetrics()">{{ t('agents.metrics.title') }}</button>
     </div>
-    <DockArea :active-key="activeKey" :paths="paths" group-labels @ready="state.onReady">
+    <DockArea :active-key="activeKey" :paths="paths" group-labels @ready="state.onReady" @open-file="(path, hash, from) => state.openFile(path, { hash, from })">
       <template #navigator>
-        <aside class="navigator" aria-label="Сессии pacer" data-testid="navigator">
+        <aside v-auto-animate class="navigator" :aria-label="t('agents.layouts.pacerSessions')" data-testid="navigator">
           <NavNotices />
-          <section v-for="workspace in pacer?.tree.value ?? []" :key="workspace.id" class="workspace">
+          <section v-for="workspace in pacer?.tree.value ?? []" :key="workspace.id" v-auto-animate class="workspace">
             <div class="ws-head">
               <Layers :size="14" class="icon" />
               <h2 class="ws-name">{{ workspace.name }}</h2>
               <WorkspaceActions :workspace-id="workspace.id" />
             </div>
-            <div v-for="project in workspace.projects" :key="project.id" class="project">
+            <div v-for="project in workspace.projects" :key="project.id" v-auto-animate class="project">
               <div class="project-head">
                 <Folder :size="14" class="icon" />
                 <h3 class="project-name" :title="project.name">{{ project.name }}</h3>
@@ -105,16 +126,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey, true));
                 :active-key="activeKey"
                 @open="state.open"
                 @create="state.creatingIn.value = worktree.id"
+                @open-file="state.openFile($event, { worktreeId: worktree.id })"
               />
             </div>
             <ProjectActions :workspace-id="workspace.id" />
           </section>
-          <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">Нет сессий</p>
+          <p v-if="pacer?.connection.value.state === 'connected' && !pacer.sessions.value.size" class="empty">{{ t('agents.layouts.noSessions') }}</p>
           <WorkspaceActions class="new-workspace" />
         </aside>
       </template>
     </DockArea>
-    <QuickSwitcher v-if="switching" :entries="entries" @select="pick" @close="switching = false" />
+    <Transition name="qs">
+      <QuickSwitcher v-if="switching" :entries="entries" :files="switcherFiles" :file-scope="state.activeWorktree.value?.branch" @select="pick" @select-file="pickFile" @close="switching = false" />
+    </Transition>
     <NewSessionForm v-if="state.creatingWorktree.value" :key="state.creatingWorktree.value.id" :worktree="state.creatingWorktree.value" @close="state.creatingIn.value = null" @created="state.onCreated" />
   </div>
 </template>

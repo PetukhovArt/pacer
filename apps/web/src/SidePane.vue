@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { shallowRef, useTemplateRef } from 'vue';
+import { t } from './i18n';
 
 const props = withDefaults(defineProps<{ storageKey: string; defaultWidth: number; label?: string; handleTestid?: string }>(), {
-  label: 'Ширина списка сессий',
   handleTestid: 'tree-resize-handle',
 });
 

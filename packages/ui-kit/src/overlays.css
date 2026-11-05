@@ -1,0 +1,73 @@
+@keyframes vr-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes vr-overlay-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes vr-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes vr-toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@keyframes vr-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes vr-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+:root :is(.p-anchored-overlay-enter-active, .p-dialog-enter-active, .p-contextmenu-enter-active, .p-popover-enter-active, .p-select-enter-active, .p-multiselect-enter-active) {
+  transition: none;
+  animation: vr-overlay-in var(--vr-motion-overlay-in) var(--vr-motion-ease-emphasized) both;
+}
+
+:root :is(.p-anchored-overlay-leave-active, .p-dialog-leave-active, .p-contextmenu-leave-active, .p-popover-leave-active, .p-select-leave-active, .p-multiselect-leave-active) {
+  transition: none;
+  animation: vr-overlay-out var(--vr-motion-overlay-out) var(--vr-motion-ease-accelerate) both;
+}
+
+:root .p-collapsible-enter-active,
+:root .p-collapsible-leave-active {
+  animation-duration: var(--vr-motion-base);
+  animation-timing-function: var(--vr-motion-ease-standard);
+}
+
+:root .p-overlay-mask-enter-active {
+  animation: vr-fade-in var(--vr-motion-overlay-in) var(--vr-motion-ease-standard) both;
+}
+
+:root .p-overlay-mask-leave-active {
+  animation: vr-fade-out var(--vr-motion-overlay-out) var(--vr-motion-ease-accelerate) both;
+}
+
+:root .p-toast-message-enter-active {
+  transition: none;
+  animation: vr-toast-in var(--vr-motion-overlay-in) var(--vr-motion-ease-emphasized) both;
+}
+
+:root .p-toast-message-leave-active {
+  transition: none;
+  animation: vr-toast-out var(--vr-motion-overlay-out) var(--vr-motion-ease-accelerate) both;
+}

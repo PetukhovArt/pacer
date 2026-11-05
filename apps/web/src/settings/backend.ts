@@ -1,6 +1,8 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 
-type Backend = {
+export type ConfigFile = 'settings' | 'keymap';
+
+export type Backend = {
   cached: () => string;
   remember: (text: string) => void;
   read: () => Promise<string>;
@@ -9,34 +11,41 @@ type Backend = {
   openExternal: (() => Promise<void>) | null;
 };
 
-const FILE_KEY = 'veyra.settings.json';
-const CACHE_KEY = 'veyra.settings.cache';
+const inTauri = '__TAURI_INTERNALS__' in window;
 
-const tauriBackend: Backend = {
-  cached: () => localStorage.getItem(CACHE_KEY) ?? '',
-  remember: (text) => localStorage.setItem(CACHE_KEY, text),
-  read: () => invoke<string>('settings_read'),
-  write: (text) => invoke<void>('settings_write', { text }),
-  watch: (onText) => {
-    void invoke<void>('settings_watch', { onEvent: new Channel<{ text: string }>((event) => onText(event.text)) });
-  },
-  openExternal: () => invoke<void>('settings_open_external'),
-};
+function tauriBackend(file: ConfigFile): Backend {
+  const cacheKey = `veyra.${file}.cache`;
+  return {
+    cached: () => localStorage.getItem(cacheKey) ?? '',
+    remember: (text) => localStorage.setItem(cacheKey, text),
+    read: () => invoke<string>('settings_read', { file }),
+    write: (text) => invoke<void>('settings_write', { text, file }),
+    watch: (onText) => {
+      void invoke<void>('settings_watch', { onEvent: new Channel<{ text: string }>((event) => onText(event.text)), file });
+    },
+    openExternal: () => invoke<void>('settings_open_external', { file }),
+  };
+}
 
-const browserBackend: Backend = {
-  cached: () => localStorage.getItem(FILE_KEY) ?? '',
-  remember: () => {},
-  read: () => Promise.resolve(localStorage.getItem(FILE_KEY) ?? ''),
-  write: (text) => {
-    localStorage.setItem(FILE_KEY, text);
-    return Promise.resolve();
-  },
-  watch: (onText) => {
-    window.addEventListener('storage', (event) => {
-      if (event.key === FILE_KEY) onText(event.newValue ?? '');
-    });
-  },
-  openExternal: null,
-};
+function browserBackend(file: ConfigFile): Backend {
+  const fileKey = `veyra.${file}.json`;
+  return {
+    cached: () => localStorage.getItem(fileKey) ?? '',
+    remember: () => {},
+    read: () => Promise.resolve(localStorage.getItem(fileKey) ?? ''),
+    write: (text) => {
+      localStorage.setItem(fileKey, text);
+      return Promise.resolve();
+    },
+    watch: (onText) => {
+      window.addEventListener('storage', (event) => {
+        if (event.key === fileKey) onText(event.newValue ?? '');
+      });
+    },
+    openExternal: null,
+  };
+}
 
-export const backend: Backend = '__TAURI_INTERNALS__' in window ? tauriBackend : browserBackend;
+export function createBackend(file: ConfigFile): Backend {
+  return inTauri ? tauriBackend(file) : browserBackend(file);
+}
