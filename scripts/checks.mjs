@@ -82,9 +82,10 @@ const scan = (filter, find) =>
   });
 
 const sh = promisify(exec);
-const run = async (command) => {
+const DIFF_VERIFY = join(homedir(), '.claude', 'hooks', 'diff-verify.mjs');
+const run = async (command, env = {}) => {
   try {
-    await sh(command, { maxBuffer: 1 << 26 });
+    await sh(command, { maxBuffer: 1 << 26, env: { ...process.env, ...env } });
     return [];
   } catch (error) {
     return lines(`${error.stdout ?? ''}${error.stderr ?? ''}`).slice(-40);
@@ -106,7 +107,7 @@ const checks = [
   ['new-files', 'не добавляй .md, *.test.*, *.spec.* и __tests__/: правда живёт в коде, тестов в проекте нет', async () => added.filter((file) => /\.md$|\.(test|spec)\.|(^|\/)__tests__\//i.test(file))],
   ['oxlint', 'исправь предупреждения oxlint, не отключай правило', async () => (lintable.length ? run(`oxlint --deny-warnings ${quoted(lintable)}`) : [])],
   ['knip', 'удали неиспользуемый export, файл или зависимость', () => run('knip')],
-  ['types', 'исправь ошибки типов', async () => [...(await run('pnpm -r --filter "...[HEAD]" --filter "!veyra" --if-present typecheck')), ...(files.some((file) => file.startsWith('scripts/')) ? await run('tsc -p .') : [])]],
+  ['types', 'исправь ошибки типов', async () => (existsSync(DIFF_VERIFY) ? run(`node "${DIFF_VERIFY}"`, { VERIFY_SKIP_LINT: '1', VERIFY_SKIP_TESTS: '1' }) : [...(await run('pnpm -r --filter "...[HEAD]" --filter "!veyra" --if-present typecheck')), ...(files.some((file) => file.startsWith('scripts/')) ? await run('tsc -p .') : [])])],
   ['rustfmt', 'отформатируй: cargo fmt --all или cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml', async () => (await Promise.all(Array.from({ length: Math.ceil(rust.length / 50) }, (_, i) => run(`rustfmt --check --edition 2021 ${quoted(rust.slice(i * 50, i * 50 + 50))}`)))).flat()],
   ['clippy', 'исправь замечания clippy, не глуши их через allow', async () => [...(tauriTouched ? await run('cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -- -D warnings') : []), ...(crateClippy ? await run(`cargo clippy ${crateClippy} -- -D warnings`) : [])]],
 ];
