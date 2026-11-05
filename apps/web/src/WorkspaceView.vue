@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { useClient, useClientState } from '@core/vue-bindings';
 import { DARK_CLASS } from '@ui/kit';
+import AgentsView from './agents/AgentsView.vue';
 import Sidebar from './Sidebar.vue';
 import { view, type View } from './nav';
 import TasksView from './views/TasksView.vue';
@@ -37,9 +38,12 @@ function toggleTheme() {
   <div class="shell">
     <Sidebar :dark="dark" @switch="switchWorkspace" @theme="toggleTheme" />
     <main class="card">
-      <TaskView v-if="view.kind === 'task'" :key="view.id" :task-id="view.id" />
-      <TopicView v-else-if="view.kind === 'topic'" :key="view.id" :topic-id="view.id" />
-      <TasksView v-else />
+      <KeepAlive include="AgentsView">
+        <AgentsView v-if="view.kind === 'agents'" />
+        <TaskView v-else-if="view.kind === 'task'" :key="view.id" :task-id="view.id" />
+        <TopicView v-else-if="view.kind === 'topic'" :key="view.id" :topic-id="view.id" />
+        <TasksView v-else />
+      </KeepAlive>
     </main>
   </div>
 </template>

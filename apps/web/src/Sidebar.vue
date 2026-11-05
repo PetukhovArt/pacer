@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, type Directive } from 'vue';
-import { Hash, ListTodo, Moon, Plus, Search, Sun } from 'lucide-vue-next';
+import { Hash, ListTodo, Moon, Plus, Search, SquareTerminal, Sun } from 'lucide-vue-next';
 import { useClient, useClientState } from '@core/vue-bindings';
 import Avatar from './Avatar.vue';
 import { openTask, openTopic, view } from './nav';
@@ -79,6 +79,10 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
       <button class="item" :data-active="view.kind === 'tasks'" data-testid="open-tasks" @click="view = { kind: 'tasks' }">
         <ListTodo :size="16" />
         <span>Задачи</span>
+      </button>
+      <button class="item" :data-active="view.kind === 'agents'" data-testid="open-agents" @click="view = { kind: 'agents' }">
+        <SquareTerminal :size="16" />
+        <span>Агенты</span>
       </button>
     </div>
 
