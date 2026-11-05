@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import '@xterm/xterm/css/xterm.css';
-import { onBeforeUnmount, onMounted, useTemplateRef } from 'vue';
+import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { attachSession, detachSession, resizeSession, sendInput, sessionId, type SessionEvent, type SessionRef } from './pacer';
+import { terminalFontSize, zoomStep, zoomTerminal } from './terminalFont';
 
 const props = defineProps<{ session: SessionRef }>();
 const host = useTemplateRef<HTMLDivElement>('host');
@@ -46,8 +47,8 @@ onMounted(() => {
   const session = props.session;
   const term = new Terminal({
     allowProposedApi: true,
-    fontFamily: "'Cascadia Mono', Consolas, monospace",
-    fontSize: 13,
+    fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--vr-font-mono').trim(),
+    fontSize: terminalFontSize.value,
     cursorBlink: true,
     scrollback: 10000,
     theme: themeFromTokens(),
@@ -74,6 +75,14 @@ onMounted(() => {
     queueMicrotask(() => {
       fromKeyboard = false;
     });
+    const zoom = zoomStep(event);
+    if (zoom !== null) {
+      if (event.type === 'keydown') {
+        event.preventDefault();
+        zoomTerminal(zoom);
+      }
+      return false;
+    }
     const sequence = enterSequence(event);
     if (sequence) {
       if (event.type === 'keydown') {
@@ -108,6 +117,18 @@ onMounted(() => {
   });
   themes.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
+  const stopZoom = watch(terminalFontSize, (size) => {
+    term.options.fontSize = size;
+    refit();
+  });
+  const onWheel = (event: WheelEvent) => {
+    if (!event.ctrlKey || event.deltaY === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    zoomTerminal(event.deltaY < 0 ? 1 : -1);
+  };
+  element.addEventListener('wheel', onWheel, { passive: false, capture: true });
+
   refit();
   const onEvent = (event: SessionEvent) => {
     if (disposed) return;
@@ -136,6 +157,8 @@ onMounted(() => {
     clearTimeout(timer);
     resizes.disconnect();
     themes.disconnect();
+    stopZoom();
+    element.removeEventListener('wheel', onWheel, { capture: true });
     void attached.then(() => detachSession(session));
     term.dispose();
   };

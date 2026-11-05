@@ -3,7 +3,7 @@ import PrimeVue from 'primevue/config';
 import Aura from '@primeuix/themes/aura';
 import { definePreset } from '@primeuix/themes';
 import { inkScale } from '@ui/tokens';
-import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/wix-madefor-text';
 import '@fontsource/jetbrains-mono/400.css';
 import '@ui/tokens/light.css';
 import '@ui/tokens/dark.css';

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue';
+import { ArchiveRestore, Trash2 } from 'lucide-vue-next';
 import { VButton } from '@ui/kit';
 import { deleteAgent, unarchiveAgent, type SessionNode } from './pacer';
 import { useAction } from './useAction';
@@ -23,8 +24,8 @@ async function confirmDelete() {
     <div class="line">
       <span class="name" :title="session.name">{{ session.name }}</span>
       <template v-if="!confirming">
-        <VButton label="Восстановить" size="small" text :loading="action.busy.value" data-testid="archived-restore" @click="restore" />
-        <VButton label="Удалить" size="small" text severity="danger" data-testid="archived-delete" @click="confirming = true" />
+        <button class="icon" title="Восстановить" aria-label="Восстановить" :disabled="action.busy.value" data-testid="archived-restore" @click="restore"><ArchiveRestore :size="14" /></button>
+        <button class="icon danger" title="Удалить" aria-label="Удалить" :disabled="action.busy.value" data-testid="archived-delete" @click="confirming = true"><Trash2 :size="14" /></button>
       </template>
     </div>
     <div v-if="confirming" class="confirm" role="group" aria-label="Подтверждение удаления" data-testid="session-delete-confirm">
@@ -52,6 +53,40 @@ async function confirmDelete() {
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--vr-color-text-muted);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--vr-color-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--vr-radius-sm);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.archived:hover .icon,
+.icon:focus-visible {
+  opacity: 1;
+}
+
+.icon:hover {
+  color: var(--vr-color-text);
+  background: var(--vr-color-nav-hover);
+}
+
+.icon.danger:hover {
+  color: var(--vr-color-danger);
+}
+
+.icon:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .archived[data-busy='true'] .name {

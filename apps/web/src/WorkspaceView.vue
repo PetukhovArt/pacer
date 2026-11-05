@@ -11,7 +11,9 @@ import TopicView from './views/TopicView.vue';
 
 const client = useClient();
 const state = useClientState();
-const dark = ref(document.documentElement.classList.contains(DARK_CLASS));
+const THEME_KEY = 'veyra.theme';
+const dark = ref(localStorage.getItem(THEME_KEY) !== 'light');
+document.documentElement.classList.toggle(DARK_CLASS, dark.value);
 const WORKSPACE_KEY = 'veyra.workspace';
 const viewKey = `veyra.view.${state.value.me.id}`;
 
@@ -31,6 +33,7 @@ function switchWorkspace(id: string) {
 function toggleTheme() {
   dark.value = !dark.value;
   document.documentElement.classList.toggle(DARK_CLASS, dark.value);
+  localStorage.setItem(THEME_KEY, dark.value ? 'dark' : 'light');
 }
 </script>
 

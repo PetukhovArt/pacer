@@ -35,7 +35,7 @@
     "sidebar": { "$value": "300px" }, "meta": { "$value": "280px" }, "avatar": { "$value": "36px" }, "avatar-sm": { "$value": "24px" }, "row": { "$value": "32px" }
   },
   "font": {
-    "family": { "$type": "fontFamily", "$value": "'Inter Variable', Inter, 'Avenir Next', 'Segoe UI', sans-serif" },
+    "family": { "$type": "fontFamily", "$value": "'Wix Madefor Text Variable', 'Wix Madefor Text', 'Segoe UI', sans-serif" },
     "mono": { "$type": "fontFamily", "$value": "'JetBrains Mono', Consolas, monospace" },
     "size": {
       "$type": "dimension",
