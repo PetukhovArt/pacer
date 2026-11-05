@@ -183,6 +183,14 @@ function createDock() {
     creatingIn.value = worktreeId;
   }
 
+  function startCreateInMain() {
+    const projects = (pacer?.tree.value ?? []).flatMap((workspace) => workspace.projects);
+    const active = activeWorktree.value?.id;
+    const project = projects.find((candidate) => candidate.worktrees.some((worktree) => worktree.id === active)) ?? projects[0];
+    const target = project?.worktrees.find((worktree) => worktree.main) ?? project?.worktrees[0];
+    if (target) startCreate(target.id);
+  }
+
   function onCreated(session: SessionRef) {
     creatingIn.value = null;
     openWhenListed(session);
@@ -257,6 +265,7 @@ function createDock() {
     openMetrics,
     openWhenListed,
     startCreate,
+    startCreateInMain,
     onCreated,
     useHost,
   };

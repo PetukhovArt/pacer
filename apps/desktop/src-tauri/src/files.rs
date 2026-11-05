@@ -18,6 +18,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(500);
 const TEXT_LIMIT: u64 = 20 * 1024 * 1024;
 const BINARY_LIMIT: u64 = 25 * 1024 * 1024;
 const LIST_LIMIT: usize = 2000;
+const DIRS_LIMIT: usize = 500;
 const SKIPPED_DIRS: [&str; 4] = ["node_modules", ".git", "target", "dist"];
 const MARKDOWN_EXTENSIONS: [&str; 3] = ["md", "markdown", "mdx"];
 const EXECUTABLE_EXTENSIONS: [&str; 24] = [
@@ -190,6 +191,31 @@ pub async fn fs_list_markdown(root: String) -> Result<Vec<String>, String> {
             return Err(format!("не папка: {}", root.display()));
         }
         Ok(collect_markdown(&root))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn collect_dirs(root: &Path) -> Result<Vec<String>, String> {
+    let entries =
+        fs::read_dir(root).map_err(|e| format!("не удалось прочитать {}: {e}", root.display()))?;
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    names.truncate(DIRS_LIMIT);
+    Ok(names)
+}
+
+pub async fn fs_list_dirs(root: String) -> Result<Vec<String>, String> {
+    spawn_blocking(move || {
+        let root = PathBuf::from(root);
+        if !root.is_dir() {
+            return Err(format!("не папка: {}", root.display()));
+        }
+        collect_dirs(&root)
     })
     .await
     .map_err(|e| e.to_string())?

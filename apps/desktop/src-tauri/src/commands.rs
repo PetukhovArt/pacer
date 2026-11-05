@@ -51,6 +51,7 @@ macro_rules! plain_commands {
             free fs_read_text(path: String) = $crate::files::fs_read_text;
             free fs_read_binary(path: String) = $crate::files::fs_read_binary;
             free fs_list_markdown(root: String) = $crate::files::fs_list_markdown;
+            free fs_list_dirs(root: String) = $crate::files::fs_list_dirs;
             local_free settings_open_external(file: Option<$crate::settings::ConfigFile>) = $crate::settings::settings_open_external;
             local_free fs_open_external(path: String) = $crate::files::fs_open_external;
         }

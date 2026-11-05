@@ -21,5 +21,10 @@ export const workbench: Translation<typeof en> = {
   pick: 'Выберите сессию, запрос или задачу в дереве',
   newTopic: 'Новый топик',
   topicName: 'Название топика',
+  addToPacer: 'Добавить в pacer',
+  repoActions: 'Действия с репозиторием',
+  pickClone: 'Найдено несколько локальных клонов, выберите',
+  mainCheckout: 'основной клон',
+  cloneNotFound: 'Клон не найден — укажите путь к папке',
   quickPath: 'проект › ветка › сессия, запрос или задача',
 };

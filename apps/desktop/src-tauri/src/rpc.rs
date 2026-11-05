@@ -14,10 +14,11 @@ use crate::pacer::{self, Pacer, WatchEvent};
 use crate::settings::{self, ConfigFile, SettingsWatch};
 use crate::sink::{BoxSink, Sink};
 
-const GUARDED: [(&str, &str); 5] = [
+const GUARDED: [(&str, &str); 6] = [
     ("fs_read_text", "path"),
     ("fs_read_binary", "path"),
     ("fs_list_markdown", "root"),
+    ("fs_list_dirs", "root"),
     ("fs_watch", "path"),
     ("forge_for_worktree", "path"),
 ];
@@ -151,6 +152,14 @@ fn inside(roots: &[PathBuf], raw: &str) -> bool {
         .is_ok_and(|path| roots.iter().any(|root| path.starts_with(root)))
 }
 
+fn parent_of_root(roots: &[PathBuf], raw: &str) -> bool {
+    std::fs::canonicalize(Path::new(raw)).is_ok_and(|path| {
+        roots
+            .iter()
+            .any(|root| root.parent() == Some(path.as_path()))
+    })
+}
+
 impl Client {
     pub fn new(connectors: Arc<Connectors>, out: UnboundedSender<String>) -> Self {
         Self {
@@ -176,7 +185,12 @@ impl Client {
         };
         let raw = args.get(*key).and_then(Value::as_str).unwrap_or_default();
         let roots = self.roots.lock().unwrap_or_else(|e| e.into_inner());
-        if inside(&roots, raw) {
+        let allowed = if cmd == "fs_list_dirs" {
+            parent_of_root(&roots, raw)
+        } else {
+            inside(&roots, raw)
+        };
+        if allowed {
             Ok(())
         } else {
             Err(format!("путь вне рабочих деревьев pacer: {raw}"))

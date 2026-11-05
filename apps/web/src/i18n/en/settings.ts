@@ -40,6 +40,10 @@ export const settings = {
       label: 'Animations',
       description: 'Smooth transitions between views and animated lists. Turn off to reduce motion.',
     },
+    closeToTray: {
+      label: 'Close to tray',
+      description: 'Closing the window hides Veyra to the tray instead of quitting. Quit from the tray menu. Desktop app only.',
+    },
     terminalFontFamily: {
       label: 'Terminal font',
       description: 'Comma-separated list of font families, as in CSS font-family.',

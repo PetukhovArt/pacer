@@ -12,6 +12,7 @@ use crate::pacer::{self, Pacer, SessionEvent, WatchEvent};
 use crate::remote::{Remote, RemoteStatus, WebAsset, WebSource};
 use crate::settings::{self, ConfigFile, SettingsChanged, SettingsWatch};
 use crate::sink::Sink;
+use crate::tray;
 
 struct ChannelSink<T: IpcResponse>(Channel<T>);
 
@@ -154,8 +155,10 @@ pub fn run() {
             let watcher = remote.clone();
             tauri::async_runtime::spawn(async move { watcher.spawn_watch() });
             app.manage(remote);
+            tray::install(app.handle())?;
             Ok(())
         })
+        .on_window_event(tray::on_window_event)
         .invoke_handler(tauri::generate_handler![
             pacer_watch,
             pacer_attach,
@@ -187,6 +190,7 @@ pub fn run() {
             fs_watch,
             fs_unwatch,
             fs_list_markdown,
+            fs_list_dirs,
             fs_open_external,
             jira_search,
             jira_issue,
@@ -202,6 +206,7 @@ pub fn run() {
             ai_env,
             remote_status,
             remote_regenerate_token,
+            tray::tray_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running veyra desktop");

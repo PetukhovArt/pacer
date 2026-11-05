@@ -5,6 +5,7 @@ export type BinaryFile = { mime: string; base64: string };
 export const fsReadText = (path: string) => invoke<string>('fs_read_text', { path });
 export const fsReadBinary = (path: string) => invoke<BinaryFile>('fs_read_binary', { path });
 export const fsListMarkdown = (root: string) => invoke<string[]>('fs_list_markdown', { root });
+export const fsListDirs = (root: string) => invoke<string[]>('fs_list_dirs', { root });
 export const canOpenExternal = isDesktop;
 export const fsOpenExternal = (path: string) => invoke<void>('fs_open_external', { path });
 

@@ -50,31 +50,35 @@ function parseRemote(remote: string): Remote | null {
   return { host: host.toLowerCase(), path };
 }
 
-async function readConfig(repo: string): Promise<string> {
+async function readConfig(repo: string): Promise<{ text: string; main: boolean }> {
   try {
-    return await fsReadText(joinPath(repo, '.git/config'));
+    return { text: await fsReadText(joinPath(repo, '.git/config')), main: true };
   } catch {
     const pointer = /^gitdir:\s*(.+)$/m.exec(await fsReadText(joinPath(repo, '.git')))?.[1]?.trim();
     if (!pointer) throw new Error('no gitdir');
     const gitdir = joinPath(repo, pointer);
     try {
-      return await fsReadText(joinPath(gitdir, 'config'));
+      return { text: await fsReadText(joinPath(gitdir, 'config')), main: false };
     } catch {
       const common = (await fsReadText(joinPath(gitdir, 'commondir'))).trim();
-      return fsReadText(joinPath(joinPath(gitdir, common), 'config'));
+      return { text: await fsReadText(joinPath(joinPath(gitdir, common), 'config')), main: false };
     }
   }
 }
 
-async function lookup(repo: string) {
-  let found: Remote | null = null;
+export async function inspectClone(repo: string): Promise<{ remote: Remote | null; main: boolean }> {
   try {
-    const url = originUrl(await readConfig(repo));
-    found = url ? parseRemote(url) : null;
+    const { text, main } = await readConfig(repo);
+    const url = originUrl(text);
+    return { remote: url ? parseRemote(url) : null, main };
   } catch {
-    found = null;
+    return { remote: null, main: false };
   }
-  remotes.value = new Map([...remotes.value, [repo, found]]);
+}
+
+async function lookup(repo: string) {
+  const { remote } = await inspectClone(repo);
+  remotes.value = new Map([...remotes.value, [repo, remote]]);
 }
 
 export function lookupRemotes(repos: readonly string[]): void {

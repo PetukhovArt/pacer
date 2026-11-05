@@ -18,5 +18,10 @@ export const workbench = {
   pick: 'Pick a session, request or task in the tree',
   newTopic: 'New topic',
   topicName: 'Topic name',
+  addToPacer: 'Add to pacer',
+  repoActions: 'Repository actions',
+  pickClone: 'Several local clones found, pick one',
+  mainCheckout: 'main checkout',
+  cloneNotFound: 'Clone not found — enter the folder path',
   quickPath: 'project › branch › session, request or task',
 } as const;

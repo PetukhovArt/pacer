@@ -253,7 +253,13 @@ function onKey(event: KeyboardEvent) {
         <component :is="row.expanded && row.node.iconOpen ? row.node.iconOpen : row.node.icon" v-if="row.node.icon" :size="14" class="kind-icon" />
         <template v-if="row.group">
           <slot name="label" :node="row.node" :expanded="row.expanded">
-            <span class="label" :data-kind="row.node.kind">{{ row.node.label }}</span>
+            <span class="label" :data-kind="row.node.kind">
+              <template v-if="row.node.detail">
+                <b class="name">{{ row.node.label }}</b>
+                <span class="detail">{{ row.node.detail }}</span>
+              </template>
+              <template v-else>{{ row.node.label }}</template>
+            </span>
           </slot>
           <template v-if="!row.expanded">
             <span v-if="row.node.count !== undefined" class="count" :title="row.node.countTitle" data-testid="tree-count">{{ row.node.count }}</span>
@@ -362,6 +368,17 @@ function onKey(event: KeyboardEvent) {
 
 .group > .toggle > .label {
   font-weight: 500;
+}
+
+.name {
+  font-weight: 600;
+}
+
+.detail {
+  margin-left: var(--vr-space-1);
+  font-size: var(--vr-font-size-xs);
+  font-weight: 400;
+  color: var(--vr-color-text-muted);
 }
 
 .group[aria-level='1'] > .toggle > .label {

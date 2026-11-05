@@ -64,6 +64,13 @@ export const SETTINGS = {
     description: 'settings.def.animations.description',
     category: 'appearance',
   },
+  'window.closeToTray': {
+    type: 'boolean',
+    default: false,
+    label: 'settings.def.closeToTray.label',
+    description: 'settings.def.closeToTray.description',
+    category: 'appearance',
+  },
   'terminal.font_family': {
     type: 'string',
     default: monoFont,

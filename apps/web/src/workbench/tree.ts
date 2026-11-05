@@ -1,6 +1,6 @@
 import type { Topic } from '@core/client-sdk';
 import type { Task } from '@veyra/protocol';
-import { Archive, Eye, Folder, FolderOpen, GitBranch, GitPullRequest, Hash, House, Inbox, Layers, ListTodo, SquareTerminal, UserRound } from 'lucide-vue-next';
+import { Archive, Eye, Folder, FolderGit2, FolderOpen, GitBranch, GitPullRequest, Hash, House, Inbox, Layers, ListTodo, SquareTerminal, UserRound } from 'lucide-vue-next';
 import { worktreesOfProject, type Entities, type SessionNode, type WorktreeNode } from '../agents/pacer';
 import { rollupOf, type Rollup, type WorkspaceNode } from '../agents/proto/nav';
 import type { ConnectorView, InboxItem, JiraIssueSummary, PipelineStatus } from '../connectors/api';
@@ -8,6 +8,7 @@ import { numberLabel } from '../forge/format';
 import { itemId, pipelineRollup } from '../forge/inbox';
 import { t } from '../i18n';
 import type { TreeNode } from '../tree/types';
+import type { RepoRef } from './clones';
 import { issuePanelId, taskPanelId } from './dock';
 import { connectorBase, type Remote } from './remotes';
 
@@ -25,6 +26,7 @@ type NodeData = {
   issue?: JiraIssueSummary;
   task?: Task;
   topic?: Topic;
+  repo?: RepoRef;
 };
 
 export type WorkNode = TreeNode<NodeData>;
@@ -49,6 +51,7 @@ type Links = {
   mrs: Map<string | null, InboxItem[]>;
   work: Map<string | null, Work[]>;
   worktreeMr: Map<string, InboxItem>;
+  repoOf: Map<string, RepoRef>;
 };
 
 const JIRA_KEY = /[A-Z][A-Z0-9]+-\d+/g;
@@ -59,11 +62,14 @@ function link(sources: Sources): Links {
   const entities = sources.entities;
   const projects = entities ? [...entities.projects.values()] : [];
   const bases = new Map(sources.connectors.map((connector) => [connector.id, connectorBase(connector.base_url)]));
-  const links: Links = { mrs: new Map(), work: new Map(), worktreeMr: new Map() };
+  const links: Links = { mrs: new Map(), work: new Map(), worktreeMr: new Map(), repoOf: new Map() };
 
   for (const item of [...sources.mrs].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))) {
     const base = bases.get(item.connector);
-    const full = [base?.path, item.project].filter(Boolean).join('/').toLowerCase();
+    const path = [base?.path, item.project].filter(Boolean).join('/');
+    const full = path.toLowerCase();
+    const host = base?.host ?? item.connector;
+    links.repoOf.set(itemId(item), { key: `${host}/${full}`, host, path });
     const project = base
       ? projects.find((candidate) => {
           const remote = sources.remotes.get(candidate.repo_path);
@@ -173,6 +179,24 @@ function mrsGroup(id: string, items: readonly InboxItem[]): WorkNode {
   return group(id, 'mrs', t('workbench.mergeRequests'), mrSections(id, items), { icon: GitPullRequest, data: { pipeline: pipelineRollup(items) } });
 }
 
+function repoNodes(prefix: string, items: readonly InboxItem[], repoOf: ReadonlyMap<string, RepoRef>, inner: (id: string, items: readonly InboxItem[]) => WorkNode[]): WorkNode[] {
+  const byRepo = new Map<string, { repo: RepoRef; items: InboxItem[] }>();
+  for (const item of items) {
+    const repo = repoOf.get(itemId(item));
+    if (!repo) continue;
+    const entry = byRepo.get(repo.key) ?? { repo, items: [] };
+    entry.items.push(item);
+    byRepo.set(repo.key, entry);
+  }
+  const name = (repo: RepoRef) => repo.path.slice(repo.path.lastIndexOf('/') + 1);
+  return [...byRepo.values()]
+    .sort((a, b) => name(a.repo).localeCompare(name(b.repo)) || a.repo.key.localeCompare(b.repo.key))
+    .map(({ repo, items: list }) => {
+      const id = `${prefix}|repo:${repo.key}`;
+      return group(id, 'repo', name(repo), inner(id, list), { icon: FolderGit2, detail: repo.path.slice(0, Math.max(0, repo.path.lastIndexOf('/'))) || undefined, title: `${repo.host}/${repo.path}`, data: { repo, pipeline: pipelineRollup(list) } });
+    });
+}
+
 function workGroup(id: string, items: readonly Work[]): WorkNode {
   return group(id, 'tasks', t('workbench.tasks'), items.map(workLeaf), { icon: ListTodo });
 }
@@ -210,7 +234,7 @@ export function buildTree(sources: Sources, mode: TreeMode, query: string): Work
         const items = mrsOf(project.id);
         return items.length ? [group(`m|pr:${project.id}`, 'project', projectLabel(workspace, project), mrSections(`m|pr:${project.id}`, items), { icon: Folder, iconOpen: FolderOpen, data: { pipeline: pipelineRollup(items) } })] : [];
       }),
-      ...(mrsOf(null).length ? [group('m|orphans', 'orphans', t('workbench.notInProject'), mrSections('m|orphans', mrsOf(null)), { icon: Inbox, data: { pipeline: pipelineRollup(mrsOf(null)) } })] : []),
+      ...(mrsOf(null).length ? [group('m|orphans', 'orphans', t('workbench.notInProject'), repoNodes('m|orphans', mrsOf(null), links.repoOf, mrSections), { icon: Inbox, data: { pipeline: pipelineRollup(mrsOf(null)) } })] : []),
     ];
     const workChildren = [
       ...projects.flatMap(({ workspace, project }) => {
@@ -251,7 +275,10 @@ export function buildTree(sources: Sources, mode: TreeMode, query: string): Work
 
   const orphanMrs = mrsOf(null);
   const orphanWork = workOf(null);
-  const orphans = [...(orphanMrs.length ? [mrsGroup('orphans|mrs', orphanMrs)] : []), ...(orphanWork.length ? [workGroup('orphans|tasks', orphanWork)] : [])];
+  const orphans = [
+    ...repoNodes('orphans', orphanMrs, links.repoOf, (id, list) => [mrsGroup(`${id}|mrs`, list)]),
+    ...(orphanWork.length ? [workGroup('orphans|tasks', orphanWork)] : []),
+  ];
   return [
     ...workspaceNodes,
     ...(orphans.length ? [group('orphans', 'orphans', t('workbench.notInProject'), orphans, { icon: Inbox, data: { pipeline: pipelineRollup(orphanMrs) } })] : []),
@@ -262,7 +289,7 @@ export function buildTree(sources: Sources, mode: TreeMode, query: string): Work
 
 export type QuickItem = { key: string; node: WorkNode; crumbs: string[]; search: string };
 
-const CRUMB_KINDS = new Set(['workspace', 'project', 'worktree', 'orphans']);
+const CRUMB_KINDS = new Set(['workspace', 'project', 'worktree', 'orphans', 'repo']);
 const QUICK_KINDS = new Set(['session', 'mr', 'issue', 'task', 'topic']);
 
 export function quickItems(nodes: readonly WorkNode[]): QuickItem[] {

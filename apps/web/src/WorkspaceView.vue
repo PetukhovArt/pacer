@@ -8,6 +8,7 @@ import MobileNav from './mobile/MobileNav.vue';
 import { useIsMobile } from './mobile/useIsMobile';
 import Sidebar from './Sidebar.vue';
 import TitleBar from './TitleBar.vue';
+import { installTray } from './tray';
 import { navigate, view, type View } from './nav';
 import { isDark, toggleTheme } from './settings/appearance';
 import SettingsView from './settings/SettingsView.vue';
@@ -26,6 +27,7 @@ const state = useClientState();
 const WORKSPACE_KEY = 'veyra.workspace';
 const viewKey = `veyra.view.v2.${state.value.me.id}`;
 const dock = useDock();
+installTray();
 
 try {
   view.value = JSON.parse(localStorage.getItem(viewKey) ?? '') as View;

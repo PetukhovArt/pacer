@@ -18,6 +18,7 @@ import { t } from '../i18n';
 import { openTopic, view } from '../nav';
 import ExplorerTree from '../tree/ExplorerTree.vue';
 import { useDock } from './dock';
+import RepoActions from './RepoActions.vue';
 import { treeMode, treeQuery, useWorkTree } from './useWorkTree';
 
 withDefaults(defineProps<{ withFilter?: boolean }>(), { withFilter: false });
@@ -34,7 +35,7 @@ const creatingTopic = shallowRef(false);
 const topicName = shallowRef('');
 const topicError = shallowRef('');
 
-const shownTitle = (item: InboxItem) => (item.draft ? item.title.replace(/^(draft:|\[draft\]|\(draft\)|wip:)\s*/i, '') : item.title);
+const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft:|\[draft\]|\(draft\)|wip:)\s*/i, '') : item.title);
 
 async function createTopic() {
   const name = topicName.value.trim();
@@ -125,6 +126,7 @@ async function createTopic() {
             <button class="icon" :title="t('agents.newSession.action')" :aria-label="t('agents.newSession.action')" data-testid="worktree-new-session" @click="dock.startCreate(node.data.worktree.id)"><Plus :size="14" /></button>
           </template>
           <WorkspaceActions v-else-if="node.kind === 'workspace' && node.data?.workspaceId" :workspace-id="node.data.workspaceId" />
+          <RepoActions v-else-if="node.kind === 'repo' && node.data?.repo" :repo="node.data.repo" />
           <ProjectActions
             v-else-if="node.kind === 'project' && node.data?.projectId && treeMode === 'project'"
             :project-id="node.data.projectId"

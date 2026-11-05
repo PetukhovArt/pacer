@@ -25,11 +25,11 @@ desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-opener"]
 tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [], optional = true }
+tauri = { version = "2", features = ["tray-icon"], optional = true }
 pacer-core = { git = "https://github.com/PetukhovArt/pacer", tag = "v0.19.0" }
 tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "time", "rt", "rt-multi-thread", "process", "signal"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }

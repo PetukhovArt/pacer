@@ -7,6 +7,7 @@ export type TreeNode<T = unknown> = {
   icon?: Component;
   iconOpen?: Component;
   children?: TreeNode<T>[];
+  detail?: string;
   count?: number | string;
   countTitle?: string;
   defaultExpanded?: boolean;
