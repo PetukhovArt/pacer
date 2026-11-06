@@ -4,8 +4,8 @@ import { createFileText } from './fileText';
 import { describeFailure, parseSettings, type ParseFailure } from './parse';
 import { SETTINGS, checkValue, coerceValue, defaultValues, isSettingKey, type SettingKey, type SettingValues } from './schema';
 
-const LEGACY_THEME_KEY = 'veyra.theme';
-const LEGACY_TERMINAL_SIZE_KEY = 'veyra.terminal.fontSize';
+const LEGACY_THEME_KEY = 'berth.theme';
+const LEGACY_TERMINAL_SIZE_KEY = 'berth.terminal.fontSize';
 const LEGACY_HOT_MODES = new Set(['strip', 'section', 'overview']);
 
 const fileObject = shallowRef<Record<string, unknown>>({});

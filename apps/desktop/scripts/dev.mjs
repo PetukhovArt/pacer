@@ -4,7 +4,7 @@ const env = {
   ...process.env,
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
     process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS ??
-    `--remote-debugging-port=${process.env.VEYRA_CDP_PORT ?? '9333'}`,
+    `--remote-debugging-port=${process.env.BERTH_CDP_PORT ?? process.env.VEYRA_CDP_PORT ?? '9333'}`,
 };
 
 const child = spawn('pnpm', ['tauri', 'dev', ...process.argv.slice(2)], {

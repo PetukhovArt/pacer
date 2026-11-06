@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue';
 
-const COLLAPSED_KEY = 'veyra.sidebar.collapsed';
+const COLLAPSED_KEY = 'berth.sidebar.collapsed';
 
 export const sidebarCollapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
 export const sidebarSearchRequests = ref(0);

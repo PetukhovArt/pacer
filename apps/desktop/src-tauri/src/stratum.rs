@@ -13,7 +13,7 @@ use tokio::sync::oneshot;
 use crate::child;
 use crate::connectors::types::Kind;
 use crate::connectors::Connectors;
-use crate::settings::veyra_dir;
+use crate::settings::berth_dir;
 
 const CONFIG: &str = "stratum.config.jsonc";
 const READY_MARK: &str = "stratum-visualizer ready at ";
@@ -213,7 +213,7 @@ fn reference_of(kind: Kind, number: u64) -> String {
 }
 
 fn cache_dir() -> Result<PathBuf, String> {
-    Ok(veyra_dir()?.join("stratum"))
+    Ok(berth_dir()?.join("stratum"))
 }
 
 fn short(sha: &str) -> &str {
@@ -668,7 +668,7 @@ fn kill_orphans(root: &Path) {
                         .name()
                         .to_string_lossy()
                         .to_lowercase()
-                        .contains("veyra")
+                        .contains("berth")
                 }),
                 None => true,
             }

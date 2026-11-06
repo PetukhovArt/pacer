@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Veyra</title>
+    <title>Berth</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
       html,
@@ -13,7 +13,7 @@
         overflow: hidden;
       }
 
-      #veyra-splash {
+      #berth-splash {
         --vs-ease: cubic-bezier(0.2, 0, 0, 1);
         position: fixed;
         inset: 0;
@@ -29,7 +29,7 @@
       }
 
 
-      #veyra-splash::before {
+      #berth-splash::before {
         content: '';
         position: absolute;
         inset: 0;
@@ -169,7 +169,7 @@
         animation: vs-shimmer 1.35s cubic-bezier(0.45, 0, 0.35, 1) infinite;
       }
 
-      #veyra-splash.vs-out {
+      #berth-splash.vs-out {
         pointer-events: none;
         animation: vs-leave 250ms var(--vs-ease) forwards;
       }
@@ -280,7 +280,7 @@
           animation: none;
         }
 
-        #veyra-splash.vs-out {
+        #berth-splash.vs-out {
           animation: vs-fade 250ms linear forwards;
         }
       }
@@ -288,7 +288,7 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="veyra-splash" role="presentation" aria-hidden="true">
+    <div id="berth-splash" role="presentation" aria-hidden="true">
       <div class="vs-stage">
         <div class="vs-glow"></div>
         <svg class="vs-mark" viewBox="0 0 96 96" width="128" height="128">
@@ -316,7 +316,7 @@
           <circle class="vs-node" cx="48" cy="13" r="3.2" />
         </svg>
         <div class="vs-word">
-          <span style="--i: 0">V</span><span style="--i: 1">e</span><span style="--i: 2">y</span><span style="--i: 3">r</span><span style="--i: 4">a</span>
+          <span style="--i: 0">B</span><span style="--i: 1">e</span><span style="--i: 2">r</span><span style="--i: 3">t</span><span style="--i: 4">h</span>
         </div>
         <div class="vs-progress"></div>
       </div>
@@ -325,11 +325,11 @@
       (function () {
         var doc = document;
         var root = doc.documentElement;
-        var splash = doc.getElementById('veyra-splash');
+        var splash = doc.getElementById('berth-splash');
         if (!splash) return;
         var light = false;
         try {
-          light = /"theme"\s*:\s*"light"/.test(localStorage.getItem('veyra.settings.json') || '');
+          light = /"theme"\s*:\s*"light"/.test(localStorage.getItem('berth.settings.json') || localStorage.getItem('veyra.settings.json') || '');
         } catch (e) {}
         var palette = light
           ? { 'canvas-top': '#e6e6b6', 'canvas-bottom': '#c4d0da', text: '#24292e', a: '#3b82f6', b: '#8b5cf6', line: 'rgba(0, 0, 0, 0.14)', vignette: 'rgba(0, 0, 0, 0.07)', sheen: '#ffffff' }
@@ -369,7 +369,7 @@
           splash.parentNode.removeChild(splash);
           performance.mark('splash:removed');
           root.classList.remove('vs-leaving');
-          window.dispatchEvent(new Event('veyra:splash-removed'));
+          window.dispatchEvent(new Event('berth:splash-removed'));
         }
 
         function leave() {
@@ -405,10 +405,10 @@
           setTimeout(leave, 50);
         }
 
-        window.addEventListener('veyra:ready', appReady);
+        window.addEventListener('berth:ready', appReady);
         window.addEventListener('error', appReady);
         setTimeout(appReady, 15000);
-        window.addEventListener('veyra:splash-release', release);
+        window.addEventListener('berth:splash-release', release);
         if (hold) splash.addEventListener('click', release);
 
         var app = doc.getElementById('app');

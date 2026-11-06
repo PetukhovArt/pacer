@@ -6,6 +6,7 @@ pub mod connectors;
 #[cfg(feature = "desktop")]
 mod desktop;
 pub mod files;
+pub mod legacy;
 pub mod remote;
 mod review;
 pub mod rpc;
@@ -14,6 +15,9 @@ pub mod sink;
 pub mod stratum;
 #[cfg(feature = "desktop")]
 mod tray;
+
+#[cfg(feature = "desktop")]
+pub const IDENTIFIER: &str = "dev.berth.desktop";
 
 #[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

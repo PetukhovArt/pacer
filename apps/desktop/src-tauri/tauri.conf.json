@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Veyra",
+  "productName": "Berth",
   "version": "0.0.0",
-  "identifier": "dev.veyra.desktop",
+  "identifier": "dev.berth.desktop",
   "build": {
     "devUrl": "http://127.0.0.1:5196",
     "frontendDist": "../../web/dist",
-    "beforeDevCommand": "pnpm --filter @veyra/web dev --port 5196 --strictPort --host 127.0.0.1",
-    "beforeBuildCommand": "pnpm --filter @veyra/web build"
+    "beforeDevCommand": "pnpm --filter @berth/web dev --port 5196 --strictPort --host 127.0.0.1",
+    "beforeBuildCommand": "pnpm --filter @berth/web build"
   },
   "app": {
     "windows": [
       {
-        "title": "Veyra",
+        "title": "Berth",
         "width": 1400,
         "height": 900,
         "decorations": false,

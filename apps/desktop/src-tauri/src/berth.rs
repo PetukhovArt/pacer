@@ -220,7 +220,7 @@ impl Failure {
         match self {
             Self::Offline(message) => message,
             Self::Incompatible(daemon) => format!(
-                "berth daemon speaks protocol v{daemon}, Veyra speaks protocol v{PROTOCOL_VERSION}"
+                "berth daemon speaks protocol v{daemon}, Berth desktop speaks protocol v{PROTOCOL_VERSION}"
             ),
         }
     }

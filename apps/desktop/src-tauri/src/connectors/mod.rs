@@ -120,7 +120,7 @@ pub struct Connectors {
 }
 
 fn registry_path() -> Result<PathBuf, String> {
-    Ok(crate::settings::veyra_dir()?.join("connectors.json"))
+    Ok(crate::settings::berth_dir()?.join("connectors.json"))
 }
 
 fn persist(records: &[Record]) -> Result<(), String> {

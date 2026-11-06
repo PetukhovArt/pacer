@@ -1,3 +1,4 @@
+import './legacyStorage';
 import { createApp, watchEffect } from 'vue';
 import { installUiKit } from '@ui/kit';
 import './app.css';

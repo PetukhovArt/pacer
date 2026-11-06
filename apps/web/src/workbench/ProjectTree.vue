@@ -97,7 +97,7 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
       <p v-for="error in errors" :key="`${error.connector}:${error.message}`" class="strip" role="alert" data-testid="tree-error" :title="error.message">{{ error.connector }}: {{ error.message }}</p>
       <ExplorerTree
         :nodes="nodes"
-        :storage-key="`veyra.tree.expanded.${activeTab}`"
+        :storage-key="`berth.tree.expanded.${activeTab}`"
         :label="t('workbench.tree')"
         :selected="selected"
         :reveal-all="filtering"

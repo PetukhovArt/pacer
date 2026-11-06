@@ -27,7 +27,7 @@ function select(target: { connector: string; id: string }) {
     :empty-text="t('confluence.view.empty')"
     :placeholder="t('confluence.view.placeholder')"
     test-id="confluence-view"
-    storage-key="veyra.confluence"
+    storage-key="berth.confluence"
     picker
     :preferred="open?.connector"
     :selected="open"

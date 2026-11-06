@@ -44,7 +44,7 @@ function onKey(event: KeyboardEvent) {
 <template>
   <div class="editor" @keydown="onKey">
     <div class="bar">
-      <span class="path">~/.veyra/{{ name }}</span>
+      <span class="path">~/.berth/{{ name }}</span>
       <span v-if="dirty" class="status">{{ t('settings.json.unsaved') }}</span>
       <span v-else-if="saved" class="status" :data-testid="`${testPrefix}-json-saved`">{{ t('settings.json.saved') }}</span>
       <VButton :label="t('common.save')" size="small" :disabled="!dirty" title="Ctrl+S" :data-testid="`${testPrefix}-json-save`" @click="commit" />

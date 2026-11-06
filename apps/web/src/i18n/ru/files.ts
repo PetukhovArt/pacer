@@ -16,7 +16,7 @@ export const files: Translation<typeof en> = {
     saveTitle: 'Сохранить (Ctrl+S)',
     changed: {
       title: 'Файл изменён на диске',
-      hint: 'Файл изменён вне Veyra, а у вас есть несохранённые правки.',
+      hint: 'Файл изменён вне Berth, а у вас есть несохранённые правки.',
       reload: 'Перечитать',
       keep: 'Оставить мою (перезаписать)',
       compare: 'Сравнить',

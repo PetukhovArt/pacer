@@ -1,5 +1,5 @@
 export const agents = {
-  unavailable: 'Berth sessions work only in the Veyra desktop app',
+  unavailable: 'Sessions work only in the Berth desktop app',
   sidePane: {
     resize: 'Session list width',
   },
@@ -55,7 +55,7 @@ export const agents = {
     title: 'Memory',
     open: 'Memory Usage',
     aria: 'Session memory',
-    unavailable: 'Metrics are available only in the Veyra desktop app',
+    unavailable: 'Metrics are available only in the Berth desktop app',
     total: 'Total memory',
     ofSystem: '{used} of {total} ({percent}%)',
     breakdown: 'daemon {daemon} + sessions {sessions}',

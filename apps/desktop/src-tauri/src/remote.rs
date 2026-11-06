@@ -23,10 +23,10 @@ use crate::rpc::{Client, Outbox};
 use crate::settings;
 
 const TOKEN_ID: &str = "remote-pairing-token";
-const COOKIE: &str = "veyra_remote";
+const COOKIE: &str = "berth_remote";
 const COOKIE_MAX_AGE: u32 = 30 * 24 * 60 * 60;
-const WS_PATH: &str = "/__veyra/ws";
-const HEALTH_PATH: &str = "/__veyra/health";
+const WS_PATH: &str = "/__berth/ws";
+const HEALTH_PATH: &str = "/__berth/health";
 const POLL: Duration = Duration::from_secs(1);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 const FAIL_WINDOW: Duration = Duration::from_secs(60);
@@ -43,8 +43,8 @@ const INLINE: [&str; 9] = [
     "fs_watch",
     "fs_unwatch",
 ];
-const REMOTE_MARKER: &str = "<head><meta name=\"veyra-remote\" content=\"1\">";
-const DENIED_PAGE: &str = "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width\"><title>Veyra</title><body style=\"font-family:system-ui;padding:2rem;background:#111;color:#ddd\"><h1>Veyra</h1><p>Open the pairing link or scan the QR code from Veyra settings → Remote access.</p><p>Откройте ссылку подключения или отсканируйте QR-код в настройках Veyra → Удалённый доступ.</p>";
+const REMOTE_MARKER: &str = "<head><meta name=\"berth-remote\" content=\"1\">";
+const DENIED_PAGE: &str = "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width\"><title>Berth</title><body style=\"font-family:system-ui;padding:2rem;background:#111;color:#ddd\"><h1>Berth</h1><p>Open the pairing link or scan the QR code from Berth settings → Remote access.</p><p>Откройте ссылку подключения или отсканируйте QR-код в настройках Berth → Удалённый доступ.</p>";
 
 pub struct WebAsset {
     pub bytes: Vec<u8>,

@@ -791,6 +791,7 @@ fn host_label(name: &str) -> Option<&'static str> {
         "terminal" => "Terminal",
         "warp" => "Warp",
         "tmux" | "tmux: server" => "tmux",
+        "berth-desktop" => "Berth",
         "veyra-desktop" => "Veyra",
         _ => return None,
     })

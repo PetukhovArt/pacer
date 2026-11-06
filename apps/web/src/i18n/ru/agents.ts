@@ -2,7 +2,7 @@ import type { Translation } from '../types';
 import type { agents as en } from '../en/agents';
 
 export const agents: Translation<typeof en> = {
-  unavailable: 'Сессии berth работают только в десктопном приложении Veyra',
+  unavailable: 'Сессии работают только в десктопном приложении Berth',
   sidePane: {
     resize: 'Ширина списка сессий',
   },
@@ -58,7 +58,7 @@ export const agents: Translation<typeof en> = {
     title: 'Память',
     open: 'Использование памяти',
     aria: 'Память сессий',
-    unavailable: 'Метрики доступны только в десктопном приложении Veyra',
+    unavailable: 'Метрики доступны только в десктопном приложении Berth',
     total: 'Всего памяти',
     ofSystem: '{used} из {total} ({percent}%)',
     breakdown: 'демон {daemon} + сессии {sessions}',

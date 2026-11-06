@@ -13,7 +13,7 @@ export const files = {
     saveTitle: 'Save (Ctrl+S)',
     changed: {
       title: 'Changed on disk',
-      hint: 'This file was modified outside Veyra while you have unsaved edits.',
+      hint: 'This file was modified outside Berth while you have unsaved edits.',
       reload: 'Reload',
       keep: 'Keep mine (overwrite)',
       compare: 'Compare',

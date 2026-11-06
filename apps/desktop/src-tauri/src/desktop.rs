@@ -162,6 +162,9 @@ pub fn web_source<R: Runtime>(app: &AppHandle<R>) -> WebSource {
 }
 
 pub fn run() {
+    if !cfg!(debug_assertions) {
+        crate::legacy::adopt_webview_profile();
+    }
     let connectors = Arc::new(Connectors::load());
     let berth = tauri::async_runtime::block_on(async { Berth::spawn() });
     tauri::Builder::default()
@@ -247,7 +250,7 @@ pub fn run() {
             tray::tray_status,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building veyra desktop")
+        .expect("error while building berth desktop")
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
                 crate::stratum::shutdown();

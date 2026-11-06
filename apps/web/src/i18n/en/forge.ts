@@ -81,7 +81,7 @@ export const forge = {
     action: 'Architecture',
     title: 'Open the Stratum architecture map for this request',
     tab: 'Architecture · {label}',
-    remote: 'The architecture view runs on the computer where Veyra is installed and is not available over remote access',
+    remote: 'The architecture view runs on the computer where Berth is installed and is not available over remote access',
     noClone: 'No local clone of this repository is added to berth, so there is nothing to build the map from',
     noLinter: 'stratum-lint is not installed: add @petukhovart/stratum-lint to the repository or install it globally',
     checking: 'Checking the repository for a Stratum config…',

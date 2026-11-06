@@ -41,7 +41,7 @@ const scheme = {
   navigation: { item: { focusBackground: v('color-surface-muted'), activeBackground: v('color-surface-muted'), color: v('color-text'), focusColor: v('color-text'), activeColor: v('color-text') } },
 };
 
-const VeyraPreset = definePreset(Aura, {
+const BerthPreset = definePreset(Aura, {
   primitive: { borderRadius: { none: '0', xs: '4px', sm: v('radius-sm'), md: v('radius-md'), lg: v('radius-lg'), xl: v('radius-xl') } },
   semantic: {
     transitionDuration: v('motion-base'),
@@ -52,7 +52,7 @@ const VeyraPreset = definePreset(Aura, {
 });
 
 export function installUiKit(app: App): void {
-  app.use(PrimeVue, { theme: { preset: VeyraPreset, options: { darkModeSelector: `.${DARK_CLASS}` } } });
+  app.use(PrimeVue, { theme: { preset: BerthPreset, options: { darkModeSelector: `.${DARK_CLASS}` } } });
   installMotion(app);
 }
 

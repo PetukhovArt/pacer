@@ -20,7 +20,7 @@ import QuickOpen from './workbench/QuickOpen.vue';
 
 const inTauri = '__TAURI_INTERNALS__' in window;
 const mobile = useIsMobile();
-const viewKey = 'veyra.view.v2';
+const viewKey = 'berth.view.v2';
 const dock = useDock();
 installTray();
 

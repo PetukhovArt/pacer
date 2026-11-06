@@ -19,7 +19,7 @@ type Anchor = { line: number; top: number };
 const props = defineProps<{ path: string; hash?: string }>();
 const emit = defineEmits<{ 'open-file': [path: string, hash: string] }>();
 
-const MODE_KEY = 'veyra.markdown.mode';
+const MODE_KEY = 'berth.markdown.mode';
 const END_SLACK = 2;
 
 function storedMode(): Mode {

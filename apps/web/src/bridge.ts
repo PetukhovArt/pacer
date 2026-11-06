@@ -1,7 +1,7 @@
 import { Channel as TauriChannel, invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 export const isDesktop = '__TAURI_INTERNALS__' in window;
-const isRemote = !isDesktop && document.querySelector('meta[name="veyra-remote"]') !== null;
+const isRemote = !isDesktop && document.querySelector('meta[name="berth-remote"]') !== null;
 export const hasBackend = isDesktop || isRemote;
 
 export type BridgeChannel<T> = { onmessage: (message: T) => void };
@@ -10,7 +10,7 @@ type Frame = { ready?: true; id?: number; ok?: unknown; err?: string; channel?: 
 type Pending = { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
 
 const RECONNECT_DELAY_MS = 2000;
-const WS_PATH = '/__veyra/ws';
+const WS_PATH = '/__berth/ws';
 
 class RemoteChannel<T> implements BridgeChannel<T> {
   constructor(

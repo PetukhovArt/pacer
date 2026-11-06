@@ -23,7 +23,7 @@ type Source = { harness: 'claude' | 'codex'; id: string };
 type Raw = Omit<HotItem, 'pinned' | 'preview' | 'lastActivity'> & { live: boolean; seed: number | null; stamp: number; source: Source | null };
 type Tracked = { seq: number; since: number; sig: string };
 
-const PINS_KEY = 'veyra.hot.pins';
+const PINS_KEY = 'berth.hot.pins';
 const MRU_LIMIT = 50;
 const PREVIEW_LIMIT = 12;
 const PREVIEW_CHARS = 140;

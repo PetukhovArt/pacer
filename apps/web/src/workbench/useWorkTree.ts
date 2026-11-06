@@ -10,21 +10,21 @@ import { fetchMissing, fetchedRows, parseMrUrl, refreshReviews, reviewEntries, s
 import { t } from '../i18n';
 import { buildTree, tabCounts, type ReviewMeta, type ReviewNoteView, type ReviewSource, type ReviewState, type Sources, type TreeTab } from './tree';
 
-const TAB_KEY = 'veyra.tree.tab';
-const OLD_KEYS = ['veyra.tree.mode', 'veyra.tree.expanded.project', 'veyra.tree.expanded.type'];
+const TAB_KEY = 'berth.tree.tab';
+const OLD_KEYS = ['berth.tree.mode', 'berth.tree.expanded.project', 'berth.tree.expanded.type'];
 const TABS: readonly TreeTab[] = ['sessions', 'mrs', 'reviews', 'tasks'];
 
 function migrate() {
-  const old = localStorage.getItem('veyra.tree.expanded.type');
+  const old = localStorage.getItem('berth.tree.expanded.type');
   if (old)
     for (const tab of ['sessions', 'mrs', 'tasks'])
-      if (localStorage.getItem(`veyra.tree.expanded.${tab}`) === null) localStorage.setItem(`veyra.tree.expanded.${tab}`, old);
+      if (localStorage.getItem(`berth.tree.expanded.${tab}`) === null) localStorage.setItem(`berth.tree.expanded.${tab}`, old);
   for (const key of OLD_KEYS) localStorage.removeItem(key);
 }
 
 migrate();
 
-const HOSTS_KEY = 'veyra.review.hosts';
+const HOSTS_KEY = 'berth.review.hosts';
 
 function storedHosts(): string[] {
   try {

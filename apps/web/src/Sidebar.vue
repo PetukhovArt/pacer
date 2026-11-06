@@ -22,8 +22,8 @@ const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 300;
 const RAIL_WIDTH = 56;
 const KEY_STEP = 16;
-const WIDTH_KEY = 'veyra.sidebar.tree.width';
-const EXPLORER_WIDTH_KEY = 'veyra.agents.a.width';
+const WIDTH_KEY = 'berth.sidebar.tree.width';
+const EXPLORER_WIDTH_KEY = 'berth.agents.a.width';
 
 function clampWidth(value: number) {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)));

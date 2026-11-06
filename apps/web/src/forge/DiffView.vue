@@ -16,8 +16,8 @@ type TreeRow = { key: string; kind: 'dir' | 'file'; depth: number; name: string;
 type TreeNode = { name: string; path: string; dirs: Map<string, TreeNode>; files: number[] };
 type Located = { discussion: Discussion; file: number; line: number };
 
-const MODE_KEY = 'veyra.diff.mode';
-const WRAP_KEY = 'veyra.diff.wrap';
+const MODE_KEY = 'berth.diff.mode';
+const WRAP_KEY = 'berth.diff.wrap';
 const LINE_HEIGHT = 20;
 const SETTLE_FRAMES = 8;
 const SETTLE_LIMIT = 90;

@@ -19,8 +19,8 @@ const emit = defineEmits<{ open: [payload: { connector: string; key: string }] }
 const { formatRelative, formatDate } = useI18n();
 
 const PAGE = 50;
-const FILTERS_KEY = 'veyra.jira.filters';
-const HISTORY_KEY = 'veyra.jira.history';
+const FILTERS_KEY = 'berth.jira.filters';
+const HISTORY_KEY = 'berth.jira.history';
 
 const PRESETS: Omit<Filter, 'name'>[] = [
   { id: 'mine', jql: 'assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC' },

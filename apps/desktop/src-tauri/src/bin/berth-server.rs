@@ -6,21 +6,22 @@ use std::sync::Arc;
 use berth_desktop_lib::connectors::monitor;
 use berth_desktop_lib::connectors::secrets::{self, FileStore};
 use berth_desktop_lib::connectors::Connectors;
+use berth_desktop_lib::legacy;
 use berth_desktop_lib::remote::{Pinned, Remote, WebAsset, WebSource};
 use berth_desktop_lib::settings;
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
 
-const USAGE: &str = "veyra-server: Veyra core without a window, served to browsers and phones
+const USAGE: &str = "berth-server: Berth core without a window, served to browsers and phones
 
-Usage: veyra-server [options]
+Usage: berth-server [options]
 
-  --bind <ip>          address to listen on (VEYRA_BIND, default 127.0.0.1)
-  --port <port>        port (VEYRA_PORT, default 4477)
-  --data-dir <dir>     settings, connectors and secrets (VEYRA_HOME, default ~/.veyra)
-  --web-dir <dir>      built web app (VEYRA_WEB_DIR, default <exe dir>/web)
-  --public-url <url>   address phones open, for the pairing link (VEYRA_PUBLIC_URL)
-  --secrets <mode>     auto | file | keyring (VEYRA_SECRETS, default auto)
+  --bind <ip>          address to listen on (BERTH_BIND, default 127.0.0.1)
+  --port <port>        port (BERTH_PORT, default 4477)
+  --data-dir <dir>     settings, connectors and secrets (BERTH_HOME, default ~/.berth)
+  --web-dir <dir>      built web app (BERTH_WEB_DIR, default <exe dir>/web)
+  --public-url <url>   address phones open, for the pairing link (BERTH_PUBLIC_URL)
+  --secrets <mode>     auto | file | keyring (BERTH_SECRETS, default auto)
   -h, --help           this help";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,13 +41,7 @@ struct Options {
 }
 
 fn env(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-}
-
-fn home() -> Option<PathBuf> {
-    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
+    legacy::env(name)
 }
 
 fn default_web() -> PathBuf {
@@ -73,12 +68,12 @@ fn parse_secrets(value: &str) -> Result<Secrets, String> {
 
 impl Options {
     fn parse() -> Result<Option<Self>, String> {
-        let mut bind = env("VEYRA_BIND");
-        let mut port = env("VEYRA_PORT");
-        let mut data = env("VEYRA_HOME").map(PathBuf::from);
-        let mut web = env("VEYRA_WEB_DIR").map(PathBuf::from);
-        let mut public_url = env("VEYRA_PUBLIC_URL");
-        let mut secrets = env("VEYRA_SECRETS");
+        let mut bind = env("BERTH_BIND");
+        let mut port = env("BERTH_PORT");
+        let mut data = env("BERTH_HOME").map(PathBuf::from);
+        let mut web = env("BERTH_WEB_DIR").map(PathBuf::from);
+        let mut public_url = env("BERTH_PUBLIC_URL");
+        let mut secrets = env("BERTH_SECRETS");
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             if arg == "-h" || arg == "--help" {
@@ -125,9 +120,8 @@ impl Options {
         };
         let data = match data {
             Some(data) => data,
-            None => home()
-                .map(|home| home.join(".veyra"))
-                .ok_or("HOME is not set: pass --data-dir")?,
+            None => settings::default_berth_dir()
+                .map_err(|_| "HOME is not set: pass --data-dir".to_owned())?,
         };
         Ok(Some(Self {
             bind,
@@ -149,7 +143,7 @@ fn install_secrets(options: &Options) -> String {
         Secrets::Auto => cfg!(target_os = "linux") || !secrets::keyring_available(),
     };
     if !file {
-        return "OS keyring, service \"veyra\", entry \"remote-pairing-token\"".to_owned();
+        return "OS keyring, service \"berth\", entry \"remote-pairing-token\"".to_owned();
     }
     let store = FileStore::new(options.data.join("secrets.json"));
     let note = format!("{} (key \"remote-pairing-token\")", store.path().display());
@@ -232,7 +226,7 @@ async fn stopped() {
 async fn serve(options: Options, token_note: String) -> ExitCode {
     if !options.web.join("index.html").is_file() {
         eprintln!(
-            "veyra-server: no index.html in {}: build apps/web or pass --web-dir",
+            "berth-server: no index.html in {}: build apps/web or pass --web-dir",
             options.web.display()
         );
     }
@@ -251,12 +245,12 @@ async fn serve(options: Options, token_note: String) -> ExitCode {
     let pairing = match remote.pairing() {
         Ok(pairing) => pairing,
         Err(message) => {
-            eprintln!("veyra-server: cannot start: {message}");
+            eprintln!("berth-server: cannot start: {message}");
             return ExitCode::FAILURE;
         }
     };
     println!(
-        "veyra-server listening on {}",
+        "berth-server listening on {}",
         SocketAddr::new(options.bind, options.port)
     );
     println!("data: {}", options.data.display());
@@ -268,7 +262,7 @@ async fn serve(options: Options, token_note: String) -> ExitCode {
     }
     remote.spawn_watch();
     stopped().await;
-    println!("veyra-server: stopping");
+    println!("berth-server: stopping");
     remote.shutdown();
     ExitCode::SUCCESS
 }
@@ -281,11 +275,11 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Err(message) => {
-            eprintln!("veyra-server: {message}\n\n{USAGE}");
+            eprintln!("berth-server: {message}\n\n{USAGE}");
             return ExitCode::from(2);
         }
     };
-    settings::set_veyra_dir(options.data.clone());
+    settings::set_berth_dir(options.data.clone());
     let token_note = install_secrets(&options);
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -293,7 +287,7 @@ fn main() -> ExitCode {
     {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("veyra-server: {error}");
+            eprintln!("berth-server: {error}");
             return ExitCode::FAILURE;
         }
     };

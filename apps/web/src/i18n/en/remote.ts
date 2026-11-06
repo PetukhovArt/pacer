@@ -3,7 +3,7 @@ export const remote = {
   def: {
     enabled: {
       label: 'Remote access',
-      description: 'Serve Veyra to a phone or browser over the network. Anyone with the pairing link controls your terminals.',
+      description: 'Serve Berth to a phone or browser over the network. Anyone with the pairing link controls your terminals.',
     },
     bind: {
       label: 'Listen on',
@@ -34,7 +34,7 @@ export const remote = {
     noClients: 'No devices connected',
     connectedAt: 'since {time}',
     qrLabel: 'QR code of the pairing link',
-    desktopOnly: 'Remote access is managed in the Veyra app on the computer. On a veyra-server (Docker) host the pairing link and QR code are in the server log: docker compose -f docker/compose.yaml logs veyra.',
+    desktopOnly: 'Remote access is managed in the Berth app on the computer. On a berth-server (Docker) host the pairing link and QR code are in the server log: docker compose -f docker/compose.yaml logs berth.',
     problem: {
       tailscale_missing: 'Tailscale address (100.x) not found. Start Tailscale or choose another network.',
       bind_failed: 'Could not listen on {message}',

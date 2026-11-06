@@ -12,7 +12,7 @@ export type Backend = {
 };
 
 function appBackend(file: ConfigFile): Backend {
-  const cacheKey = `veyra.${file}.cache`;
+  const cacheKey = `berth.${file}.cache`;
   return {
     cached: () => localStorage.getItem(cacheKey) ?? '',
     remember: (text) => localStorage.setItem(cacheKey, text),
@@ -26,7 +26,7 @@ function appBackend(file: ConfigFile): Backend {
 }
 
 function browserBackend(file: ConfigFile): Backend {
-  const fileKey = `veyra.${file}.json`;
+  const fileKey = `berth.${file}.json`;
   return {
     cached: () => localStorage.getItem(fileKey) ?? '',
     remember: () => {},

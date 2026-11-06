@@ -26,7 +26,7 @@ design-screenshots/
 node_modules/
 dist/
 target/
-/.stable-target/
+.stable-target/
 packages/ui-tokens/generated/
 apps/desktop/src-tauri/gen/
 *.log

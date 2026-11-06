@@ -45,7 +45,7 @@ export const settings: Translation<typeof en> = {
     },
     closeToTray: {
       label: 'Сворачивать в трей при закрытии',
-      description: 'Закрытие окна прячет Veyra в трей, а не завершает приложение. Выйти можно из меню трея. Только в десктопном приложении.',
+      description: 'Закрытие окна прячет Berth в трей, а не завершает приложение. Выйти можно из меню трея. Только в десктопном приложении.',
     },
     terminalFontFamily: {
       label: 'Шрифт терминала',
@@ -90,7 +90,7 @@ export const settings: Translation<typeof en> = {
       placeholder: 'по умолчанию',
     },
     sessionsExternalDays: {
-      label: 'Сессии, запущенные вне Veyra',
+      label: 'Сессии, запущенные вне Berth',
       description: 'За сколько дней дерево показывает сессии Claude Code и Codex, запущенные в терминале или IDE. 0 — не показывать.',
     },
     sessionsUnloadIdleAfter: {

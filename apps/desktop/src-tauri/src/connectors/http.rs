@@ -117,7 +117,7 @@ fn client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         Client::builder()
-            .user_agent("veyra-desktop")
+            .user_agent("berth-desktop")
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(TOTAL_TIMEOUT)
             .no_proxy()

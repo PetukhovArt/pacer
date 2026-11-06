@@ -152,7 +152,7 @@ fn write_text(path: &Path, text: &str, expected: &str) -> Result<String, String>
         .parent()
         .ok_or_else(|| format!("нет папки: {}", path.display()))?;
     let name = target.file_name().unwrap_or_default().to_string_lossy();
-    let temp = dir.join(format!(".{name}.veyra-{}.tmp", std::process::id()));
+    let temp = dir.join(format!(".{name}.berth-{}.tmp", std::process::id()));
     let written = (|| -> io::Result<()> {
         let mut file = fs::File::create(&temp)?;
         file.write_all(&out)?;

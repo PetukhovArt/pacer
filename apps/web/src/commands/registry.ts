@@ -13,7 +13,7 @@ export type ActionDefinition = {
 
 export type Action = Readonly<ActionDefinition> & { readonly condition: Condition | null };
 
-const RECENT_KEY = 'veyra.commands.recent';
+const RECENT_KEY = 'berth.commands.recent';
 const RECENT_LIMIT = 12;
 const PALETTE_ID = 'palette.open';
 

@@ -8,8 +8,8 @@ import ProjectTree from '../workbench/ProjectTree.vue';
 import NewSessionForm from './NewSessionForm.vue';
 import DockArea from './proto/DockArea.vue';
 
-localStorage.removeItem('veyra.agents.layout');
-localStorage.removeItem('veyra.agents.explorer.expanded');
+localStorage.removeItem('berth.agents.layout');
+localStorage.removeItem('berth.agents.explorer.expanded');
 
 const dock = useDock();
 const { onReady } = dock.useHost();

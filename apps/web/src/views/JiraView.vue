@@ -27,7 +27,7 @@ function select(target: { connector: string; key: string }) {
     :empty-text="t('jira.view.empty')"
     :placeholder="t('jira.view.placeholder')"
     test-id="jira-view"
-    storage-key="veyra.jira"
+    storage-key="berth.jira"
     picker
     :preferred="open?.connector"
     :selected="open"

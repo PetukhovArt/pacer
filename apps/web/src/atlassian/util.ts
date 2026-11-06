@@ -20,7 +20,7 @@ export function writeStored<T>(key: string, value: T[]): void {
 
 export type RecentPage = { connector: string; id: string; title: string; space: string };
 
-const RECENT_KEY = 'veyra.confluence.recent';
+const RECENT_KEY = 'berth.confluence.recent';
 
 export function recentPages(connector: string): RecentPage[] {
   return readStored<RecentPage>(RECENT_KEY).filter((page) => page.connector === connector);

@@ -42,7 +42,7 @@ export const settings = {
     },
     closeToTray: {
       label: 'Close to tray',
-      description: 'Closing the window hides Veyra to the tray instead of quitting. Quit from the tray menu. Desktop app only.',
+      description: 'Closing the window hides Berth to the tray instead of quitting. Quit from the tray menu. Desktop app only.',
     },
     terminalFontFamily: {
       label: 'Terminal font',
@@ -87,7 +87,7 @@ export const settings = {
       placeholder: 'default',
     },
     sessionsExternalDays: {
-      label: 'Sessions started outside Veyra',
+      label: 'Sessions started outside Berth',
       description: 'How many days back the tree shows Claude Code and Codex sessions started in a terminal or an IDE. 0 hides them.',
     },
     sessionsUnloadIdleAfter: {

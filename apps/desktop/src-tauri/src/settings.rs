@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, Once, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -67,24 +67,38 @@ struct Signature {
     len: u64,
 }
 
-static VEYRA_DIR: OnceLock<PathBuf> = OnceLock::new();
+const DIR_NAME: &str = ".berth";
+pub const HOME_VAR: &str = "BERTH_HOME";
 
-pub fn set_veyra_dir(dir: PathBuf) -> bool {
-    VEYRA_DIR.set(dir).is_ok()
+static BERTH_DIR: OnceLock<PathBuf> = OnceLock::new();
+static ADOPTED: Once = Once::new();
+
+pub fn set_berth_dir(dir: PathBuf) -> bool {
+    BERTH_DIR.set(dir).is_ok()
 }
 
-pub fn veyra_dir() -> Result<PathBuf, String> {
-    if let Some(dir) = VEYRA_DIR.get() {
+pub fn default_berth_dir() -> Result<PathBuf, String> {
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let home = std::env::var_os(var)
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("не задана переменная {var}"))?;
+    let dir = home.join(DIR_NAME);
+    ADOPTED.call_once(|| crate::legacy::adopt_dir(&home.join(crate::legacy::DIR_NAME), &dir));
+    Ok(dir)
+}
+
+pub fn berth_dir() -> Result<PathBuf, String> {
+    if let Some(dir) = BERTH_DIR.get() {
         return Ok(dir.clone());
     }
-    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(var)
-        .map(|home| PathBuf::from(home).join(".veyra"))
-        .ok_or_else(|| format!("не задана переменная {var}"))
+    match crate::legacy::env(HOME_VAR) {
+        Some(dir) => Ok(PathBuf::from(dir)),
+        None => default_berth_dir(),
+    }
 }
 
 fn config_path(file: ConfigFile) -> Result<PathBuf, String> {
-    Ok(veyra_dir()?.join(file.file_name()))
+    Ok(berth_dir()?.join(file.file_name()))
 }
 
 fn read_text(path: &Path) -> io::Result<String> {
@@ -125,7 +139,7 @@ pub async fn settings_read(file: Option<ConfigFile>) -> Result<String, String> {
 
 pub async fn settings_write(text: String, file: Option<ConfigFile>) -> Result<(), String> {
     let file = file.unwrap_or_default();
-    let dir = veyra_dir()?;
+    let dir = berth_dir()?;
     write_atomic(&dir, file, &text).map_err(|e| {
         format!(
             "не удалось записать {}: {e}",
@@ -172,7 +186,7 @@ pub async fn berth_idle_timeout_write(value: String) -> Result<(), String> {
     map.insert(IDLE_KEY.to_owned(), serde_json::Value::String(value));
     let mut text = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
     text.push('\n');
-    let temp = path.with_extension("json.veyra-tmp");
+    let temp = path.with_extension("json.berth-tmp");
     let write = || -> io::Result<()> {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
@@ -216,7 +230,7 @@ pub fn settings_watch(
 
 pub async fn settings_open_external(file: Option<ConfigFile>) -> Result<(), String> {
     let file = file.unwrap_or_default();
-    let dir = veyra_dir()?;
+    let dir = berth_dir()?;
     let path = dir.join(file.file_name());
     if !path.exists() {
         write_atomic(&dir, file, file.empty_text())

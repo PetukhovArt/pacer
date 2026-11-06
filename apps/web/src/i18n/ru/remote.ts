@@ -6,7 +6,7 @@ export const remote: Translation<typeof en> = {
   def: {
     enabled: {
       label: 'Удалённый доступ',
-      description: 'Открыть Veyra для телефона или браузера по сети. Любой, у кого есть ссылка подключения, управляет вашими терминалами.',
+      description: 'Открыть Berth для телефона или браузера по сети. Любой, у кого есть ссылка подключения, управляет вашими терминалами.',
     },
     bind: {
       label: 'Слушать',
@@ -37,7 +37,7 @@ export const remote: Translation<typeof en> = {
     noClients: 'Нет подключённых устройств',
     connectedAt: 'с {time}',
     qrLabel: 'QR-код ссылки подключения',
-    desktopOnly: 'Удалённым доступом управляют в приложении Veyra на компьютере. На хосте с veyra-server (Docker) ссылка подключения и QR-код есть в логе сервера: docker compose -f docker/compose.yaml logs veyra.',
+    desktopOnly: 'Удалённым доступом управляют в приложении Berth на компьютере. На хосте с berth-server (Docker) ссылка подключения и QR-код есть в логе сервера: docker compose -f docker/compose.yaml logs berth.',
     problem: {
       tailscale_missing: 'Адрес Tailscale (100.x) не найден. Запустите Tailscale или выберите другую сеть.',
       bind_failed: 'Не удалось слушать {message}',

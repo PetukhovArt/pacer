@@ -8,7 +8,8 @@ use keyring::Entry;
 
 use super::http::{ApiError, ApiResult};
 
-const SERVICE: &str = "veyra";
+pub const SERVICE: &str = "berth";
+const ADOPTED_FILE: &str = "keyring-adopted.json";
 
 pub enum Lookup {
     Found(String),
@@ -22,23 +23,23 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, id: &str);
 }
 
-struct Keyring;
-
-impl Keyring {
-    fn entry(id: &str) -> Result<Entry, String> {
-        Entry::new(SERVICE, id).map_err(|error| format!("хранилище ключей недоступно: {error}"))
-    }
+struct Keyring {
+    settled: Mutex<()>,
 }
 
-impl SecretStore for Keyring {
-    fn save(&self, id: &str, secret: &str) -> Result<(), String> {
-        Self::entry(id)?
-            .set_password(secret)
-            .map_err(|error| format!("не удалось сохранить токен в хранилище ключей: {error}"))
+impl Keyring {
+    fn new() -> Self {
+        Self {
+            settled: Mutex::new(()),
+        }
     }
 
-    fn load(&self, id: &str) -> Lookup {
-        let entry = match Self::entry(id) {
+    fn entry(service: &str, id: &str) -> Result<Entry, String> {
+        Entry::new(service, id).map_err(|error| format!("хранилище ключей недоступно: {error}"))
+    }
+
+    fn read(service: &str, id: &str) -> Lookup {
+        let entry = match Self::entry(service, id) {
             Ok(entry) => entry,
             Err(error) => return Lookup::Failed(error),
         };
@@ -49,15 +50,87 @@ impl SecretStore for Keyring {
         }
     }
 
-    fn delete(&self, id: &str) {
-        if let Ok(entry) = Self::entry(id) {
-            let _ = entry.delete_credential();
+    fn settled_path() -> Option<PathBuf> {
+        crate::settings::berth_dir()
+            .ok()
+            .map(|dir| dir.join(ADOPTED_FILE))
+    }
+
+    fn settled_ids(path: &Path) -> Vec<String> {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    fn is_settled(&self, id: &str) -> bool {
+        let _guard = self.settled.lock().unwrap_or_else(|e| e.into_inner());
+        Self::settled_path()
+            .is_none_or(|path| Self::settled_ids(&path).iter().any(|known| known == id))
+    }
+
+    fn settle(&self, id: &str) {
+        let _guard = self.settled.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(path) = Self::settled_path() else {
+            return;
+        };
+        let mut ids = Self::settled_ids(&path);
+        if ids.iter().any(|known| known == id) {
+            return;
+        }
+        ids.push(id.to_owned());
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        if let Ok(text) = serde_json::to_string_pretty(&ids) {
+            let _ = fs::write(&path, text);
+        }
+    }
+
+    fn adopt(&self, id: &str) -> Lookup {
+        if self.is_settled(id) {
+            return Lookup::Missing;
+        }
+        match Self::read(crate::legacy::KEYRING_SERVICE, id) {
+            Lookup::Found(secret) => {
+                if self.save(id, &secret).is_ok() {
+                    self.settle(id);
+                }
+                Lookup::Found(secret)
+            }
+            Lookup::Missing => {
+                self.settle(id);
+                Lookup::Missing
+            }
+            Lookup::Failed(_) => Lookup::Missing,
         }
     }
 }
 
+impl SecretStore for Keyring {
+    fn save(&self, id: &str, secret: &str) -> Result<(), String> {
+        Self::entry(SERVICE, id)?
+            .set_password(secret)
+            .map_err(|error| format!("не удалось сохранить токен в хранилище ключей: {error}"))
+    }
+
+    fn load(&self, id: &str) -> Lookup {
+        match Self::read(SERVICE, id) {
+            Lookup::Missing => self.adopt(id),
+            other => other,
+        }
+    }
+
+    fn delete(&self, id: &str) {
+        if let Ok(entry) = Self::entry(SERVICE, id) {
+            let _ = entry.delete_credential();
+        }
+        self.settle(id);
+    }
+}
+
 pub fn keyring_available() -> bool {
-    match Keyring::entry("veyra-probe").map(|entry| entry.get_password()) {
+    match Keyring::entry(SERVICE, "berth-probe").map(|entry| entry.get_password()) {
         Ok(Ok(_) | Err(keyring::Error::NoEntry)) => true,
         Ok(Err(_)) | Err(_) => false,
     }
@@ -155,7 +228,7 @@ pub fn install(store: Box<dyn SecretStore>) -> bool {
 }
 
 fn store() -> &'static dyn SecretStore {
-    STORE.get_or_init(|| Box::new(Keyring)).as_ref()
+    STORE.get_or_init(|| Box::new(Keyring::new())).as_ref()
 }
 
 pub fn save(id: &str, token: &str) -> Result<(), String> {

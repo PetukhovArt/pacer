@@ -30,16 +30,16 @@ impl Lang {
     fn labels(self) -> Labels {
         match self {
             Self::En => Labels {
-                show: "Show Veyra",
+                show: "Show Berth",
                 new_session: "New session…",
                 remote: "Remote access",
-                quit: "Quit Veyra",
+                quit: "Quit Berth",
             },
             Self::Ru => Labels {
-                show: "Показать Veyra",
+                show: "Показать Berth",
                 new_session: "Новая сессия…",
                 remote: "Удалённый доступ",
-                quit: "Выйти из Veyra",
+                quit: "Выйти из Berth",
             },
         }
     }
@@ -59,9 +59,9 @@ impl Lang {
             });
         }
         if parts.is_empty() {
-            "Veyra".to_owned()
+            "Berth".to_owned()
         } else {
-            format!("Veyra\n{}", parts.join(", "))
+            format!("Berth\n{}", parts.join(", "))
         }
     }
 }
@@ -154,7 +154,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
 
     let toggled = remote.clone();
     let mut builder = TrayIconBuilder::<Wry>::with_id(TRAY_ID)
-        .tooltip("Veyra")
+        .tooltip("Berth")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
