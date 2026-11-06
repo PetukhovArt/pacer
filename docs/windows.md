@@ -20,7 +20,7 @@ on your `PATH`.
 From source:
 
 ```powershell
-cargo install --git https://github.com/PetukhovArt/pacer berth --locked
+cargo install --git https://github.com/PetukhovArt/berth berth --locked
 ```
 
 That drops `berth.exe` into `~\.cargo\bin`. From a checkout, `cargo install --path crates/berth` does the

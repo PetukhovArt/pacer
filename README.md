@@ -72,7 +72,7 @@ npm install -g @petukhovart/berth
 **macOS / Linux** — the same command installs and updates:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/PetukhovArt/pacer/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/PetukhovArt/berth/main/install.sh | sh
 ```
 
 It downloads the prebuilt binary for your platform from the latest GitHub release into `~/.local/bin`
@@ -82,7 +82,7 @@ Afterwards, `berth upgrade` runs that same script for you.
 **From source** — any platform, needs a Rust toolchain:
 
 ```sh
-cargo install --git https://github.com/PetukhovArt/pacer berth --locked
+cargo install --git https://github.com/PetukhovArt/berth berth --locked
 ```
 
 Either way the command is `berth`. On Windows, see [docs/windows.md](docs/windows.md) for what to install

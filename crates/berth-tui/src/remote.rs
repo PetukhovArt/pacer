@@ -133,8 +133,8 @@ mod tests {
     #[test]
     fn scp_shorthand_becomes_https() {
         assert_eq!(
-            web_url("git@github.com:PetukhovArt/pacer.git").as_deref(),
-            Some("https://github.com/PetukhovArt/pacer")
+            web_url("git@github.com:PetukhovArt/berth.git").as_deref(),
+            Some("https://github.com/PetukhovArt/berth")
         );
     }
 

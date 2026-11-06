@@ -456,7 +456,7 @@ mod tests {
     fn no_rendered_line_overflows_the_pane() {
         let d = detail(
             "A description with a very long unbroken token: \
-             https://github.com/PetukhovArt/pacer/pull/12345/files#diff-abcdef",
+             https://github.com/PetukhovArt/berth/pull/12345/files#diff-abcdef",
             vec![PrComment {
                 author: "steiza".into(),
                 at: "2024-04-26T21:44:55Z".into(),

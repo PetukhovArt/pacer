@@ -1,7 +1,7 @@
 #!/bin/sh
 # berth installer — installs or updates the `berth` binary.
 #
-#   curl -fsSL https://raw.githubusercontent.com/PetukhovArt/pacer/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/PetukhovArt/berth/main/install.sh | sh
 #
 # Grabs the prebuilt binary for this platform from the latest GitHub release,
 # falling back to `cargo install --git` when no release (or no matching asset)
@@ -11,7 +11,7 @@
 #   BERTH_INSTALL_DIR   install destination (default: ~/.local/bin)
 set -eu
 
-REPO="PetukhovArt/pacer"
+REPO="PetukhovArt/berth"
 INSTALL_DIR="${BERTH_INSTALL_DIR:-$HOME/.local/bin}"
 
 say() { printf '%s\n' "$*"; }

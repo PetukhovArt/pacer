@@ -18,6 +18,6 @@ platform only (macOS arm64/x64, Linux x64/arm64, Windows x64).
 **Prerequisite:** at least one agent CLI on your `PATH` — `claude`, `codex` or `cursor-agent`. berth
 spawns them; it doesn't ship them.
 
-Documentation, screenshots and the full keymap: <https://github.com/PetukhovArt/pacer>
+Documentation, screenshots and the full keymap: <https://github.com/PetukhovArt/berth>
 
 MIT licensed.

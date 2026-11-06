@@ -38,7 +38,7 @@ try {
       `with --no-optional or --omit=optional, reinstall without it. If this\n` +
       `platform has no published build, install from source instead:\n` +
       `\n` +
-      `  cargo install --git https://github.com/PetukhovArt/pacer berth --locked\n`,
+      `  cargo install --git https://github.com/PetukhovArt/berth berth --locked\n`,
   );
   process.exit(1);
 }

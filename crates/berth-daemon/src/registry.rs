@@ -3461,7 +3461,7 @@ mod tests {
 
     #[test]
     fn spawn_command_keeps_pr_scope_and_url_in_claudes_system_prompt() {
-        let pr_url = "https://github.com/PetukhovArt/pacer/pull/42";
+        let pr_url = "https://github.com/PetukhovArt/berth/pull/42";
         let pr_prompt = claude_pr_system_prompt(pr_url);
         let (_, args, resumed) = agent_spawn_command_with(
             AgentKind::Claude,

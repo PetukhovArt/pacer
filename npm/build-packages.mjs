@@ -26,7 +26,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const DIST = path.join(HERE, 'dist');
 
-const REPO = 'https://github.com/PetukhovArt/pacer';
+const REPO = 'https://github.com/PetukhovArt/berth';
 
 /** Rust target → the npm `os`/`cpu` pair npm matches against. */
 const TARGETS = [
