@@ -55,13 +55,13 @@ jobs:
         run: |
           mkdir -p assets bins
           gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" --dir assets
-          for f in assets/pacer-*.tar.gz; do
-            target=$(basename "$f" .tar.gz); target=${target#pacer-}
+          for f in assets/berth-*.tar.gz; do
+            target=$(basename "$f" .tar.gz); target=${target#berth-}
             mkdir -p "bins/$target" && tar -xzf "$f" -C "bins/$target"
           done
-          for f in assets/pacer-*.zip; do
+          for f in assets/berth-*.zip; do
             [ -e "$f" ] || continue
-            target=$(basename "$f" .zip); target=${target#pacer-}
+            target=$(basename "$f" .zip); target=${target#berth-}
             mkdir -p "bins/$target" && unzip -q "$f" -d "bins/$target"
           done
           find bins -type f | sort
@@ -72,7 +72,7 @@ jobs:
       - name: Pack (dry run)
         if: ${{ inputs.dry_run }}
         run: |
-          for dir in npm/dist/pacer-*/ npm/dist/pacer/; do
+          for dir in npm/dist/berth-*/ npm/dist/berth/; do
             echo "── $dir"
             (cd "$dir" && npm pack --dry-run)
           done
@@ -85,7 +85,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for dir in npm/dist/pacer-*/; do
+          for dir in npm/dist/berth-*/; do
             (cd "$dir" && npm publish --access public)
           done
-          (cd npm/dist/pacer && npm publish --access public)
+          (cd npm/dist/berth && npm publish --access public)

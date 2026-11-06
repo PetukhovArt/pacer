@@ -10,8 +10,8 @@
 //   node npm/build-packages.mjs --version 0.17.0 --bins <dir> [--scope @petukhovart]
 //
 // <dir> holds one subdirectory per rust target, each with the built binary:
-//   <dir>/x86_64-unknown-linux-musl/pacer
-//   <dir>/x86_64-pc-windows-msvc/pacer.exe
+//   <dir>/x86_64-unknown-linux-musl/berth
+//   <dir>/x86_64-pc-windows-msvc/berth.exe
 //
 // Output lands in npm/dist/, ready for `npm publish` — platform packages
 // first, launcher last, so an install can never resolve a launcher whose
@@ -47,9 +47,9 @@ function arg(name, fallback) {
 const version = arg('version').replace(/^v/, '');
 const bins = path.resolve(arg('bins'));
 const scope = arg('scope', process.env.NPM_SCOPE ?? '').replace(/\/$/, '');
-/** `@petukhovart/pacer` when scoped, `pacer` otherwise — same launcher either way. */
+/** `@petukhovart/berth` when scoped, `berth` otherwise — same launcher either way. */
 const name = (suffix) =>
-  scope ? `${scope}/pacer${suffix}` : `pacer${suffix ? suffix : ''}`;
+  scope ? `${scope}/berth${suffix}` : `berth${suffix ? suffix : ''}`;
 
 const common = {
   version,
@@ -64,14 +64,14 @@ fs.rmSync(DIST, { recursive: true, force: true });
 const built = [];
 
 for (const { target, os, cpu } of TARGETS) {
-  const exe = os === 'win32' ? 'pacer.exe' : 'pacer';
+  const exe = os === 'win32' ? 'berth.exe' : 'berth';
   const source = path.join(bins, target, exe);
   if (!fs.existsSync(source)) {
     throw new Error(`no binary at ${source} — is --bins pointing at the right dir?`);
   }
 
   const pkg = name(`-${os}-${cpu}`);
-  const dir = path.join(DIST, `pacer-${os}-${cpu}`);
+  const dir = path.join(DIST, `berth-${os}-${cpu}`);
   fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
 
   const dest = path.join(dir, 'bin', exe);
@@ -82,7 +82,7 @@ for (const { target, os, cpu } of TARGETS) {
 
   write(path.join(dir, 'package.json'), {
     name: pkg,
-    description: `pacer binary for ${os}-${cpu}`,
+    description: `berth binary for ${os}-${cpu}`,
     ...common,
     os: [os],
     cpu: [cpu],
@@ -94,11 +94,11 @@ for (const { target, os, cpu } of TARGETS) {
 
 // The launcher. `optionalDependencies` are pinned exactly: a launcher must
 // never pair with a binary from another version.
-const launcherDir = path.join(DIST, 'pacer');
+const launcherDir = path.join(DIST, 'berth');
 fs.mkdirSync(path.join(launcherDir, 'bin'), { recursive: true });
 fs.copyFileSync(
-  path.join(HERE, 'launcher', 'pacer.js'),
-  path.join(launcherDir, 'bin', 'pacer.js'),
+  path.join(HERE, 'launcher', 'berth.js'),
+  path.join(launcherDir, 'bin', 'berth.js'),
 );
 fs.copyFileSync(path.join(HERE, 'launcher', 'README.md'), path.join(launcherDir, 'README.md'));
 fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(launcherDir, 'LICENSE'));
@@ -108,7 +108,7 @@ write(path.join(launcherDir, 'package.json'), {
   description: 'Where your coding agents live — run Claude Code, Codex and Cursor across every project and git worktree from one terminal',
   ...common,
   keywords: ['claude', 'claude-code', 'codex', 'cursor', 'ai', 'agent', 'tui', 'terminal', 'multiplexer', 'worktree'],
-  bin: { pacer: 'bin/pacer.js' },
+  bin: { berth: 'bin/berth.js' },
   files: ['bin', 'README.md', 'LICENSE'],
   engines: { node: '>=16' },
   optionalDependencies: Object.fromEntries(built.map(({ pkg }) => [pkg, version])),
@@ -127,8 +127,8 @@ const self = TARGETS.find((t) => t.os === process.platform && t.cpu === process.
 if (self) {
   const link = path.join(launcherDir, 'node_modules', name(`-${self.os}-${self.cpu}`));
   fs.mkdirSync(path.dirname(link), { recursive: true });
-  fs.cpSync(path.join(DIST, `pacer-${self.os}-${self.cpu}`), link, { recursive: true });
-  const out = execFileSync(process.execPath, [path.join(launcherDir, 'bin', 'pacer.js'), '--version'], {
+  fs.cpSync(path.join(DIST, `berth-${self.os}-${self.cpu}`), link, { recursive: true });
+  const out = execFileSync(process.execPath, [path.join(launcherDir, 'bin', 'berth.js'), '--version'], {
     encoding: 'utf8',
   }).trim();
   fs.rmSync(path.join(launcherDir, 'node_modules'), { recursive: true, force: true });

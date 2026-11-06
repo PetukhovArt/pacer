@@ -34,8 +34,8 @@ jobs:
       # runner has no global identity to fall back on.
       - name: Give git an identity
         run: |
-          git config --global user.name pacer-ci
-          git config --global user.email ci@pacer.dev
+          git config --global user.name berth-ci
+          git config --global user.email ci@berth.dev
 
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 

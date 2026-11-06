@@ -13,10 +13,10 @@
 #   make cycle    install + kill + dev in one go — the re-runnable full cutover
 
 PREFIX      ?= $(HOME)/.cargo/bin
-RELEASE_BIN := target/release/pacer
-DEBUG_BIN   := target/debug/pacer
+RELEASE_BIN := target/release/berth
+DEBUG_BIN   := target/debug/berth
 
-# The dev instance is a second, complete pacer: its own socket, DB, and
+# The dev instance is a second, complete berth: its own socket, DB, and
 # settings — and one *per checkout*, so the main clone and every worktree can
 # run at the same time. Sharing them is worse than a port clash: two checkouts
 # on one runtime dir means the second TUI silently attaches to the first's
@@ -28,15 +28,15 @@ DEBUG_BIN   := target/debug/pacer
 # runtime dir takes the hash alone — it holds a unix socket, and SUN_LEN (104
 # bytes on macOS) is not a budget a long worktree name should be spending.
 DEV_SLOT    := $(shell printf '%s' '$(CURDIR)' | shasum | cut -c1-8)
-DEV_RUNTIME := /tmp/pacer-dev-$(DEV_SLOT)
-DEV_DATA    := $(HOME)/.pacer-dev/$(notdir $(CURDIR))-$(DEV_SLOT)
+DEV_RUNTIME := /tmp/berth-dev-$(DEV_SLOT)
+DEV_DATA    := $(HOME)/.berth-dev/$(notdir $(CURDIR))-$(DEV_SLOT)
 # `make dev SEED=0` skips the first-run copy and starts the dev instance empty.
 SEED ?= 1
 # `make dev AGENT=/bin/cat` stubs agents out, so nothing spawns a real claude —
 # including the warm-slot prewarm, which launches one before you create any
 # agent at all. Unset (the default) means real agents, exactly like production.
 AGENT ?=
-# Left empty on purpose: `pacer browser` then takes 7681 when it is free and
+# Left empty on purpose: `berth browser` then takes 7681 when it is free and
 # a free port otherwise, printing which — so a `make browser` per checkout all
 # serve at once. `make browser PORT=8080` pins it (and fails if 8080 is taken,
 # which is what you want when you have an ssh tunnel pointed at it).
@@ -44,8 +44,8 @@ PORT ?=
 
 # Every dev-instance run goes through this: its own socket dir and its own DB,
 # so nothing here can touch the real daemon's state.
-DEV_ENV = PACER_RUNTIME_DIR=$(DEV_RUNTIME) PACER_DATA_DIR=$(DEV_DATA) \
-	$(if $(AGENT),PACER_AGENT_CMD=$(AGENT))
+DEV_ENV = BERTH_RUNTIME_DIR=$(DEV_RUNTIME) BERTH_DATA_DIR=$(DEV_DATA) \
+	$(if $(AGENT),BERTH_AGENT_CMD=$(AGENT))
 
 .DEFAULT_GOAL := help
 .PHONY: help dev browser dev-prep dev-seed dev-reset dev-ls dev-stop build install kill cycle check fmt lint test ci clean
@@ -61,8 +61,8 @@ dev: dev-prep ## Run the latest code in an isolated instance (own daemon + data)
 	-@$(DEV_ENV) $(DEBUG_BIN)
 	@$(MAKE) --no-print-directory dev-stop
 
-# `pacer browser` shells out to ttyd and serves *this* binary
-# (`current_exe`, not whatever `pacer` is on PATH), so the tab gets the build
+# `berth browser` shells out to ttyd and serves *this* binary
+# (`current_exe`, not whatever `berth` is on PATH), so the tab gets the build
 # below rather than the installed release. ttyd hands its environment to the
 # command it runs, so $(DEV_ENV) reaches the TUI in the tab and the browser
 # instance stays as isolated as `make dev`. Needs ttyd on PATH — the binary
@@ -84,7 +84,7 @@ dev-prep:
 	@# Also load-bearing: on macOS the first exec of a freshly relinked binary
 	@# pays for signature validation and can stall for seconds. Paying it here
 	@# keeps the daemon spawn inside the TUI's 3s connect deadline
-	@# (pacer-tui/src/ipc.rs) instead of failing with "daemon did not come up".
+	@# (berth-tui/src/ipc.rs) instead of failing with "daemon did not come up".
 	@$(DEBUG_BIN) --version >/dev/null
 	@$(if $(filter 0,$(SEED)),true,$(MAKE) --no-print-directory dev-seed)
 
@@ -93,22 +93,22 @@ dev-prep:
 # settings, minus `agents` and `terminals`: those rows are the live sessions
 # the real daemon owns, and the dev daemon must not resume them. `.backup`
 # reads the WAL, so the copy is consistent even with the real daemon running.
-# The real dir is where `directories::ProjectDirs::from("dev","pacer","pacer")`
-# puts it (pacer-core/src/paths.rs). Keep the two in step.
+# The real dir is where `directories::ProjectDirs::from("dev","berth","berth")`
+# puts it (berth-core/src/paths.rs). Keep the two in step.
 dev-seed: ## Copy real projects/workspaces/settings into the dev instance (only if it has no DB yet)
-	@[ ! -e $(DEV_DATA)/pacer.db ] || exit 0; \
+	@[ ! -e $(DEV_DATA)/berth.db ] || exit 0; \
 	case "$$(uname -s)" in \
-		Darwin) real="$$HOME/Library/Application Support/dev.pacer";; \
-		*)      real="$${XDG_DATA_HOME:-$$HOME/.local/share}/pacer";; \
+		Darwin) real="$$HOME/Library/Application Support/dev.berth";; \
+		*)      real="$${XDG_DATA_HOME:-$$HOME/.local/share}/berth";; \
 	esac; \
-	if [ ! -f "$$real/pacer.db" ]; then \
-		echo "no real pacer data at $$real - dev instance starts empty"; exit 0; fi; \
-	else echo "no real pacer data at $$new - dev instance starts empty"; exit 0; fi; \
+	if [ ! -f "$$real/berth.db" ]; then \
+		echo "no real berth data at $$real - dev instance starts empty"; exit 0; fi; \
+	else echo "no real berth data at $$new - dev instance starts empty"; exit 0; fi; \
 	if ! command -v sqlite3 >/dev/null 2>&1; then \
 		echo "sqlite3 not on PATH - dev instance starts empty"; exit 0; fi; \
 	mkdir -p $(DEV_DATA); \
-	sqlite3 "$$real/pacer.db" ".backup '$(DEV_DATA)/pacer.db'"; \
-	sqlite3 $(DEV_DATA)/pacer.db "DELETE FROM agents; DELETE FROM terminals;"; \
+	sqlite3 "$$real/berth.db" ".backup '$(DEV_DATA)/berth.db'"; \
+	sqlite3 $(DEV_DATA)/berth.db "DELETE FROM agents; DELETE FROM terminals;"; \
 	for f in config.json reviewed.json; do \
 		if [ -f "$$real/$$f" ]; then cp "$$real/$$f" $(DEV_DATA)/; fi; \
 	done; \
@@ -118,21 +118,21 @@ dev-reset: dev-stop ## Wipe this checkout's dev data; the next `make dev` re-see
 	rm -rf $(DEV_DATA)
 
 # Slots accumulate: a worktree you deleted leaves its DB behind under
-# ~/.pacer-dev. This lists every one with its daemon's state, so you can see
+# ~/.berth-dev. This lists every one with its daemon's state, so you can see
 # what is still running and `rm -rf` what is not.
 dev-ls: ## List every checkout's dev instance and whether its daemon is up
-	@for d in $(HOME)/.pacer-dev/*-*/; do \
+	@for d in $(HOME)/.berth-dev/*-*/; do \
 		[ -d "$$d" ] || continue; \
 		slot=$${d%/}; slot=$${slot##*-}; \
-		pidfile=/tmp/pacer-dev-$$slot/daemon.pid; \
+		pidfile=/tmp/berth-dev-$$slot/daemon.pid; \
 		state=stopped; \
 		if [ -f "$$pidfile" ] && ps -p "$$(cat $$pidfile 2>/dev/null)" -o command= 2>/dev/null \
-			| grep -q 'pacer daemon'; then state=running; fi; \
+			| grep -q 'berth daemon'; then state=running; fi; \
 		printf '  %-8s %-40s %s\n' "$$state" "$$(basename $$d)" "$$d"; \
 	done
 
 # The pidfile outlives the process it names, so confirm the pid is still a
-# pacer daemon before signalling it — otherwise a recycled pid means killing
+# berth daemon before signalling it — otherwise a recycled pid means killing
 # some unrelated process of the user's. SIGTERM (not KILL) so the daemon runs
 # its normal shutdown and takes its PTY children with it.
 dev-stop: ## Stop the dev daemon (it detaches, so quitting the TUI leaves it running)
@@ -140,7 +140,7 @@ dev-stop: ## Stop the dev daemon (it detaches, so quitting the TUI leaves it run
 	[ -f $$pidfile ] || exit 0; \
 	pid=$$(cat $$pidfile 2>/dev/null); \
 	case "$$pid" in ''|*[!0-9]*) exit 0;; esac; \
-	if ps -p $$pid -o command= 2>/dev/null | grep -q 'pacer daemon'; then \
+	if ps -p $$pid -o command= 2>/dev/null | grep -q 'berth daemon'; then \
 		kill $$pid 2>/dev/null || true; \
 	fi
 
@@ -154,22 +154,22 @@ build: ## Release build
 # for that inode no longer matches the new contents — every exec then dies
 # with SIGKILL (exit 137). A fresh inode forces signature re-validation.
 install: build ## Install to $(PREFIX) — warns if the live daemon is now stale
-	cp $(RELEASE_BIN) $(PREFIX)/pacer.new
-	mv $(PREFIX)/pacer.new $(PREFIX)/pacer
-	@$(PREFIX)/pacer --version
-	@$(PREFIX)/pacer _stale-daemon-note
+	cp $(RELEASE_BIN) $(PREFIX)/berth.new
+	mv $(PREFIX)/berth.new $(PREFIX)/berth
+	@$(PREFIX)/berth --version
+	@$(PREFIX)/berth _stale-daemon-note
 
 kill: ## Stop every session and the daemon — the cutover step after `make install`
-	$(PREFIX)/pacer kill
+	$(PREFIX)/berth kill
 
 # The whole cutover as one command, safe to re-run as often as you like:
 # install first, so a build that fails stops here with every session still
 # alive; then kill the real daemon (it is now running the old binary — the
 # STALE DAEMON NOTE `install` just printed says as much); then `dev`, which
 # builds the debug binary and hands the terminal to the isolated dev instance.
-# `pacer kill` exits 0 and says "no pacer daemon running" when there is
+# `berth kill` exits 0 and says "no berth daemon running" when there is
 # nothing to stop, so the first run on a cold machine goes through too. The
-# kill stops every real session — run this from a terminal outside pacer,
+# kill stops every real session — run this from a terminal outside berth,
 # not from a session it would take down with it. Recipe lines rather than
 # prerequisites so `make -j` cannot reorder the three.
 cycle: ## Install, kill the real daemon, run the dev instance — re-run whenever

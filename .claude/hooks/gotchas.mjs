@@ -195,7 +195,7 @@ function main() {
     .join(', ');
 
   const out = [
-    `[pacer gotchas] Traps already paid for that touch this prompt (${subject}).`,
+    `[berth gotchas] Traps already paid for that touch this prompt (${subject}).`,
     `Full list, and the task each came from, in GOTCHAS.md.`,
   ];
   for (const section of order) {

@@ -5,7 +5,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
 #
-# Run it from a terminal OUTSIDE pacer, in its own window. Quit the TUI with
+# Run it from a terminal OUTSIDE berth, in its own window. Quit the TUI with
 # `q` and run it again to pick up a rebuild.
 #
 #   -Agent cmd.exe   stub agents out, so nothing spawns a real claude
@@ -22,11 +22,11 @@ $sha = [System.Security.Cryptography.SHA1]::Create()
 $slot = (($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($PWD.Path)) |
     ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 8)
 
-$env:PACER_RUNTIME_DIR = Join-Path $env:TEMP "pacer-dev-$slot"
-$env:PACER_DATA_DIR = Join-Path $HOME ".pacer-dev\$(Split-Path -Leaf $PWD)-$slot"
-if ($Agent) { $env:PACER_AGENT_CMD = $Agent }
+$env:BERTH_RUNTIME_DIR = Join-Path $env:TEMP "berth-dev-$slot"
+$env:BERTH_DATA_DIR = Join-Path $HOME ".berth-dev\$(Split-Path -Leaf $PWD)-$slot"
+if ($Agent) { $env:BERTH_AGENT_CMD = $Agent }
 
-$bin = 'target\debug\pacer.exe'
+$bin = 'target\debug\berth.exe'
 cargo build
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -34,8 +34,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 # outlived its TUI and is still executing the OLD code. Connecting to it is
 # precisely how "I rebuilt and my change isn't there" happens.
 & $bin kill | Out-Null
-if ($Reset) { Remove-Item -Recurse -Force $env:PACER_DATA_DIR -ErrorAction SilentlyContinue }
+if ($Reset) { Remove-Item -Recurse -Force $env:BERTH_DATA_DIR -ErrorAction SilentlyContinue }
 
-Write-Host "dev instance [$(Split-Path -Leaf $PWD)] -> runtime $env:PACER_RUNTIME_DIR, data $env:PACER_DATA_DIR"
+Write-Host "dev instance [$(Split-Path -Leaf $PWD)] -> runtime $env:BERTH_RUNTIME_DIR, data $env:BERTH_DATA_DIR"
 & $bin
 & $bin kill | Out-Null

@@ -7,12 +7,12 @@
 - Added `]` and `[` to jump to the next and previous session waiting on you, in any workspace.
 - Added an experimental `Key combo display` setting (`show_key_combos`) that shows each key you press bottom-left with the action it ran.
 - Added a `Draft pull requests` setting under Appearance (`hide_draft_prs`) that hides draft pull requests and GitLab draft merge requests from the PRs panel and `/`.
-- Added `Prewarm agents` and `Prewarm sessions` settings under Sessions (`prewarm_agents`, `prewarm_sessions`) to stop pacer starting idle processes ahead of time and save memory.
+- Added `Prewarm agents` and `Prewarm sessions` settings under Sessions (`prewarm_agents`, `prewarm_sessions`) to stop berth starting idle processes ahead of time and save memory.
 - Added five color themes: `lavender`, `coral`, `slate`, `sand` and `mono`.
 - Added renaming a session's row when you `/rename` it inside Claude Code.
 - Fixed the `Shift+O` session list naming almost every row after its branch, so a session now carries the title Claude Code shows it under in `/resume`.
 - Windows: Fixed `Ctrl+Enter` inserting a newline in Claude Code instead of sending the message now (needs a sideloaded `conpty.dll`).
-- Fixed agents' `git add` and `git commit` failing with `index.lock: File exists` while pacer polls the checkout.
+- Fixed agents' `git add` and `git commit` failing with `index.lock: File exists` while berth polls the checkout.
 - Fixed a session painting in no color at all when `NO_COLOR` or `FORCE_COLOR` was set in the daemon's environment or a login profile.
 - Fixed scrolling a pane up past its oldest line, which then took as many wheel notches to come back down.
 

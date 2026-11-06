@@ -168,6 +168,90 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "berth"
+version = "0.20.0"
+dependencies = [
+ "anyhow",
+ "berth-core",
+ "berth-daemon",
+ "berth-tui",
+ "clap",
+ "portable-pty",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vt100",
+]
+
+[[package]]
+name = "berth-core"
+version = "0.20.0"
+dependencies = [
+ "directories",
+ "rand 0.10.2",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "subtle",
+ "tempfile",
+ "tokio",
+ "ulid",
+ "windows-sys",
+]
+
+[[package]]
+name = "berth-daemon"
+version = "0.20.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "berth-core",
+ "nix 0.31.3",
+ "portable-pty",
+ "rand 0.10.2",
+ "rmp-serde",
+ "rusqlite",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "subtle",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+ "vt100",
+ "windows-sys",
+]
+
+[[package]]
+name = "berth-tui"
+version = "0.20.0"
+dependencies = [
+ "anyhow",
+ "berth-core",
+ "crossterm",
+ "futures",
+ "portable-pty",
+ "ratatui",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tui-term",
+ "vt100",
+ "windows-sys",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1269,90 +1353,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bb71e1b3fa6ca1c61f383464aaf2bb0e2f8e772a1f01d486832464de363b951"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "pacer"
-version = "0.20.0"
-dependencies = [
- "anyhow",
- "clap",
- "pacer-core",
- "pacer-daemon",
- "pacer-tui",
- "portable-pty",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "vt100",
-]
-
-[[package]]
-name = "pacer-core"
-version = "0.20.0"
-dependencies = [
- "directories",
- "rand 0.10.2",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "subtle",
- "tempfile",
- "tokio",
- "ulid",
- "windows-sys",
-]
-
-[[package]]
-name = "pacer-daemon"
-version = "0.20.0"
-dependencies = [
- "anyhow",
- "axum",
- "nix 0.31.3",
- "pacer-core",
- "portable-pty",
- "rand 0.10.2",
- "rmp-serde",
- "rusqlite",
- "serde",
- "serde_bytes",
- "serde_json",
- "subtle",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "ulid",
- "vt100",
- "windows-sys",
-]
-
-[[package]]
-name = "pacer-tui"
-version = "0.20.0"
-dependencies = [
- "anyhow",
- "crossterm",
- "futures",
- "pacer-core",
- "portable-pty",
- "ratatui",
- "rmp-serde",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tui-term",
- "vt100",
- "windows-sys",
 ]
 
 [[package]]

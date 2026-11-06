@@ -1,6 +1,6 @@
 # Windows
 
-pacer runs natively on Windows 10 and 11 — the whole workspace builds, lints and tests there, and the
+berth runs natively on Windows 10 and 11 — the whole workspace builds, lints and tests there, and the
 TUI, the daemon and agent sessions work the same way they do on macOS and Linux. This page covers what
 is different.
 
@@ -9,24 +9,24 @@ is different.
 The short way — no Rust toolchain needed:
 
 ```powershell
-npm install -g @petukhovart/pacer
+npm install -g @petukhovart/berth
 ```
 
-The command is `pacer`. `npm update -g @petukhovart/pacer` updates it.
+The command is `berth`. `npm update -g @petukhovart/berth` updates it.
 
-Releases also carry a prebuilt `pacer-x86_64-pc-windows-msvc.zip` — unzip it and put `pacer.exe` anywhere
+Releases also carry a prebuilt `berth-x86_64-pc-windows-msvc.zip` — unzip it and put `berth.exe` anywhere
 on your `PATH`.
 
 From source:
 
 ```powershell
-cargo install --git https://github.com/PetukhovArt/pacer pacer --locked
+cargo install --git https://github.com/PetukhovArt/pacer berth --locked
 ```
 
-That drops `pacer.exe` into `~\.cargo\bin`. From a checkout, `cargo install --path crates/pacer` does the
+That drops `berth.exe` into `~\.cargo\bin`. From a checkout, `cargo install --path crates/berth` does the
 same.
 
-There is no self-updater on this platform: `install.sh` is a POSIX script, so `pacer upgrade` declines
+There is no self-updater on this platform: `install.sh` is a POSIX script, so `berth upgrade` declines
 and points back at the commands above.
 
 **You want:**
@@ -34,7 +34,7 @@ and points back at the commands above.
 - A recent Rust toolchain — <https://rustup.rs>.
 - At least one agent CLI on `PATH`: `claude`, `codex` or `cursor-agent`. npm-installed CLIs (`.cmd`
   shims) are resolved and launched correctly.
-- Git for Windows. Beyond git itself, it is where pacer finds `vim` for the editor modal when no editor
+- Git for Windows. Beyond git itself, it is where berth finds `vim` for the editor modal when no editor
   is on `PATH` (`<git root>\usr\bin\vim.exe`).
 - `gh` and/or `glab`, if you want the pull-request views.
 
@@ -48,10 +48,10 @@ predates a lot of what the TUI draws; prefer Windows Terminal.
 - **Transport.** Unix keeps an `AF_UNIX` socket in a `0700` runtime dir, where a successful connect is
   already proof of identity. Windows has no such socket, so the daemon binds a loopback TCP listener and
   a client presents a bearer token — the same model the hook receiver already uses on every platform.
-  Port and token live in an endpoint file beside the pidfile, inside the per-user `%TEMP%\pacer`, which
+  Port and token live in an endpoint file beside the pidfile, inside the per-user `%TEMP%\berth`, which
   the profile's ACL already closes to other unprivileged users.
 - **Daemon lifetime.** The daemon runs windowless in the background and survives the client closing. A
-  second daemon won't start over a live one, and `pacer kill` stops it cleanly.
+  second daemon won't start over a live one, and `berth kill` stops it cleanly.
 - **Process trees.** Closing a session kills the agent's whole process tree — nothing is left running in
   the background — and memory metrics are read through the Win32 APIs rather than parsed from `ps`.
 - **No flashing windows.** Background `git` / `gh` invocations are spawned with `CREATE_NO_WINDOW`.
@@ -83,7 +83,7 @@ powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 -Agent cmd.exe   # stub
 powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 -Reset           # wipe the dev database
 ```
 
-Run it in a window of its own, outside pacer, and keep your real pacer in another. The loop is
+Run it in a window of its own, outside berth, and keep your real berth in another. The loop is
 edit, quit the TUI with `q`, run the script again. Stopping the old daemon is the load-bearing part:
 it detaches and outlives its TUI, so a rebuild that only relaunches the TUI leaves daemon-side
 changes running the previous code.
@@ -91,17 +91,17 @@ changes running the previous code.
 The script sets what you would otherwise export by hand:
 
 ```powershell
-$env:PACER_RUNTIME_DIR = "$env:TEMP\pacer-dev"
-$env:PACER_DATA_DIR    = "$env:USERPROFILE\.pacer-dev\main"
-$env:PACER_AGENT_CMD   = 'cmd.exe'   # optional: stub agents, spawn no real claude
+$env:BERTH_RUNTIME_DIR = "$env:TEMP\berth-dev"
+$env:BERTH_DATA_DIR    = "$env:USERPROFILE\.berth-dev\main"
+$env:BERTH_AGENT_CMD   = 'cmd.exe'   # optional: stub agents, spawn no real claude
 cargo run
 ```
 
 Give each checkout its own pair of paths — two checkouts sharing a runtime dir means the second TUI
-silently drives the first one's daemon. `pacer kill` with the same variables set stops that dev daemon;
+silently drives the first one's daemon. `berth kill` with the same variables set stops that dev daemon;
 deleting the two directories resets the instance.
 
-`PACER_AGENT_CMD` is one program name, taken verbatim with no arguments, so the unix `make dev
+`BERTH_AGENT_CMD` is one program name, taken verbatim with no arguments, so the unix `make dev
 AGENT=/bin/cat` idiom has no direct translation — name a harmless console program instead.
 
 To install a build for real use and cut the live daemon over to it:
@@ -110,9 +110,9 @@ To install a build for real use and cut the live daemon over to it:
 powershell -ExecutionPolicy Bypass -File scripts\update.ps1
 ```
 
-It builds `--release`, moves the live `pacer.exe` aside (Windows locks a running executable, but renaming
+It builds `--release`, moves the live `berth.exe` aside (Windows locks a running executable, but renaming
 it is allowed), copies the fresh build into `~\.cargo\bin`, and kills the daemon so the next launch runs
-the new code. **Run it from a terminal outside pacer** — the cutover stops every session. A build failure
+the new code. **Run it from a terminal outside berth** — the cutover stops every session. A build failure
 stops before anything is touched.
 
 Two e2e suites (PTY and TUI) are marked as requiring a Unix host and are skipped on Windows; the rest of

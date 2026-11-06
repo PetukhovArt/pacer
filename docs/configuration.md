@@ -7,11 +7,11 @@ without a restart — and `s` in the TUI is an overlay over the same file.
 
 | | Path |
 |---|---|
-| macOS | `~/Library/Application Support/dev.pacer/` |
-| Linux | `~/.local/share/pacer/` (data), `~/.local/state/pacer/` (logs) |
-| Windows | `%APPDATA%\pacer\data\` |
+| macOS | `~/Library/Application Support/dev.berth/` |
+| Linux | `~/.local/share/berth/` (data), `~/.local/state/berth/` (logs) |
+| Windows | `%APPDATA%\berth\data\` |
 
-That directory holds `config.json`, `agent_presets.json`, `pacer.db`, and a `state/` subdirectory with
+That directory holds `config.json`, `agent_presets.json`, `berth.db`, and a `state/` subdirectory with
 `daemon.log` and `tui.log`.
 
 ## Settings
@@ -48,7 +48,7 @@ Everything below is both a key in `config.json` and a row in the `s` overlay.
 ### Token prices
 
 The diagnostics card counts Claude tokens exactly, because every turn's numbers are in the
-transcript. It shows no dollar figure until you supply the rates, because pacer has none: a
+transcript. It shows no dollar figure until you supply the rates, because berth has none: a
 transcript line carries no cost, Claude Code's own stats cache records zero for every model on a
 subscription plan, and the model catalog it downloads has no price fields. Rather than guess, the
 card leaves the column off.
@@ -79,15 +79,15 @@ reset to defaults does erase it.
 
 | Variable | Effect |
 |---|---|
-| `PACER_EDITOR` | editor command, ahead of the `editor` setting |
-| `PACER_LOG` | `RUST_LOG`-style filter for both daemon and TUI (`PACER_LOG=debug`) |
-| `PACER_CLOUD_MIRROR_SECS` | cloud-mirror refresh cadence in seconds; `0` turns the follow off |
-| `PACER_DATA_DIR` | data dir (database, config, logs) — how tests and parallel instances isolate themselves |
-| `PACER_RUNTIME_DIR` | runtime dir holding the socket / endpoint file and pidfile |
-| `PACER_METRICS_SAMPLE_MS` | how often the daemon samples CPU, memory and token use; tests shorten it |
-| `PACER_AGENT_CMD` | replace every agent CLI with one command line, taken verbatim (`make dev AGENT=/bin/cat`) |
-| `PACER_INSTALL_URL` | install-script URL used by `pacer upgrade` and `pacer ssh` |
-| `PACER_INSTALL_DIR` | install destination for `install.sh` (default `~/.local/bin`) |
+| `BERTH_EDITOR` | editor command, ahead of the `editor` setting |
+| `BERTH_LOG` | `RUST_LOG`-style filter for both daemon and TUI (`BERTH_LOG=debug`) |
+| `BERTH_CLOUD_MIRROR_SECS` | cloud-mirror refresh cadence in seconds; `0` turns the follow off |
+| `BERTH_DATA_DIR` | data dir (database, config, logs) — how tests and parallel instances isolate themselves |
+| `BERTH_RUNTIME_DIR` | runtime dir holding the socket / endpoint file and pidfile |
+| `BERTH_METRICS_SAMPLE_MS` | how often the daemon samples CPU, memory and token use; tests shorten it |
+| `BERTH_AGENT_CMD` | replace every agent CLI with one command line, taken verbatim (`make dev AGENT=/bin/cat`) |
+| `BERTH_INSTALL_URL` | install-script URL used by `berth upgrade` and `berth ssh` |
+| `BERTH_INSTALL_DIR` | install destination for `install.sh` (default `~/.local/bin`) |
 
-Agent PTYs additionally carry `PACER_AGENT_ID`, `PACER_API_URL` and `PACER_API_TOKEN` so hooks and
-`pacer rename` / `worktree` / `spawn` can find their own session. They are scrubbed from plain terminals.
+Agent PTYs additionally carry `BERTH_AGENT_ID`, `BERTH_API_URL` and `BERTH_API_TOKEN` so hooks and
+`berth rename` / `worktree` / `spawn` can find their own session. They are scrubbed from plain terminals.

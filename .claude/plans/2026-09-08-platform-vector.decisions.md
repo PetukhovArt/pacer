@@ -1,6 +1,6 @@
 # Platform vector: decisions against Herdr
 
-Not a spec. A record of what was settled while comparing pacer with Herdr, what was rejected and
+Not a spec. A record of what was settled while comparing berth with Herdr, what was rejected and
 why, and which branches are still open. Half the tree was never asked, so nothing here is ready to
 implement except where it points at the mermaid spec beside it.
 
@@ -9,9 +9,9 @@ implement except where it points at the mermaid spec beside it.
 Herdr (`herdrdev/herdr`, Rust, pre-1.0, roughly 35k stars, one full-time developer) is a tmux-shaped
 multiplexer with an agent-status sidebar and a socket API. Its shape is panes, tabs and workspaces.
 
-Where it is ahead of pacer:
+Where it is ahead of berth:
 
-- 14 or more agent CLIs supported. pacer has three, and a fourth needs Rust in the daemon.
+- 14 or more agent CLIs supported. berth has three, and a fourth needs Rust in the daemon.
 - Status without hooks: periodic screen matching against TOML rules, so an unknown CLI still reports
   something. Hooks exist as an optional overlay that supersedes the screen rules.
 - A public socket API plus CLI: agents spawn panes, prompt each other, wait until another agent is
@@ -21,7 +21,7 @@ Where it is ahead of pacer:
 - Real multiplexing: splits, tabs, zoom, mouse, prefix keys.
 - Distribution: brew, mise, an install script per platform, documentation in three languages.
 
-Where pacer is ahead:
+Where berth is ahead:
 
 - A domain tree, Workspace to Project to Worktree to Session, with status rolled up through it.
   Herdr has no concept of a project or a repository.
@@ -48,7 +48,7 @@ Where pacer is ahead:
 3. **The CLI is the API's first client, not separate code.** Otherwise the two paths diverge and the
    API ships with no consumer.
 4. **Universality comes before plugins.** A new CLI needing daemon code is the gate on the front
-   door: someone running Copilot CLI or OpenCode cannot use pacer at all today.
+   door: someone running Copilot CLI or OpenCode cannot use berth at all today.
 5. **Status gets two layers, hooks over screen matching.** Hooks stay authoritative where they
    exist; screen rules are the fallback that makes an unknown CLI work on the day it ships.
    Recommended, not yet confirmed.

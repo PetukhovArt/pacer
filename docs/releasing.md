@@ -4,7 +4,7 @@ Three channels, one set of binaries:
 
 | Channel | Who it serves | Built by |
 |---|---|---|
-| GitHub release | `install.sh`, `pacer upgrade`, manual downloads | `.github/workflows/release.yml`, on a version bump |
+| GitHub release | `install.sh`, `berth upgrade`, manual downloads | `.github/workflows/release.yml`, on a version bump |
 | npm | anyone with Node — and the only frictionless path on Windows | `.github/workflows/npm.yml`, called by the same run |
 | `cargo install --git` | source builds, fallback when no asset matches | nothing to do |
 
@@ -24,7 +24,7 @@ The `Release` workflow does the rest in one run:
    `main` it is, and the run stops there — a push that changes no version costs one 30-second job.
 2. `build` compiles five targets — macOS arm64/x64, Linux x64/arm64 (static musl), Windows x64 — and
    uploads two artifacts each: the archive `install.sh` downloads, and the bare binary npm wraps.
-3. `release` tags the commit and attaches `pacer-<target>.tar.gz` (and `.zip` for Windows) to a GitHub
+3. `release` tags the commit and attaches `berth-<target>.tar.gz` (and `.zip` for Windows) to a GitHub
    release with generated notes.
 4. `npm` calls `.github/workflows/npm.yml` with the new tag and the dry run off.
 
@@ -43,14 +43,14 @@ it is private, the script falls back to `cargo install --git`, which needs the u
 
 npm hosts the binaries itself, so this works whether or not the repository is public.
 
-The layout is the esbuild/biome one: five platform packages (`pacer-darwin-arm64`, …), each carrying a
+The layout is the esbuild/biome one: five platform packages (`berth-darwin-arm64`, …), each carrying a
 single binary and declaring its `os`/`cpu`, plus a launcher package that lists all five as
 `optionalDependencies` and execs whichever one npm installed. No postinstall, no download at install
 time.
 
-The packages publish as **`@petukhovart/pacer`** plus `@petukhovart/pacer-<os>-<cpu>`. The scope is there
-because plain `pacer` is taken on npm — an abandoned Redis rate-limiter, last published 2016. It changes
-the install command only; the binary and the command stay `pacer`.
+The packages publish as **`@petukhovart/berth`** plus `@petukhovart/berth-<os>-<cpu>`. The scope is there
+because plain `berth` is taken on npm — an abandoned Redis rate-limiter, last published 2016. It changes
+the install command only; the binary and the command stay `berth`.
 
 **One-time setup**
 
@@ -83,5 +83,5 @@ smoke-tests the launcher against this machine's own platform package before it f
 ## After a release
 
 Upgrading while a daemon is running is safe: sessions keep running on the old binary until someone runs
-`pacer kill`. `pacer upgrade` says so, and `install.sh` refuses to clobber a local `cargo build` unless
+`berth kill`. `berth upgrade` says so, and `install.sh` refuses to clobber a local `cargo build` unless
 passed `--force`.

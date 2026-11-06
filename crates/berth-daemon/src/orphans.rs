@@ -1,0 +1,708 @@
+//! ORPHANED SESSIONS: the conversations whose WORKTREE was deleted.
+//!
+//! Two sources, deliberately unequal. The store's `orphaned_sessions` table
+//! is authoritative — every AGENT KIND, the name the user gave the row —
+//! but it only knows what berth copied aside before the delete cascade, so
+//! it is blind to everything orphaned before that mechanism existed. The
+//! agent CLI's own transcript store fills that in: it survived the delete
+//! untouched, and it reaches back over the whole history. It is Claude-only
+//! (codex keeps conversations in a SQLite of its own, cursor-agent in
+//! nothing this can read), and it knows a title and a branch rather than a
+//! session row.
+//!
+//! Neither source is trusted to be complete, so the merge is a union keyed
+//! by CLI session id, with the store row winning any field both can answer.
+
+use anyhow::Result;
+use berth_core::{paths, OrphanedSession, Project, Worktree};
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+
+use crate::store::Store;
+
+/// How far into a transcript to look for its metadata. The `cwd` and
+/// `gitBranch` ride on the first real message, behind a handful of tiny
+/// header lines — but that message can be a whole pasted file, so the budget
+/// is a byte count rather than a line count. The scan reads all of it: see
+/// `read_head`.
+const HEAD_BUDGET_BYTES: u64 = 512 * 1024;
+
+/// The resumable conversations of `project`, newest first.
+///
+/// `live_worktrees` is the project's current checkouts. A transcript whose
+/// working directory still sits inside one of them is not orphaned — it is
+/// marked `live` instead, and dropped unless `include_live`: the caller
+/// either wants the recoverable-only list (the classic orphans question) or
+/// every conversation the project ever had, so any of them can be resumed
+/// in any checkout.
+pub fn list(
+    store: &Store,
+    project: &Project,
+    live_worktrees: &[Worktree],
+    include_live: bool,
+) -> Result<Vec<OrphanedSession>> {
+    let stored = store.load_orphaned_sessions(&project.id)?;
+    let scanned = match claude_projects_dir() {
+        Some(root) => scan_claude_transcripts(&root, project, live_worktrees),
+        None => Vec::new(),
+    };
+    let mut merged = merge(stored, scanned);
+    if !include_live {
+        merged.retain(|s| !s.live);
+    }
+    Ok(merged)
+}
+
+/// Union the two sources by CLI session id, newest first.
+///
+/// The store row wins every field both can answer: it carries the AGENT KIND
+/// and the name the user actually gave the session, where the transcript can
+/// only offer the CLI's own title. The transcript still contributes the one
+/// thing no column knows — that the conversation is still on disk, and how
+/// big it grew.
+fn merge(mut stored: Vec<OrphanedSession>, scanned: Vec<OrphanedSession>) -> Vec<OrphanedSession> {
+    let mut seen: HashMap<String, usize> = stored
+        .iter()
+        .enumerate()
+        .map(|(i, o)| (o.session_id.clone(), i))
+        .collect();
+    for found in scanned {
+        match seen.get(&found.session_id) {
+            // `live` too: a store row is written at delete time, but the
+            // checkout can exist again by now (a worktree re-created at the
+            // same path), and the scan is the side that looked.
+            Some(&i) => {
+                stored[i].transcript_bytes = found.transcript_bytes;
+                stored[i].live = found.live;
+            }
+            None => {
+                seen.insert(found.session_id.clone(), stored.len());
+                stored.push(found);
+            }
+        }
+    }
+    stored.sort_by(|a, b| {
+        b.orphaned_at
+            .cmp(&a.orphaned_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    stored
+}
+
+/// The notice a resumed conversation opens with: where it used to run and
+/// where it runs now, so the agent re-reads instead of trusting what it
+/// recalls. A worktree that is gone gets the stronger wording — every path
+/// in the conversation's history points at nothing. None when the session
+/// comes back into the very checkout it ran in: there is no relocation to
+/// explain.
+pub fn resume_notice(orphan: &OrphanedSession, worktree: &Worktree) -> Option<String> {
+    // Both sides through `canonical_or_raw`: the scan canonicalizes its
+    // cwd, but a store row carries the raw path the worktree was saved
+    // with, and `paths::contains` on half-canonical input misdetects.
+    let target = paths::canonical_or_raw(&worktree.path);
+    let source = paths::canonical_or_raw(&orphan.worktree_path);
+    if paths::contains(&target, &source) {
+        return None;
+    }
+    let was = if orphan.branch.is_empty() {
+        "an unknown branch".to_string()
+    } else {
+        format!("branch `{}`", orphan.branch)
+    };
+    let fate = if orphan.live {
+        "a different checkout of the same repository"
+    } else {
+        "a worktree that has since been deleted — the paths in your own history are not on \
+         disk any more"
+    };
+    Some(format!(
+        "[berth] This conversation ran in {} at {}, {}. It now runs in `{}` at {}. \
+         Re-read any file before acting on what you remember of it, and tell the user which \
+         branch you are on before you change anything.",
+        was,
+        orphan.worktree_path.display(),
+        fate,
+        worktree.branch,
+        worktree.path.display()
+    ))
+}
+
+/// Where Claude Code keeps its conversations: one directory per working
+/// directory, named after it, holding one `<session-id>.jsonl` per session.
+pub(crate) fn claude_projects_dir() -> Option<PathBuf> {
+    berth_core::env::home_dir().map(|home| home.join(".claude").join("projects"))
+}
+
+/// Claude Code's name for the directory of a given working directory: every
+/// character that is not a letter, a digit or a dash becomes a dash, so
+/// `D:\repo\wt` becomes `D--repo-wt`.
+///
+/// The mapping loses information and cannot be reversed — two different
+/// checkouts can slug the same. It is used only to narrow which directories
+/// are worth opening; what a transcript actually ran in is read back out of
+/// the transcript itself.
+pub(crate) fn slug(path: &Path) -> String {
+    path.to_string_lossy()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// Where Claude would keep `session_id`'s transcript for a session running
+/// in `cwd`, when the file is actually there.
+///
+/// Derived, so it can be wrong: the slug is lossy, and an agent that
+/// re-homed mid-conversation kept the directory it started in. A miss is
+/// "unknown", not "nothing spent" — hence the `exists` check, which lets
+/// the caller fall through to [`find_transcript`].
+pub(crate) fn transcript_path(cwd: &Path, session_id: &str) -> Option<PathBuf> {
+    if !names_one_file(session_id) {
+        return None;
+    }
+    let dir = claude_projects_dir()?.join(slug(&paths::canonical_or_raw(cwd)));
+    let path = dir.join(format!("{session_id}.jsonl"));
+    path.is_file().then_some(path)
+}
+
+/// The one directory under [`claude_projects_dir`] holding
+/// `<session_id>.jsonl`. A CLI session id is a UUID, so at most one can.
+/// A couple of dozen stats; the caller caches the answer.
+pub(crate) fn find_transcript(session_id: &str) -> Option<PathBuf> {
+    if !names_one_file(session_id) {
+        return None;
+    }
+    let root = claude_projects_dir()?;
+    let file = format!("{session_id}.jsonl");
+    std::fs::read_dir(root)
+        .ok()?
+        .flatten()
+        .map(|dir| dir.path().join(&file))
+        .find(|path| path.is_file())
+}
+
+/// Whether a session id can be interpolated into a path at all.
+///
+/// A CLI session id is a UUID and names one file inside one directory, but
+/// it reaches berth through a hook payload that berth does not author. Both
+/// lookups above build a path out of it, so anything carrying a separator
+/// or a parent reference would read a file outside the transcripts
+/// directory entirely.
+fn names_one_file(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id != "."
+        && session_id != ".."
+        && !session_id.contains(['/', '\\', ':'])
+}
+
+/// The metadata Claude Code writes into the head of a transcript. Every
+/// field is optional: the header lines vary by version, and a conversation
+/// that never took a turn has no message to carry `cwd` at all.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct TranscriptHead {
+    cwd: Option<String>,
+    git_branch: Option<String>,
+    custom_title: Option<String>,
+    ai_title: Option<String>,
+}
+
+impl TranscriptHead {
+    /// Take whatever this JSONL line knows and keep the first answer for
+    /// each field — the earliest line is the closest to what the session
+    /// started as, and a later `cd` must not rewrite where it belongs.
+    ///
+    /// `aiTitle` is the exception and keeps the last answer instead. It is
+    /// not a fact about where the session started but Claude Code's running
+    /// guess at what it is about, rewritten as the conversation goes on, and
+    /// `/resume` shows the newest one — so matching it means overwriting.
+    fn absorb(&mut self, line: &str) {
+        #[derive(Deserialize)]
+        struct Line {
+            #[serde(default)]
+            cwd: Option<String>,
+            #[serde(default)]
+            #[serde(rename = "gitBranch")]
+            git_branch: Option<String>,
+            #[serde(default)]
+            #[serde(rename = "customTitle")]
+            custom_title: Option<String>,
+            #[serde(default)]
+            #[serde(rename = "aiTitle")]
+            ai_title: Option<String>,
+        }
+        let Ok(parsed) = serde_json::from_str::<Line>(line) else {
+            return;
+        };
+        self.cwd = self.cwd.take().or(parsed.cwd);
+        self.git_branch = self.git_branch.take().or(parsed.git_branch);
+        self.custom_title = self.custom_title.take().or(parsed.custom_title);
+        if parsed.ai_title.is_some() {
+            self.ai_title = parsed.ai_title;
+        }
+    }
+}
+
+/// Read a transcript's head far enough to learn where it ran.
+///
+/// The scan always spends the whole budget. It used to stop early once every
+/// field was answered, but the last `aiTitle` is only known by reading to the
+/// end of the budget — and the early exit required a `customTitle`, which
+/// almost no transcript has, so it practically never fired anyway.
+fn read_head(path: &Path) -> Option<TranscriptHead> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut head = TranscriptHead::default();
+    let mut spent = 0u64;
+    let mut line = String::new();
+    while spent < HEAD_BUDGET_BYTES {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => spent += n as u64,
+        }
+        head.absorb(&line);
+    }
+    head.cwd.is_some().then_some(head)
+}
+
+/// The two directories a project's conversations can have run in: its own
+/// checkout, and the WORKTREE DIR beside it where berth puts new worktrees
+/// (`<repo>/../<repo-name>-worktrees`).
+///
+/// This is what keeps one project's transcripts out of another's list. The
+/// slug prefix alone cannot: `…/berth` is a prefix of `…/berth2`, whose
+/// conversations would then look orphaned here — and offering to resume
+/// them in the wrong repository is worse than missing a worktree somebody
+/// created outside both directories.
+fn project_dirs(repo: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![repo.to_path_buf()];
+    if let (Some(parent), Some(name)) = (repo.parent(), repo.file_name()) {
+        dirs.push(parent.join(format!("{}-worktrees", name.to_string_lossy())));
+    }
+    dirs
+}
+
+/// Epoch ms of a file's last write, or 0 when the filesystem won't say.
+fn modified_ms(meta: &std::fs::Metadata) -> i64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Every Claude conversation of `project`, with the ones whose checkout is
+/// still in the worktree list marked `live`. Every failure here is a
+/// directory that stays unread: this is a best-effort recovery of what the
+/// store lost, and it must never take the list down with it.
+fn scan_claude_transcripts(
+    root: &Path,
+    project: &Project,
+    live_worktrees: &[Worktree],
+) -> Vec<OrphanedSession> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    // A project's conversations live under its own checkout or under the
+    // WORKTREE DIR beside it, and both slug to something starting with the
+    // repo path's own slug — which narrows the scan cheaply, but only
+    // narrows it: `…/berth` is a prefix of `…/berth2` as well, so where a
+    // transcript really ran is decided by `belongs_to` below.
+    let repo = paths::canonical_or_raw(&project.repo_path);
+    let prefix = slug(&repo);
+    let home = project_dirs(&repo);
+    let live: Vec<PathBuf> = live_worktrees
+        .iter()
+        .map(|w| paths::canonical_or_raw(&w.path))
+        .collect();
+
+    let mut found = Vec::new();
+    for dir in entries.flatten() {
+        if !dir.file_name().to_string_lossy().starts_with(&prefix) {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(dir.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let path = file.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let Some(session_id) = path.file_stem().map(|s| s.to_string_lossy().into_owned())
+            else {
+                continue;
+            };
+            let Some(head) = read_head(&path) else {
+                continue;
+            };
+            let cwd = paths::canonical_or_raw(Path::new(head.cwd.as_deref().unwrap_or_default()));
+            if !home.iter().any(|dir| paths::contains(dir, &cwd)) {
+                continue;
+            }
+            let is_live = live.iter().any(|w| paths::contains(w, &cwd));
+            let Ok(meta) = file.metadata() else {
+                continue;
+            };
+            let branch = head.git_branch.unwrap_or_default();
+            let name = head
+                .custom_title
+                .filter(|t| !t.is_empty())
+                .or_else(|| head.ai_title.filter(|t| !t.is_empty()))
+                .or_else(|| (!branch.is_empty()).then(|| branch.clone()))
+                .unwrap_or_else(|| session_id.chars().take(8).collect());
+            found.push(OrphanedSession {
+                session_id,
+                project_id: project.id.clone(),
+                // The scan reads Claude's store and nothing else, so this is
+                // not a guess: anything it finds is a Claude conversation.
+                kind: berth_core::AgentKind::Claude,
+                name,
+                branch,
+                worktree_path: cwd,
+                created_at: 0,
+                orphaned_at: modified_ms(&meta),
+                transcript_bytes: Some(meta.len()),
+                live: is_live,
+            });
+        }
+    }
+    found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The slug is a data format owned by another program: berth only
+    /// matches against it, so the mapping has to be the one Claude Code
+    /// actually uses, verified against real directory names.
+    #[test]
+    fn slug_matches_claude_codes_directory_names() {
+        assert_eq!(
+            slug(Path::new(r"D:\web-projects\berth")),
+            "D--web-projects-berth"
+        );
+        assert_eq!(
+            slug(Path::new(r"D:\web-projects\berth-worktrees\features")),
+            "D--web-projects-berth-worktrees-features"
+        );
+        assert_eq!(slug(Path::new("/home/me/repo")), "-home-me-repo");
+        // A leading dot is a character like any other, not a hidden-file rule.
+        assert_eq!(
+            slug(Path::new(r"D:\web-projects\.hooktest")),
+            "D--web-projects--hooktest"
+        );
+    }
+
+    /// A worktree's slug starts with its project's, which is the whole
+    /// reason the prefix filter can narrow the scan without missing rows.
+    #[test]
+    fn a_worktrees_slug_starts_with_its_projects() {
+        let project = slug(Path::new(r"D:\web-projects\berth"));
+        let worktree = slug(Path::new(r"D:\web-projects\berth-worktrees\features"));
+        assert!(worktree.starts_with(&project));
+    }
+
+    #[test]
+    fn head_reads_cwd_branch_and_title_from_a_transcript() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"type":"custom-title","customTitle":"feat-gitlab","sessionId":"s"}"#,
+                "\n",
+                r#"{"type":"mode","mode":"normal"}"#,
+                "\n",
+                r#"{"type":"user","cwd":"D:\\web-projects\\wt","gitBranch":"features"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        let head = read_head(&path).unwrap();
+        assert_eq!(head.cwd.as_deref(), Some(r"D:\web-projects\wt"));
+        assert_eq!(head.git_branch.as_deref(), Some("features"));
+        assert_eq!(head.custom_title.as_deref(), Some("feat-gitlab"));
+    }
+
+    /// A transcript with no message in it never reports a working directory,
+    /// so there is no way to tell which project it belongs to — it is
+    /// skipped rather than filed under a guess.
+    #[test]
+    fn head_without_a_cwd_is_not_a_candidate() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(&path, "{\"type\":\"mode\",\"mode\":\"normal\"}\n").unwrap();
+        assert!(read_head(&path).is_none());
+    }
+
+    /// Garbage lines are stepped over: a half-written transcript is common
+    /// (the CLI appends as it goes) and must not cost the whole file.
+    #[test]
+    fn head_survives_an_unparsable_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                "not json at all\n",
+                r#"{"cwd":"/w/feat","gitBranch":"feat"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        let head = read_head(&path).unwrap();
+        assert_eq!(head.cwd.as_deref(), Some("/w/feat"));
+    }
+
+    /// The first answer wins: a session that `cd`s mid-conversation still
+    /// belongs to the checkout it started in.
+    #[test]
+    fn head_keeps_the_first_cwd_it_sees() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"cwd":"/w/first"}"#,
+                "\n",
+                r#"{"cwd":"/w/second","gitBranch":"b","customTitle":"t"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(read_head(&path).unwrap().cwd.as_deref(), Some("/w/first"));
+    }
+
+    /// A transcript, written where Claude Code would write it.
+    fn transcript(root: &Path, cwd: &Path, session_id: &str, title: &str, branch: &str) {
+        let dir = root.join(slug(cwd));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cwd = serde_json::to_string(&cwd.to_string_lossy()).unwrap();
+        std::fs::write(
+            dir.join(format!("{session_id}.jsonl")),
+            format!(
+                "{{\"type\":\"custom-title\",\"customTitle\":\"{title}\"}}\n\
+                 {{\"type\":\"user\",\"cwd\":{cwd},\"gitBranch\":\"{branch}\"}}\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    fn project_at(repo: &Path) -> Project {
+        Project {
+            workspace_id: Default::default(),
+            id: berth_core::ProjectId("p".into()),
+            name: "demo".into(),
+            repo_path: repo.to_path_buf(),
+            sort_order: 0,
+        }
+    }
+
+    fn worktree_at(path: &Path) -> Worktree {
+        Worktree {
+            id: berth_core::WorktreeId("w".into()),
+            project_id: berth_core::ProjectId("p".into()),
+            path: path.to_path_buf(),
+            branch: "main".into(),
+            is_main: true,
+            sort_order: 0,
+        }
+    }
+
+    /// A directory that exists, so its path canonicalizes the same way the
+    /// scan will canonicalize it. Windows temp paths in particular do not
+    /// compare equal to their canonical form.
+    fn dir(path: PathBuf) -> PathBuf {
+        std::fs::create_dir_all(&path).unwrap();
+        paths::canonical_or_raw(&path)
+    }
+
+    /// The rule that decides what "orphaned" means: a conversation whose
+    /// checkout is still in the project's worktree list is `live`, and the
+    /// orphans-only view drops it while the everything view keeps it.
+    #[test]
+    fn a_transcript_in_a_live_worktree_is_marked_live() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = dir(tmp.path().to_path_buf());
+        let repo = dir(base.join("demo"));
+        let gone = dir(base.join("demo-worktrees").join("feat"));
+        let root = base.join("claude");
+
+        transcript(&root, &repo, "live", "on-main", "main");
+        transcript(&root, &gone, "orphan", "feat-gitlab", "feat");
+
+        let found = scan_claude_transcripts(&root, &project_at(&repo), &[worktree_at(&repo)]);
+
+        assert_eq!(found.len(), 2, "both checkouts' sessions");
+        let orphan = found.iter().find(|s| s.session_id == "orphan").unwrap();
+        assert!(!orphan.live);
+        assert_eq!(orphan.name, "feat-gitlab");
+        assert_eq!(orphan.branch, "feat");
+        assert_eq!(orphan.kind, berth_core::AgentKind::Claude);
+        assert!(orphan.transcript_bytes.unwrap() > 0);
+        assert!(found.iter().find(|s| s.session_id == "live").unwrap().live);
+    }
+
+    /// Claude Code writes an `ai-title` line whenever it sharpens its guess
+    /// at what a session is about, and `/resume` lists the newest one. With
+    /// no `customTitle` the picker has to show that title rather than the
+    /// branch, which is `main` for almost every session in the main checkout.
+    #[test]
+    fn a_session_is_named_after_its_last_ai_title() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = dir(tmp.path().to_path_buf());
+        let repo = dir(base.join("demo"));
+        let root = base.join("claude");
+        let slugged = root.join(slug(&repo));
+        std::fs::create_dir_all(&slugged).unwrap();
+        let cwd = serde_json::to_string(&repo.to_string_lossy()).unwrap();
+        std::fs::write(
+            slugged.join("s.jsonl"),
+            format!(
+                "{{\"type\":\"user\",\"cwd\":{cwd},\"gitBranch\":\"main\"}}
+                 {{\"type\":\"ai-title\",\"aiTitle\":\"first guess\"}}
+                 {{\"type\":\"ai-title\",\"aiTitle\":\"sharpened guess\"}}
+"
+            ),
+        )
+        .unwrap();
+
+        let found = scan_claude_transcripts(&root, &project_at(&repo), &[]);
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "sharpened guess");
+        assert_eq!(found[0].branch, "main");
+    }
+
+    /// The scan is scoped by the project's own slug, so another repo's
+    /// conversations never leak into this project's list.
+    #[test]
+    fn another_projects_transcripts_are_not_scanned() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = dir(tmp.path().to_path_buf());
+        let repo = dir(base.join("demo"));
+        let root = base.join("claude");
+
+        transcript(&root, &dir(base.join("elsewhere")), "other", "x", "b");
+
+        assert!(scan_claude_transcripts(&root, &project_at(&repo), &[]).is_empty());
+    }
+
+    /// The slug prefix alone would let `demo2`'s conversations through into
+    /// `demo`'s list — and resuming one of those would drop a conversation
+    /// about a different repository into this one.
+    #[test]
+    fn a_project_whose_name_extends_this_one_is_not_scanned_into_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = dir(tmp.path().to_path_buf());
+        let repo = dir(base.join("demo"));
+        let sibling = dir(base.join("demo2"));
+        let root = base.join("claude");
+
+        transcript(&root, &sibling, "next-door", "other-repo", "main");
+        assert!(
+            slug(&sibling).starts_with(&slug(&repo)),
+            "the prefix filter really does let this one through"
+        );
+
+        assert!(scan_claude_transcripts(&root, &project_at(&repo), &[]).is_empty());
+    }
+
+    /// A transcript with no readable working directory cannot be filed under
+    /// any project, so the scan steps over it instead of guessing.
+    #[test]
+    fn a_transcript_without_a_cwd_is_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = dir(tmp.path().join("demo"));
+        let root = tmp.path().join("claude");
+        let dir = root.join(slug(&paths::canonical_or_raw(&repo)));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("s.jsonl"),
+            "{\"type\":\"mode\"}
+",
+        )
+        .unwrap();
+
+        assert!(scan_claude_transcripts(&root, &project_at(&repo), &[]).is_empty());
+    }
+
+    /// The store's row carries the raw path the worktree was saved with,
+    /// not the canonical one the scan writes — a resume into the very same
+    /// checkout must still be recognized, or the agent gets told its
+    /// worktree was deleted while it is sitting in it.
+    #[test]
+    fn a_resume_into_the_same_checkout_gets_no_notice() {
+        let tmp = tempfile::tempdir().unwrap();
+        let raw = tmp.path().join("demo");
+        std::fs::create_dir_all(&raw).unwrap();
+
+        let mut orphan = row("sid", "n", 0);
+        orphan.worktree_path = raw.clone();
+        let mut same = worktree_at(&paths::canonical_or_raw(&raw));
+        same.branch = "feat".into();
+        assert_eq!(resume_notice(&orphan, &same), None);
+
+        let elsewhere = worktree_at(&dir(tmp.path().join("demo-worktrees").join("other")));
+        let notice = resume_notice(&orphan, &elsewhere).unwrap();
+        assert!(notice.contains("since been deleted"), "{notice}");
+
+        orphan.live = true;
+        let notice = resume_notice(&orphan, &elsewhere).unwrap();
+        assert!(notice.contains("different checkout"), "{notice}");
+    }
+
+    fn row(session_id: &str, name: &str, orphaned_at: i64) -> OrphanedSession {
+        OrphanedSession {
+            session_id: session_id.into(),
+            project_id: berth_core::ProjectId("p".into()),
+            kind: berth_core::AgentKind::Codex,
+            name: name.into(),
+            branch: "feat".into(),
+            worktree_path: PathBuf::from("/gone"),
+            created_at: 0,
+            orphaned_at,
+            transcript_bytes: None,
+            live: false,
+        }
+    }
+
+    /// One conversation found in both places is one row: the store's, which
+    /// knows the kind and the user's own name for it, plus the one fact only
+    /// the transcript has.
+    #[test]
+    fn a_session_known_to_both_sources_is_one_row() {
+        let mut from_disk = row("sid", "claude-title", 50);
+        from_disk.kind = berth_core::AgentKind::Claude;
+        from_disk.transcript_bytes = Some(4096);
+
+        let merged = merge(vec![row("sid", "the-name-i-gave-it", 100)], vec![from_disk]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].name, "the-name-i-gave-it", "the store row wins");
+        assert_eq!(merged[0].kind, berth_core::AgentKind::Codex);
+        assert_eq!(merged[0].transcript_bytes, Some(4096), "the disk adds this");
+    }
+
+    /// Sessions orphaned before the store started keeping them exist only on
+    /// disk; the merge is a union, not a filter over what the store knows.
+    #[test]
+    fn a_session_only_on_disk_still_makes_the_list() {
+        let merged = merge(
+            vec![row("in-store", "a", 10)],
+            vec![row("on-disk", "b", 20)],
+        );
+        let ids: Vec<&str> = merged.iter().map(|o| o.session_id.as_str()).collect();
+        assert_eq!(ids, ["on-disk", "in-store"], "newest first");
+    }
+}

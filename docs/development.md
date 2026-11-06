@@ -7,7 +7,7 @@ Everything below is the unix workflow. **On Windows there is no `make`** — the
 make help                 # every target
 make check                # typecheck — fastest feedback
 make ci                   # the whole gate: fmt check, clippy, tests
-cargo build --release     # → target/release/pacer (~4 MB)
+cargo build --release     # → target/release/berth (~4 MB)
 cargo test                # unit + end-to-end suite (spawns real daemons/PTYs)
 ```
 
@@ -20,10 +20,10 @@ lists every checkout's instance. On Windows, see [windows.md](windows.md#develop
 
 | Crate | What it owns |
 |---|---|
-| `pacer-core` | shared protocol, entities, paths, transport |
-| `pacer-daemon` | PTYs, SQLite, hook receiver, status engine |
-| `pacer-tui` | the ratatui client |
-| `pacer` | the binary and its subcommands |
+| `berth-core` | shared protocol, entities, paths, transport |
+| `berth-daemon` | PTYs, SQLite, hook receiver, status engine |
+| `berth-tui` | the ratatui client |
+| `berth` | the binary and its subcommands |
 
 `vendor/vt100` is a patched copy of the terminal parser, wired in through `[patch.crates-io]`: rows
 scrolled out of a top-anchored scroll region go to scrollback instead of being discarded, so wheel-up

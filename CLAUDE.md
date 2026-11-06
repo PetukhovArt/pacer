@@ -1,9 +1,9 @@
-# Pacer
+# Berth
 
 Terminal multiplexer for AI coding agents: a daemon owns the PTYs and outlives the TUI that started
 it; a ratatui TUI attaches over the daemon socket. That socket is an `AF_UNIX` socket on unix and a
 loopback TCP listener plus a bearer token on Windows — one or the other, never layered, and hidden
-behind one API in `crates/pacer-core/src/transport.rs`. Code is the source of truth: read
+behind one API in `crates/berth-core/src/transport.rs`. Code is the source of truth: read
 `ARCHITECTURE.md` for the map and `GLOSSARY.md` for the vocabulary before touching IPC, hooks or the
 daemon.
 
@@ -23,7 +23,7 @@ file — nothing arrives for a prompt that names nothing it recognizes.
 <important if="you are writing text a user reads: the changelog, the README, docs, release notes or a PR body">
 
 - `CHANGELOG.md` is for users, not for us. A change gets an entry under `## Unreleased` only if
-  someone who runs `pacer` would notice it — a feature, a fix, a changed key, a new install route.
+  someone who runs `berth` would notice it — a feature, a fix, a changed key, a new install route.
   Refactors, tests, CI, docs, tooling and anything under `scripts/` get no entry.
 - `CHANGELOG.md` follows the Claude Code changelog shape: `## <version>` and nothing below it, one
   flat bullet per change on a single line, each starting with `Added` / `Fixed` / `Changed` /
@@ -51,8 +51,8 @@ and its own database, or an unfinished binary is driving your live sessions.
 ## On-disk names
 
 Paths, env vars and the hook tag are load-bearing on data that already exists on user machines:
-`crates/pacer-core/src/paths.rs` (runtime dir, socket, pidfile, endpoint file, data dir, database),
-`crates/pacer-core/src/env.rs` (env vars) and `crates/pacer-daemon/src/hooks/installer.rs` (the hook
+`crates/berth-core/src/paths.rs` (runtime dir, socket, pidfile, endpoint file, data dir, database),
+`crates/berth-core/src/env.rs` (env vars) and `crates/berth-daemon/src/hooks/installer.rs` (the hook
 tag and the Cursor rule file). Changing any of them needs a migration, not a find-and-replace — the
 tests pass either way, and existing installations lose their sessions, pins and settings.
 

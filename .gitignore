@@ -1,10 +1,10 @@
 /target
 
-# pacer-managed agent hook files installed at agent spawn
+# berth-managed agent hook files installed at agent spawn
 /.codex/
 /.cursor/
 
-# Everything under .claude is local — pacer's generated settings, the
+# Everything under .claude is local — berth's generated settings, the
 # worktrees it makes for sessions, scratch files. The exceptions are the
 # project's own prompt hook and the settings file that registers it.
 /.claude/*

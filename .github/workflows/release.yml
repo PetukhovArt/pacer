@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           version=$(cargo metadata --no-deps --format-version 1 |
-            sed -n 's/.*"name":"pacer","version":"\([^"]*\)".*/\1/p')
+            sed -n 's/.*"name":"berth","version":"\([^"]*\)".*/\1/p')
           echo "version=$version" >> "$GITHUB_OUTPUT"
           case "$GITHUB_REF" in
             refs/tags/v*)
@@ -102,22 +102,22 @@ jobs:
       # download drops the executable bit — the npm build script re-chmods.
       - name: Package (unix)
         if: matrix.runner != 'windows-latest'
-        run: tar -czf pacer-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release pacer
+        run: tar -czf berth-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release berth
 
       - name: Package (windows)
         if: matrix.runner == 'windows-latest'
         shell: pwsh
-        run: Compress-Archive -Path target/${{ matrix.target }}/release/pacer.exe -DestinationPath pacer-${{ matrix.target }}.zip
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/berth.exe -DestinationPath berth-${{ matrix.target }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: archive-${{ matrix.target }}
-          path: pacer-${{ matrix.target }}.*
+          path: berth-${{ matrix.target }}.*
 
       - uses: actions/upload-artifact@v4
         with:
           name: bin-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/pacer${{ matrix.runner == 'windows-latest' && '.exe' || '' }}
+          path: target/${{ matrix.target }}/release/berth${{ matrix.runner == 'windows-latest' && '.exe' || '' }}
 
   release:
     needs: [gate, build]
@@ -161,8 +161,8 @@ jobs:
         with:
           tag_name: v${{ needs.gate.outputs.version }}
           files: |
-            pacer-*.tar.gz
-            pacer-*.zip
+            berth-*.tar.gz
+            berth-*.zip
           body_path: RELEASE_NOTES.md
 
   # npm carries the binaries itself, so it is the install route that works

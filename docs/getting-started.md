@@ -5,18 +5,18 @@ A walkthrough of the TUI, from an empty list to a tree of running agents. Key de
 
 ## 1. Add a repo
 
-pacer is project-first, and a project is just a git checkout:
+berth is project-first, and a project is just a git checkout:
 
 ```sh
-pacer add ~/code/my-app       # or, from inside the repo: pacer add .
+berth add ~/code/my-app       # or, from inside the repo: berth add .
 ```
 
 ## 2. Open the TUI
 
-A bare `pacer` launches it and auto-starts the daemon:
+A bare `berth` launches it and auto-starts the daemon:
 
 ```sh
-pacer
+berth
 ```
 
 Up to four columns, left to right: **Projects → Worktrees → Sessions → Terminal**. `Tab` / `Shift+Tab`
@@ -40,7 +40,7 @@ worktrees edit two directories and never collide. The branch name you type is sl
 (`fix login redirect` → `fix-login-redirect`); an empty prompt takes a random `<adj>-<noun>-<verb>`.
 
 Or skip the column and just ask: tell a Claude session "do this in a worktree" and it creates one
-through pacer and moves itself into it.
+through berth and moves itself into it.
 
 A new worktree also gets what git leaves behind: the gitignored files sitting in the main checkout
 (`.env`, `.claude/settings.local.json`) are copied in, and gitignored symlinks (a linked skill, a
@@ -56,7 +56,7 @@ and drops out of the menu entirely (with exactly one enabled, `n` skips the menu
 naming). `→` on Claude or Codex drills into model and reasoning-effort submenus; `Enter` anywhere takes
 your configured defaults. A plain shell is `t`.
 
-Name the session or accept the default, and pacer spawns the CLI in that worktree and drops you
+Name the session or accept the default, and berth spawns the CLI in that worktree and drops you
 straight into it.
 
 ### Agent presets
@@ -72,11 +72,11 @@ itself on that first turn, resumes, and shows status like any other. Presets liv
 ### Claude Cloud sessions
 
 On the Claude row, `Tab` toggles Cloud mode: after the optional name, enter the task in the wrapped
-editor (`Shift+Enter` or `Ctrl+J` adds a line) and pacer launches `claude --cloud <task>`. On accounts
-without Claude's live-attach rollout the CLI prints the session URL and exits — so pacer reads the
+editor (`Shift+Enter` or `Ctrl+J` adds a line) and berth launches `claude --cloud <task>`. On accounts
+without Claude's live-attach rollout the CLI prints the session URL and exits — so berth reads the
 session id off that output and re-enters the session for you, without being asked.
 
-The row becomes a **mirror** of the cloud session: pacer runs `claude --cloud <id>`, falling back to
+The row becomes a **mirror** of the cloud session: berth runs `claude --cloud <id>`, falling back to
 `claude --teleport <id>` (the transcript and branch pulled into a local session) when the account can't
 attach, and then re-teleports every 45s so turns the cloud agent takes keep landing in the pane. The
 badge reads `cloud ↻` while it is following. Since either CLI switches the checkout to the cloud
@@ -84,10 +84,10 @@ branch, a row still in the main checkout is first re-homed into a `cloud-<id>` w
 
 A teleport is a snapshot, not a live link, which is why the mirror re-pulls — and why **the first key
 you type into the pane ends it**: from then on the session is yours, an ordinary local Claude that
-started from a cloud transcript, and pacer stops respawning it under you. `PACER_CLOUD_MIRROR_SECS`
+started from a cloud transcript, and berth stops respawning it under you. `BERTH_CLOUD_MIRROR_SECS`
 changes the cadence; `0` turns the follow off, leaving **Attach cloud session** (the row's `m` menu) as
 the manual refresh. To steer the cloud agent without a browser, pick **Send to cloud session** — the
-same wrapped editor — and pacer runs `claude -p <message> --cloud <id>` and pulls the transcript
+same wrapped editor — and berth runs `claude -p <message> --cloud <id>` and pulls the transcript
 straight after. The reply shows up on a later refresh; the CLI never returns one.
 
 > Cloud tasks are process arguments — don't put secrets in a `claude --cloud` task description.
@@ -95,8 +95,8 @@ straight after. The reply shows up on a later refresh; the CLI never returns one
 ## 5. Leave — it keeps running
 
 `Ctrl+q` gets you out of the terminal and back to the panels. That's the key to remember: the agent
-doesn't care that you stopped watching. Press `q` to quit pacer entirely and the daemon still owns every
-PTY — come back with `pacer` an hour later and each session is where you left it, scrollback replayed.
+doesn't care that you stopped watching. Press `q` to quit berth entirely and the daemon still owns every
+PTY — come back with `berth` an hour later and each session is where you left it, scrollback replayed.
 
 Idle PTYs nobody is watching are reaped after `session_idle_timeout` (5m default) and resume on the next
 attach.
@@ -120,7 +120,7 @@ Worktree and project rows roll up their children: red beats yellow beats done, a
 violet whenever anything unread finished under it — so the violet walks up the tree and turns green as
 you read your way down it.
 
-A dot going violet while you were looking elsewhere is easy to miss, so pacer counts those for you: when
+A dot going violet while you were looking elsewhere is easy to miss, so berth counts those for you: when
 a running (or red) session finishes a turn that isn't in the pane on screen, its worktree and project
 rows grow a violet `n done` badge — the number of terminals you have left to go read — and the session
 row itself says `done` where its harness name normally sits. Walking the cursor onto a session previews
@@ -128,19 +128,19 @@ it, which reads it: the badges count down as you go and disappear at zero. The f
 so it survives closing the TUI and is shared by every client; a turn that finishes in the pane you're
 already looking at never counts.
 
-Status comes from agent-CLI hooks, not MCP: pacer merges managed hooks into each agent's config and they
+Status comes from agent-CLI hooks, not MCP: berth merges managed hooks into each agent's config and they
 report to the daemon's loopback endpoint. Codex hooks live in `~/.codex/hooks.json` — approve them once
 at codex's "Hooks need review" prompt.
 
 ## 7. Let them name themselves
 
 Leave a new session on its default name and the agent retitles it after your first prompt — `Fix Login
-Redirect` rather than `agent-3`. Type a name yourself (or `r` to rename) and pacer never touches it.
-`/rename` inside Claude Code renames the row too, a few seconds later while pacer is open.
+Redirect` rather than `agent-3`. Type a name yourself (or `r` to rename) and berth never touches it.
+`/rename` inside Claude Code renames the row too, a few seconds later while berth is open.
 
 ## Pull requests in the tree
 
-pacer reads open pull requests from the forge behind `origin` — **GitHub** through `gh`, **GitLab**
+berth reads open pull requests from the forge behind `origin` — **GitHub** through `gh`, **GitLab**
 (including self-hosted) through `glab` — and shows them in two places:
 
 - **Under the project**, in the Worktrees column: an `OPEN PRS` group listing every pull request still
@@ -153,7 +153,7 @@ pacer reads open pull requests from the forge behind `origin` — **GitHub** thr
 
 Each row carries review and pipeline status as icons to the left of its number. Rest the cursor on one
 and the right-hand pane reads it to you — description, stats and the whole conversation — without
-leaving pacer. Threads are rendered as a tree: replies sit under the root comment with `├` / `└`
+leaving berth. Threads are rendered as a tree: replies sit under the root comment with `├` / `└`
 branches, the root shows the file and line of the diff it hangs on, and resolved threads are marked
 `✓ resolved`. "Requested changes" shows as a verdict alongside approval.
 
@@ -173,8 +173,8 @@ The panels aren't the only view. With a worktree selected, from any panel:
 
 | Key | View |
 |---|---|
-| **`g`** | **Git diff.** Changed files down the left, the diff on the right, with a live fuzzy filter. On an open-PR row it shows that pull request's diff instead. `Ctrl+r` marks a file reviewed ✓ and sinks it to the bottom — pacer-side bookkeeping only, no git state is touched — and every mark clears itself when HEAD moves or the file changes again, so what's left unticked is genuinely what you haven't read. |
-| **`f`** | **Find file.** Fuzzy finder over the worktree. `Enter` opens the file in an editor modal (vim by default; the `editor` setting or `PACER_EDITOR` picks another), `Ctrl+y` copies the path — ready to paste into an agent. |
+| **`g`** | **Git diff.** Changed files down the left, the diff on the right, with a live fuzzy filter. On an open-PR row it shows that pull request's diff instead. `Ctrl+r` marks a file reviewed ✓ and sinks it to the bottom — berth-side bookkeeping only, no git state is touched — and every mark clears itself when HEAD moves or the file changes again, so what's left unticked is genuinely what you haven't read. |
+| **`f`** | **Find file.** Fuzzy finder over the worktree. `Enter` opens the file in an editor modal (vim by default; the `editor` setting or `BERTH_EDITOR` picks another), `Ctrl+y` copies the path — ready to paste into an agent. |
 | **`F`** | **Find in files.** `git grep` into the same modal; `Enter` opens the hit at its line. |
 | **`b`** | **File tree browser.** Tree on the left, syntax-highlighted preview on the right, and an always-live filter that narrows the tree to matching files and the directories holding them. |
 
@@ -189,7 +189,7 @@ The panels aren't the only view. With a worktree selected, from any panel:
 - **`Shift+S` sorts** the column the cursor is in — recent → name → created — and each column remembers
   its own choice. The default is `created`, a stable creation order, so lists don't re-sort themselves
   under you; cursors stay on the same row across a sort change.
-- **`w` switches workspace** when one project list gets long (each pacer instance keeps its own — run
+- **`w` switches workspace** when one project list gets long (each berth instance keeps its own — run
   two, on two workspaces, side by side), and `Shift+W` shows or hides the Workspaces bar across the top,
   where every workspace is a tab carrying the rolled-up status of the agents under it.
 
@@ -198,9 +198,9 @@ The panels aren't the only view. With a worktree selected, from any panel:
 `Shift+O` lists every conversation of the project, from every worktree, with branch, date and transcript
 size. `Enter` resumes one in whatever worktree the cursor is on, so a conversation started in one
 checkout continues in another; Claude is told where it moved. Deleting a worktree does not take its
-conversations with it either: pacer saves the agent CLIs' session ids first, and those rows stay in the
+conversations with it either: berth saves the agent CLIs' session ids first, and those rows stay in the
 list marked with `⊘`. The list is built from two sources: Claude Code's transcripts on disk, which also
-turn up sessions pacer never knew, and pacer's own table of saved orphans (all three CLIs). Only Claude
+turn up sessions berth never knew, and berth's own table of saved orphans (all three CLIs). Only Claude
 sessions appear across worktrees; codex and cursor-agent conversations show up only after their worktree
 was deleted.
 

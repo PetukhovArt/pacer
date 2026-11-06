@@ -50,7 +50,7 @@ can't trap yourself.
 | `g` | git diff for the selected worktree — or, on an open-PR row, that pull request's diff: filter, `↑↓` files, `Shift+↑↓` / `PgUp`/`PgDn` / `Ctrl+d`/`u` scroll, `Ctrl+r` marks a file reviewed ✓ |
 | `f` / `F` / `b` | find file / find in files (`git grep`) / file tree browser, all scoped to the selected worktree — `Enter` opens the file in an editor modal (at the matched line, for `F`); in `f` and `b`, `Ctrl+y` copies the path |
 | `z` | full-screen terminal: collapse the sidebars and lock input into the attached session |
-| `Shift+M` | memory usage: RAM per agent/terminal process tree, pacer itself, and the machine-wide share; `↑`/`↓` + `Enter` opens the selected session |
+| `Shift+M` | memory usage: RAM per agent/terminal process tree, berth itself, and the machine-wide share; `↑`/`↓` + `Enter` opens the selected session |
 | `Shift+C` | show / hide the diagnostics card: a small floating panel with CPU, RAM and Claude token use per session, plus a total row. It takes no focus, so keys keep going where they were going and an open modal still works underneath |
 | `Shift+V` | send the diagnostics card to the next screen corner. Dragging its title row with the mouse moves it anywhere; both are remembered across restarts |
 | `Ctrl+Shift+R` / `F5` | repaint the whole screen from scratch, clearing any stale glyphs the emulator left behind; works inside a locked terminal pane too. `Ctrl+Shift+R` needs a terminal that speaks the kitty keyboard protocol, so `F5` is the one that always arrives |
@@ -59,18 +59,18 @@ can't trap yourself.
 
 | Key | Action |
 |---|---|
-| `w`, or click the `◇ workspace` nameplate bottom-left | workspace switcher: `Enter` opens, `n`/`r`/`d` create/rename/delete. Delete asks first and lands on the tab to the right (or left, from the last tab). Per window — switching here leaves your other pacer instances where they are |
+| `w`, or click the `◇ workspace` nameplate bottom-left | workspace switcher: `Enter` opens, `n`/`r`/`d` create/rename/delete. Delete asks first and lands on the tab to the right (or left, from the last tab). Per window — switching here leaves your other berth instances where they are |
 | `Shift+W` | show / hide the Workspaces bar across the top: one tab per workspace with the rolled-up status of the agents under it, plus a count of the ones that finished unread |
 | `1`–`9` (or `⌘1`–`⌘9`) | open that numbered tab without leaving the panel you're in. `⌘` is what the tabs advertise, but Terminal.app and most other emulators never encode it into pty bytes — the bare digit is the one that always arrives |
 | In the Workspaces bar: `←`/`→`, `↓`/`Enter`, `n`/`r`/`d`, `m` | the cursor is the open workspace, so `←`/`→` switches; `↓` or `Enter` steps down into the first visible panel; create / rename / delete the open one (delete refuses a non-empty workspace); `m` or right-click lists the same verbs |
 | `Shift+P` / `Shift+B` / `Shift+R` | show / hide the Projects / Worktrees / PRs panel. The terminal pane takes the released width; showing a panel restores its remembered width without stealing focus. Persisted as `hide_projects` / `hide_worktrees` / `hide_prs` |
-| `Shift+←`/`→`/`↑`/`↓` (or `⌥⇧H`/`J`/`K`/`L`) | re-tile the body: the focused panel moves one step that way. Beside another panel it swaps places with it; into a tile running the other way (a column, the terminal) it stacks onto the near side of it and the next step walks past; at the edge of the body it becomes a full strip along that edge. So from the default layout `↑` puts a panel across the top and `→` in Sessions puts it right of the terminal. Sideways, a stack (Worktrees over PRs) moves as one column. Widths and heights follow the panel; the arrangement is remembered per pacer database |
+| `Shift+←`/`→`/`↑`/`↓` (or `⌥⇧H`/`J`/`K`/`L`) | re-tile the body: the focused panel moves one step that way. Beside another panel it swaps places with it; into a tile running the other way (a column, the terminal) it stacks onto the near side of it and the next step walks past; at the edge of the body it becomes a full strip along that edge. So from the default layout `↑` puts a panel across the top and `→` in Sessions puts it right of the terminal. Sideways, a stack (Worktrees over PRs) moves as one column. Widths and heights follow the panel; the arrangement is remembered per berth database |
 
 ## General
 
 | Key | Action |
 |---|---|
-| `Shift+H` | ssh hosts: every `pacer ssh` / `pacer tunnel` destination, newest first. `Enter`/click reconnects (quits this TUI and execs a fresh `pacer ssh` — local sessions keep running), `a` types a new `user@host [dir]`, `d` removes |
+| `Shift+H` | ssh hosts: every `berth ssh` / `berth tunnel` destination, newest first. `Enter`/click reconnects (quits this TUI and execs a fresh `berth ssh` — local sessions keep running), `a` types a new `user@host [dir]`, `d` removes |
 | `m` or right-click | context menu for whatever's selected |
 | `s` | settings overlay (theme, editor, which agents to offer and their defaults, timeouts, sorts). Its Hotkeys tab rebinds every key in this table; `R` inside it resets everything to the defaults. A first open lands on the tab strip; reopening within a minute of closing lands back on the tab and row you left |
 | `Shift+N` | replay the startup splash (any key returns) |
