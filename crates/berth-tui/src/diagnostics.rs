@@ -249,7 +249,7 @@ fn rows(app: &App) -> Vec<Row> {
             }
         })
         .collect();
-    rows.sort_by(|a, b| b.rss_bytes.cmp(&a.rss_bytes));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.rss_bytes));
     rows
 }
 
