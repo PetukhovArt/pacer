@@ -1,7 +1,7 @@
 import type { MessageKey } from '../i18n';
 import { tr } from './translate';
 
-type Category = 'appearance' | 'terminal' | 'sessions' | 'files' | 'connectors' | 'remote' | 'keymap';
+type Category = 'appearance' | 'terminal' | 'sessions' | 'files' | 'connectors' | 'remote' | 'app' | 'keymap';
 type Option = { readonly value: string; readonly label: MessageKey };
 type Base = { readonly label: MessageKey; readonly description: MessageKey; readonly category: Category };
 type BooleanDef = Base & { readonly type: 'boolean'; readonly default: boolean };
@@ -18,6 +18,7 @@ export const CATEGORIES = [
   { id: 'files', label: 'files.settings.category' },
   { id: 'connectors', label: 'settings.category.connectors' },
   { id: 'remote', label: 'remote.category' },
+  { id: 'app', label: 'update.category' },
   { id: 'keymap', label: 'settings.category.keymap' },
 ] as const satisfies readonly { readonly id: Category; readonly label: MessageKey }[];
 
@@ -236,6 +237,14 @@ export const SETTINGS = {
       { value: 'lan', label: 'remote.def.bind.lan' },
       { value: 'tailscale', label: 'remote.def.bind.tailscale' },
     ],
+  },
+  'app.sourceRepo': {
+    type: 'string',
+    default: '',
+    label: 'update.setting.label',
+    description: 'update.setting.description',
+    category: 'app',
+    placeholder: 'update.setting.placeholder',
   },
   'remote.port': {
     type: 'number',

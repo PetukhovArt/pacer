@@ -15,5 +15,6 @@ import { shell } from './en/shell';
 import { mobile } from './en/mobile';
 import { workbench } from './en/workbench';
 import { remote } from './en/remote';
+import { update } from './en/update';
 
-export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, forge, content, files, remote, mobile, workbench, hot } as const;
+export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, forge, content, files, remote, mobile, workbench, hot, update } as const;

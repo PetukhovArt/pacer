@@ -49,7 +49,8 @@ if ($Desktop) {
     $env:BERTH_SECRETS = 'file'
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$CdpPort"
     Start-Process -FilePath $bin -ArgumentList 'daemon' -WindowStyle Hidden
-    pnpm --filter @berth/desktop tauri dev
+    $env:BERTH_CDP_PORT = "$CdpPort"
+    pnpm --filter @berth/desktop dev
 } else {
     & $bin
 }

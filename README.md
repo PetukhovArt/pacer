@@ -120,7 +120,8 @@ pnpm build:desktop        # installer and standalone exe under target/release
 ```
 
 The app connects to the running `berth` daemon and never starts one, so run `berth` (or `berth daemon`)
-first. `docker/` packs the same core without a window (`berth-server`) with the daemon for a remote machine.
+first. On Windows, `scripts\install-app.ps1` installs a working copy that updates itself from your local
+`main` ([docs/windows.md](docs/windows.md#desktop-working-copy)). `docker/` packs the same core without a window (`berth-server`) with the daemon for a remote machine.
 
 ## Documentation
 

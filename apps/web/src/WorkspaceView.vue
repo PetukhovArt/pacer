@@ -10,6 +10,8 @@ import { useIsMobile } from './mobile/useIsMobile';
 import Sidebar from './Sidebar.vue';
 import TitleBar from './TitleBar.vue';
 import { installTray } from './tray';
+import UpdateDialog from './update/UpdateDialog.vue';
+import { installUpdate } from './update/state';
 import { view, type View } from './nav';
 import { isDark, toggleTheme } from './settings/appearance';
 import SettingsView from './settings/SettingsView.vue';
@@ -23,6 +25,7 @@ const mobile = useIsMobile();
 const viewKey = 'berth.view.v2';
 const dock = useDock();
 installTray();
+installUpdate();
 
 try {
   view.value = JSON.parse(localStorage.getItem(viewKey) ?? '') as View;
@@ -60,6 +63,7 @@ watch(
     <MobileNav v-if="mobile" />
     <QuickOpen />
     <UnsavedDialog />
+    <UpdateDialog v-if="inTauri" />
     <HotHost />
     <Transition name="palette">
       <CommandPalette v-if="paletteOpen" />

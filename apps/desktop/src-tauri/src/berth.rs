@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD;
@@ -26,6 +27,12 @@ const CALL_OFFLINE: &str = "демон berth не запущен";
 const CALL_LOST: &str = "соединение с berth потеряно";
 
 type CallResult = Result<serde_json::Value, String>;
+
+static DAEMON_PROTOCOL: AtomicU32 = AtomicU32::new(0);
+
+pub fn daemon_protocol() -> Option<u32> {
+    Some(DAEMON_PROTOCOL.load(Ordering::Relaxed)).filter(|version| *version != 0)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -643,6 +650,7 @@ fn rpc_req_id(request: &mut ClientRequest) -> Option<&mut u64> {
 }
 
 async fn handshake() -> Result<Stream, Failure> {
+    DAEMON_PROTOCOL.store(0, Ordering::Relaxed);
     let mut stream = transport::connect().await?;
     write_frame(
         &mut stream,
@@ -652,10 +660,18 @@ async fn handshake() -> Result<Stream, Failure> {
     )
     .await?;
     match read_frame::<ServerEvent, _>(&mut stream).await? {
-        Some(ServerEvent::HelloOk { .. }) => Ok(stream),
+        Some(ServerEvent::HelloOk {
+            protocol_version, ..
+        }) => {
+            DAEMON_PROTOCOL.store(protocol_version, Ordering::Relaxed);
+            Ok(stream)
+        }
         Some(ServerEvent::Incompatible {
             daemon_protocol_version,
-        }) => Err(Failure::Incompatible(daemon_protocol_version)),
+        }) => {
+            DAEMON_PROTOCOL.store(daemon_protocol_version, Ordering::Relaxed);
+            Err(Failure::Incompatible(daemon_protocol_version))
+        }
         Some(other) => Err(Failure::Offline(format!(
             "unexpected berth handshake reply: {other:?}"
         ))),

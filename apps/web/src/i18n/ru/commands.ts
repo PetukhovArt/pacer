@@ -7,6 +7,7 @@ export const commands: Translation<typeof en> = {
     view: 'Вид',
     terminal: 'Терминал',
     keys: 'Клавиши',
+    app: 'Приложение',
   },
   action: {
     paletteOpen: 'Палитра команд',

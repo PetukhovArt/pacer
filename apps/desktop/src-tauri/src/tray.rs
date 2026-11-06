@@ -11,6 +11,8 @@ use crate::settings;
 const TRAY_ID: &str = "main";
 const MAIN_WINDOW: &str = "main";
 const NEW_SESSION_EVENT: &str = "tray://new-session";
+const UPDATE_EVENT: &str = "tray://update";
+const ROLLBACK_EVENT: &str = "tray://rollback";
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,6 +25,8 @@ struct Labels {
     show: &'static str,
     new_session: &'static str,
     remote: &'static str,
+    update: &'static str,
+    rollback: &'static str,
     quit: &'static str,
 }
 
@@ -33,12 +37,16 @@ impl Lang {
                 show: "Show Berth",
                 new_session: "New session…",
                 remote: "Remote access",
+                update: "Update Berth…",
+                rollback: "Roll back to previous build",
                 quit: "Quit Berth",
             },
             Self::Ru => Labels {
                 show: "Показать Berth",
                 new_session: "Новая сессия…",
                 remote: "Удалённый доступ",
+                update: "Обновить Berth…",
+                rollback: "Откатить на предыдущую сборку",
                 quit: "Выйти из Berth",
             },
         }
@@ -148,9 +156,24 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         prefs.remote,
         None::<&str>,
     )?;
+    let update = MenuItem::with_id(app, "update", labels.update, true, None::<&str>)?;
+    let rollback = MenuItem::with_id(app, "rollback", labels.rollback, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &new_session, &remote, &separator, &quit])?;
+    let tail = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show,
+            &new_session,
+            &remote,
+            &separator,
+            &update,
+            &rollback,
+            &tail,
+            &quit,
+        ],
+    )?;
 
     let toggled = remote.clone();
     let mut builder = TrayIconBuilder::<Wry>::with_id(TRAY_ID)
@@ -162,6 +185,14 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             "new-session" => {
                 show_main(app);
                 let _ = app.emit(NEW_SESSION_EVENT, ());
+            }
+            "update" => {
+                show_main(app);
+                let _ = app.emit(UPDATE_EVENT, ());
+            }
+            "rollback" => {
+                show_main(app);
+                let _ = app.emit(ROLLBACK_EVENT, ());
             }
             "remote" => {
                 let enabled = toggled.is_checked().unwrap_or(false);
@@ -200,6 +231,8 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             let _ = show.set_text(labels.show);
             let _ = new_session.set_text(labels.new_session);
             let _ = remote.set_text(labels.remote);
+            let _ = update.set_text(labels.update);
+            let _ = rollback.set_text(labels.rollback);
             let _ = quit.set_text(labels.quit);
             let _ = remote.set_checked(prefs.remote);
             refresh_tooltip(&app, prefs.lang);

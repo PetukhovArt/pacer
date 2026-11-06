@@ -15,6 +15,7 @@ use crate::remote::{Remote, RemoteStatus, WebAsset, WebSource};
 use crate::settings::{self, ConfigFile, SettingsChanged, SettingsWatch};
 use crate::sink::Sink;
 use crate::tray;
+use crate::working_copy;
 
 struct ChannelSink<T: IpcResponse>(Channel<T>);
 
@@ -145,6 +146,41 @@ pub async fn remote_regenerate_token(remote: State<'_, Remote>) -> Result<Remote
     remote.regenerate().await
 }
 
+#[tauri::command]
+pub async fn app_update_info() -> Result<working_copy::Info, String> {
+    working_copy::app_update_info().await
+}
+
+#[tauri::command]
+pub async fn app_update_status() -> Option<Value> {
+    working_copy::app_update_status().await
+}
+
+#[tauri::command]
+pub fn app_update_start() -> Result<(), String> {
+    working_copy::app_update_start()
+}
+
+#[tauri::command]
+pub fn app_update_cancel() -> Result<(), String> {
+    working_copy::app_update_cancel()
+}
+
+#[tauri::command]
+pub async fn app_rollback() -> Result<(), String> {
+    working_copy::app_rollback().await
+}
+
+#[tauri::command]
+pub async fn app_daemon_update() -> Result<(), String> {
+    working_copy::app_daemon_update().await
+}
+
+#[tauri::command]
+pub fn app_restart(app: AppHandle) -> Result<(), String> {
+    working_copy::app_restart(&app)
+}
+
 pub fn web_source<R: Runtime>(app: &AppHandle<R>) -> WebSource {
     if tauri::is_dev() {
         if let Some(url) = app.config().build.dev_url.as_ref() {
@@ -162,7 +198,7 @@ pub fn web_source<R: Runtime>(app: &AppHandle<R>) -> WebSource {
 }
 
 pub fn run() {
-    if !cfg!(debug_assertions) {
+    if !cfg!(debug_assertions) && std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_none() {
         crate::legacy::adopt_webview_profile();
     }
     if crate::legacy::env("BERTH_SECRETS").as_deref() == Some("file") {
@@ -255,6 +291,13 @@ pub fn run() {
             remote_status,
             remote_regenerate_token,
             tray::tray_status,
+            app_update_info,
+            app_update_status,
+            app_update_start,
+            app_update_cancel,
+            app_rollback,
+            app_daemon_update,
+            app_restart,
         ])
         .build(tauri::generate_context!())
         .expect("error while building berth desktop")

@@ -1,7 +1,9 @@
 import { zoomTerminal } from '../agents/terminalFont';
+import { isDesktop } from '../bridge';
 import { navigate, openSettings } from '../nav';
 import { toggleTheme } from '../settings/appearance';
 import { requestSidebarSearch, toggleSidebar } from '../sidebarState';
+import { openUpdate } from '../update/state';
 import { toggleQuickOpen } from '../workbench/dock';
 import { paletteOpen } from './context';
 import { openKeymapExternal } from './keymap';
@@ -11,6 +13,7 @@ const NAVIGATION = 'commands.category.navigation';
 const VIEW = 'commands.category.view';
 const TERMINAL = 'commands.category.terminal';
 const KEYS = 'commands.category.keys';
+const APP = 'commands.category.app';
 
 defineAction({ id: 'palette.open', title: 'commands.action.paletteOpen', category: VIEW, run: () => (paletteOpen.value = !paletteOpen.value) });
 
@@ -31,4 +34,9 @@ defineAction({ id: 'terminal.zoomReset', title: 'commands.action.terminalZoomRes
 defineAction({ id: 'agents.quickOpen', title: 'commands.action.agentsQuickOpen', category: NAVIGATION, run: toggleQuickOpen });
 
 defineAction({ id: 'keymap.openSettings', title: 'commands.action.keymapOpenSettings', category: KEYS, run: () => openSettings('keymap') });
+if (isDesktop) {
+  defineAction({ id: 'app.update', title: 'update.action.update', category: APP, run: () => openUpdate('update') });
+  defineAction({ id: 'app.rollback', title: 'update.action.rollback', category: APP, run: () => openUpdate('rollback') });
+}
+
 defineAction({ id: 'keymap.openFile', title: 'commands.action.keymapOpenFile', category: KEYS, run: () => openKeymapExternal() });

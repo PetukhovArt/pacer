@@ -4,6 +4,7 @@ export const commands = {
     view: 'View',
     terminal: 'Terminal',
     keys: 'Keys',
+    app: 'App',
   },
   action: {
     paletteOpen: 'Command palette',

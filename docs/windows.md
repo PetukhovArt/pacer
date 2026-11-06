@@ -115,5 +115,40 @@ it is allowed), copies the fresh build into `~\.cargo\bin`, and kills the daemon
 the new code. **Run it from a terminal outside berth** — the cutover stops every session. A build failure
 stops before anything is touched.
 
+## Desktop working copy
+
+The desktop app you use all day should not be the one agents are rebuilding. Install a working copy: a
+release build of the committed `main` under `%LOCALAPPDATA%\Berth`, launched from the Start Menu like any
+other app, and updated only when you ask.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-app.ps1 -Launch
+```
+
+The script reads `main` from the checkout it sits in, never the files in the working tree, and builds it
+in `%LOCALAPPDATA%\Berth\build` (`src` for the exported tree, `target` for an incremental cargo cache,
+`logs` for one log per build). The result goes to `app\<build-id>`, `app\current` points at it, `app\previous`
+at the build before, and the Start Menu gets a `Berth` shortcut to `app\current\berth-desktop.exe`. The
+working copy uses `~\.berth`, the OS keychain and your real daemon.
+
+Inside the app, `Update Berth…` (tray menu and command palette) does the same thing in the background: it
+shows the commit it builds, the current step and the last log lines, and `Cancel build` stops it. A failed
+build changes nothing and shows its log path. A finished one offers `Restart now` or `Later`; sessions live
+in the daemon, so a restart keeps them. `Roll back to previous build` swaps `current` and `previous`.
+`app.sourceRepo` in settings points the update at another checkout.
+
+The update never touches the daemon. When the new build speaks a different protocol than the running
+daemon, the dialog says so and offers `Update daemon`: it installs that build's `berth.exe` into
+`~\.cargo\bin` the way `scripts\update.ps1` does and restarts the daemon, which ends every live terminal.
+`install-app.ps1 -UpdateDaemon` and `-Rollback` do the same from a terminal.
+
+Every location can be moved for a test: `BERTH_APP_ROOT` (install root), `BERTH_START_MENU` (shortcut
+folder), `BERTH_BIN_DIR` (where `-UpdateDaemon` puts `berth.exe`), `BERTH_HOME`,
+`BERTH_RUNTIME_DIR`, `BERTH_DATA_DIR`, and `WEBVIEW2_USER_DATA_FOLDER` for the webview profile.
+
+The dev run (`scripts\dev.ps1 -Desktop` or `pnpm dev:desktop`) stays apart from it: the Tauri identifier
+`dev.berth.desktop.dev`, a window titled `Berth (dev)`, `BERTH_HOME` under `~\.berth-dev`, file secrets,
+a dev daemon and WebView2 debugging on port 9334.
+
 Two e2e suites (PTY and TUI) are marked as requiring a Unix host and are skipped on Windows; the rest of
 the suite, including the Windows transport, token and daemon-lock smoke tests, runs.

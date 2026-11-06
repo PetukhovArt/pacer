@@ -15,6 +15,8 @@ pub mod sink;
 pub mod stratum;
 #[cfg(feature = "desktop")]
 mod tray;
+#[cfg(feature = "desktop")]
+mod working_copy;
 
 #[cfg(feature = "desktop")]
 pub const IDENTIFIER: &str = "dev.berth.desktop";

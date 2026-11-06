@@ -1,0 +1,16 @@
+{
+  "identifier": "dev.berth.desktop.dev",
+  "app": {
+    "windows": [
+      {
+        "title": "Berth (dev)",
+        "width": 1400,
+        "height": 900,
+        "decorations": false,
+        "focus": false,
+        "visible": false,
+        "backgroundColor": "#2a2d1c"
+      }
+    ]
+  }
+}
