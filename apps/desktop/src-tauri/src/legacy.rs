@@ -43,7 +43,8 @@ pub fn adopt_dir(old: &Path, new: &Path) {
 pub fn adopt_webview_profile() {
     for base in webview_bases() {
         let (old, new) = (base.join(IDENTIFIER), base.join(crate::IDENTIFIER));
-        if new.exists() || !old.is_dir() {
+        let used = fs::read_dir(&new).is_ok_and(|mut entries| entries.next().is_some());
+        if used || !old.is_dir() {
             continue;
         }
         let _ = copy_tree_lenient(&old, &new);

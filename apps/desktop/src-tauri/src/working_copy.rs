@@ -335,6 +335,10 @@ pub fn app_update_start() -> Result<(), String> {
     map.insert("state".into(), "running".into());
     map.insert("step".into(), "start".into());
     map.insert("pid".into(), pid.into());
+    if let Ok(head) = head(&repo) {
+        map.insert("commit".into(), head.commit.into());
+        map.insert("subject".into(), head.subject.into());
+    }
     map.insert("repo".into(), repo.into());
     if read_status().and_then(|map| running_pid(&map)) != Some(pid) {
         let _ = write_status(&map);
@@ -345,16 +349,19 @@ pub fn app_update_start() -> Result<(), String> {
 pub fn app_update_cancel() -> Result<(), String> {
     let mut map = read_status().ok_or("no build is running")?;
     let pid = running_pid(&map).ok_or("no build is running")?;
+    map.insert("state".into(), "cancelled".into());
+    write_status(&map).map_err(|error| error.to_string())?;
     let mut command = hidden("taskkill");
     command.args(["/PID", &pid.to_string(), "/T", "/F"]);
     let killed = output(command);
     if alive(pid) {
+        map.insert("state".into(), "running".into());
+        let _ = write_status(&map);
         return Err(killed
             .err()
             .unwrap_or_else(|| "the build is still running".into()));
     }
-    map.insert("state".into(), "cancelled".into());
-    write_status(&map).map_err(|error| error.to_string())
+    Ok(())
 }
 
 pub async fn app_rollback() -> Result<(), String> {
