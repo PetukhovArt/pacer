@@ -1,7 +1,7 @@
 export const shell = {
   nav: {
     label: 'Navigation',
-    agents: 'Workbench (update test)',
+    agents: 'Workbench',
     reviews: 'Reviews',
     jira: 'Jira',
     confluence: 'Confluence',
