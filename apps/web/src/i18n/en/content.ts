@@ -1,0 +1,27 @@
+export const content = {
+  copy: 'Copy',
+  copyCode: 'Copy code',
+  sectionLink: 'Link to section',
+  alert: {
+    note: 'Note',
+    tip: 'Tip',
+    important: 'Important',
+    warning: 'Warning',
+    caution: 'Caution',
+  },
+  mermaid: {
+    copied: 'Copied',
+    copyFailed: 'Copy failed',
+    copySvg: 'Copy SVG',
+    unknownError: 'unknown error',
+    zoomOut: 'Zoom out',
+    zoomIn: 'Zoom in',
+    fit: 'Fit to width',
+    hint: 'Wheel to scroll, Ctrl + wheel to zoom, drag to pan',
+    fullscreen: 'Full screen',
+    close: 'Close (Esc)',
+    source: 'Source',
+    failed: 'The diagram could not be rendered',
+    loading: 'Rendering diagram…',
+  },
+} as const;

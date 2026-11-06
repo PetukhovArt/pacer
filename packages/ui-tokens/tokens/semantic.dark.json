@@ -1,0 +1,29 @@
+{
+  "color": {
+    "$type": "color",
+    "canvas-top": { "$value": "{palette.gradient.dark-top}" },
+    "canvas-bottom": { "$value": "{palette.gradient.dark-bottom}" },
+    "surface": { "$value": "{palette.ink.950}" },
+    "surface-muted": { "$value": "{palette.ink.800}" },
+    "surface-raised": { "$value": "{palette.fog.raised}" },
+    "border": { "$value": "{palette.ink.700}" },
+    "text": { "$value": "{palette.fog.100}" },
+    "text-muted": { "$value": "{palette.ink.500}" },
+    "accent": { "$value": "{palette.fog.100}" },
+    "accent-contrast": { "$value": "{palette.ink.900}" },
+    "chip-bg": { "$value": "rgba(225, 228, 232, 0.15)" },
+    "danger": { "$value": "{palette.red.dark}" },
+    "success": { "$value": "{palette.green.dark}" },
+    "conflict": { "$value": "{palette.orange.dark}" },
+    "presence-online": { "$value": "{palette.green.dark}" },
+    "agent-running": { "$value": "{palette.blue.500}" },
+    "pin-bg": { "$value": "rgba(210, 153, 34, 0.1)" },
+    "nav-muted": { "$value": "{palette.white-a.40}" },
+    "nav-hover": { "$value": "{palette.white-a.4}" },
+    "nav-active": { "$value": "{palette.white-a.16}" },
+    "chrome": { "$value": "{palette.white-a.50}" }
+  },
+  "elevation": {
+    "card": { "$value": "none" }
+  }
+}

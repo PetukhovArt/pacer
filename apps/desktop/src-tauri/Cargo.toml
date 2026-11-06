@@ -1,0 +1,48 @@
+[package]
+name = "veyra-desktop"
+version = "0.0.0"
+edition = "2021"
+default-run = "veyra-desktop"
+
+[lib]
+name = "veyra_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "veyra-desktop"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "veyra-server"
+path = "src/bin/veyra-server.rs"
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-opener"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"], optional = true }
+pacer-core = { git = "https://github.com/PetukhovArt/pacer", tag = "v0.19.0" }
+tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "time", "rt", "rt-multi-thread", "process", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+futures-util = "0.3"
+url = "2"
+tauri-plugin-opener = { version = "2", optional = true }
+axum = { version = "0.8", features = ["ws"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+getrandom = "0.3"
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

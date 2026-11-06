@@ -1,0 +1,20 @@
+{
+  "name": "@ui/tokens",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./light.css": "./generated/light.css",
+    "./dark.css": "./generated/dark.css",
+    "./motion.css": "./generated/motion.css"
+  },
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "style-dictionary": "^5.7.1"
+  }
+}

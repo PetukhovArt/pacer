@@ -1,0 +1,52 @@
+{
+  "palette": {
+    "$type": "color",
+    "ink": {
+      "0": { "$value": "#ffffff" }, "50": { "$value": "#f6f6f6" }, "100": { "$value": "#f0f0f0" }, "200": { "$value": "#e5e5e6" },
+      "300": { "$value": "#c8cacb" }, "400": { "$value": "#9c9fa1" }, "500": { "$value": "#6a737d" }, "600": { "$value": "#54585c" },
+      "700": { "$value": "#40454a" }, "800": { "$value": "#31363b" }, "900": { "$value": "#24292e" }, "950": { "$value": "#1a1a1a" }
+    },
+    "fog": { "100": { "$value": "#e1e4e8" }, "raised": { "$value": "#363b40" } },
+    "gradient": {
+      "light-top": { "$value": "#e6e6b6" }, "light-bottom": { "$value": "#c4d0da" },
+      "dark-top": { "$value": "#4a4616" }, "dark-bottom": { "$value": "#0a1423" }
+    },
+    "green": { "light": { "$value": "#1a7f37" }, "dark": { "$value": "#3fb950" } },
+    "red": { "light": { "$value": "#cf222e" }, "dark": { "$value": "#f85149" } },
+    "orange": { "light": { "$value": "#9a6700" }, "dark": { "$value": "#d29922" } },
+    "blue": { "500": { "$value": "#3b82f6" } },
+    "avatar": {
+      "1": { "$value": "#3b82f6" }, "2": { "$value": "#10b981" }, "3": { "$value": "#fbbf24" }, "4": { "$value": "#f43f5e" },
+      "5": { "$value": "#22d3ee" }, "6": { "$value": "#8b5cf6" }, "7": { "$value": "#f97316" }
+    },
+    "black-a": { "4": { "$value": "rgba(0, 0, 0, 0.04)" }, "7": { "$value": "rgba(0, 0, 0, 0.07)" }, "40": { "$value": "rgba(0, 0, 0, 0.4)" }, "50": { "$value": "rgba(0, 0, 0, 0.5)" } },
+    "white-a": { "4": { "$value": "rgba(255, 255, 255, 0.04)" }, "16": { "$value": "rgba(255, 255, 255, 0.16)" }, "40": { "$value": "rgba(255, 255, 255, 0.4)" }, "50": { "$value": "rgba(255, 255, 255, 0.5)" } }
+  },
+  "space": {
+    "$type": "dimension",
+    "1": { "$value": "4px" }, "2": { "$value": "8px" }, "3": { "$value": "12px" }, "4": { "$value": "16px" }, "5": { "$value": "20px" }, "6": { "$value": "24px" }
+  },
+  "radius": {
+    "$type": "dimension",
+    "sm": { "$value": "6px" }, "md": { "$value": "8px" }, "lg": { "$value": "10px" }, "xl": { "$value": "12px" }, "2xl": { "$value": "16px" }, "full": { "$value": "9999px" }
+  },
+  "size": {
+    "$type": "dimension",
+    "sidebar": { "$value": "300px" }, "meta": { "$value": "280px" }, "avatar": { "$value": "36px" }, "avatar-sm": { "$value": "24px" }, "row": { "$value": "32px" }
+  },
+  "font": {
+    "family": { "$type": "fontFamily", "$value": "'Wix Madefor Text Variable', 'Wix Madefor Text', 'Segoe UI', sans-serif" },
+    "mono": { "$type": "fontFamily", "$value": "'JetBrains Mono', Consolas, monospace" },
+    "size": {
+      "$type": "dimension",
+      "2xs": { "$value": "11px" }, "xs": { "$value": "12px" }, "sm": { "$value": "14px" }, "base": { "$value": "16px" }, "lg": { "$value": "18px" }, "xl": { "$value": "20px" }
+    },
+    "leading": {
+      "message": { "$value": "20px" }, "author": { "$value": "16px" }
+    }
+  },
+  "shadow": {
+    "card": { "$value": "-1px -1px 0 0 rgba(229, 229, 230, 0.45), 0 0 4px 0 rgba(0, 0, 0, 0.07)" },
+    "popover": { "$value": "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }
+  }
+}

@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Veyra</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      #veyra-splash {
+        --vs-ease: cubic-bezier(0.2, 0, 0, 1);
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        color: var(--vs-text);
+        font-family: 'Wix Madefor Text Variable', 'Wix Madefor Text', 'Segoe UI', sans-serif;
+        background: linear-gradient(to bottom, var(--vs-canvas-top), var(--vs-canvas-bottom));
+        user-select: none;
+        will-change: opacity, transform;
+      }
+
+
+      #veyra-splash::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(ellipse 70% 60% at 50% 46%, transparent 30%, var(--vs-vignette) 100%);
+        pointer-events: none;
+      }
+
+      .vs-stage {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 22px;
+        transform: translateY(-2vh);
+      }
+
+      .vs-glow {
+        position: absolute;
+        top: -196px;
+        left: 50%;
+        width: 520px;
+        height: 520px;
+        margin-left: -260px;
+        background: radial-gradient(circle closest-side, var(--vs-a) 0%, var(--vs-b) 30%, transparent 100%);
+        opacity: 0.28;
+        animation:
+          vs-glow-in 900ms var(--vs-ease) backwards,
+          vs-breathe 3.6s ease-in-out 900ms infinite alternate;
+        pointer-events: none;
+      }
+
+      .vs-mark {
+        position: relative;
+        width: 128px;
+        height: 128px;
+        overflow: visible;
+      }
+
+      .vs-ring,
+      .vs-v {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 100;
+        stroke-dashoffset: 0;
+      }
+
+      .vs-ring {
+        stroke: var(--vs-line);
+        stroke-width: 1;
+        transform-origin: 48px 48px;
+        transform: rotate(-90deg);
+        animation: vs-draw 800ms var(--vs-ease) backwards;
+      }
+
+      .vs-v-outer {
+        stroke: url(#vs-stroke);
+        stroke-width: 5;
+        animation: vs-draw 640ms var(--vs-ease) 100ms backwards;
+      }
+
+      .vs-v-inner {
+        stroke: url(#vs-stroke);
+        stroke-width: 5;
+        animation: vs-draw 520ms var(--vs-ease) 330ms backwards;
+      }
+
+      .vs-node {
+        fill: var(--vs-a);
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: vs-pop 480ms var(--vs-ease) 650ms backwards;
+      }
+
+      .vs-mask-path {
+        fill: none;
+        stroke: var(--vs-sheen);
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .vs-sheen {
+        transform: translateX(-60px);
+        animation: vs-sheen 2.8s ease-in-out 900ms infinite;
+      }
+
+      .vs-sheen-stop-mid {
+        stop-color: var(--vs-sheen);
+        stop-opacity: 0.95;
+      }
+
+      .vs-sheen-stop-edge {
+        stop-color: var(--vs-sheen);
+        stop-opacity: 0;
+      }
+
+      .vs-grad-a {
+        stop-color: var(--vs-a);
+      }
+
+      .vs-grad-b {
+        stop-color: var(--vs-b);
+      }
+
+      .vs-word {
+        display: flex;
+        padding-left: 0.34em;
+        font-size: 34px;
+        font-weight: 300;
+        line-height: 1;
+        letter-spacing: 0.34em;
+      }
+
+      .vs-word span {
+        display: inline-block;
+        animation: vs-letter 760ms var(--vs-ease) calc(260ms + var(--i) * 55ms) backwards;
+      }
+
+      .vs-progress {
+        position: relative;
+        width: 132px;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 9999px;
+        background: var(--vs-line);
+        opacity: 0;
+        animation: vs-appear 400ms ease-out 800ms forwards;
+      }
+
+      .vs-progress::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 46%;
+        border-radius: inherit;
+        background: linear-gradient(to right, transparent, var(--vs-a), var(--vs-b), transparent);
+        animation: vs-shimmer 1.35s cubic-bezier(0.45, 0, 0.35, 1) infinite;
+      }
+
+      #veyra-splash.vs-out {
+        pointer-events: none;
+        animation: vs-leave 250ms var(--vs-ease) forwards;
+      }
+
+      html.vs-leaving #app {
+        animation: vs-app-in 250ms var(--vs-ease) both;
+      }
+
+      @keyframes vs-draw {
+        from {
+          stroke-dashoffset: 100;
+        }
+      }
+
+      @keyframes vs-pop {
+        from {
+          opacity: 0;
+          transform: scale(0.2);
+        }
+      }
+
+      @keyframes vs-letter {
+        from {
+          opacity: 0;
+          transform: translateX(calc((2 - var(--i)) * 0.42em));
+        }
+      }
+
+      @keyframes vs-glow-in {
+        from {
+          opacity: 0;
+          transform: scale(0.6);
+        }
+      }
+
+      @keyframes vs-breathe {
+        from {
+          opacity: 0.22;
+          transform: scale(0.94);
+        }
+        to {
+          opacity: 0.34;
+          transform: scale(1.06);
+        }
+      }
+
+      @keyframes vs-sheen {
+        0% {
+          transform: translateX(-60px);
+        }
+        45%,
+        100% {
+          transform: translateX(120px);
+        }
+      }
+
+      @keyframes vs-appear {
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes vs-shimmer {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(220%);
+        }
+      }
+
+      @keyframes vs-leave {
+        to {
+          opacity: 0;
+          transform: scale(1.035);
+        }
+      }
+
+      @keyframes vs-app-in {
+        from {
+          opacity: 0;
+        }
+      }
+
+      @keyframes vs-fade {
+        to {
+          opacity: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .vs-glow,
+        .vs-ring,
+        .vs-v-outer,
+        .vs-v-inner,
+        .vs-node,
+        .vs-sheen,
+        .vs-word span {
+          animation: none;
+        }
+
+        .vs-sheen {
+          display: none;
+        }
+
+        .vs-progress::after {
+          width: 100%;
+          animation: none;
+        }
+
+        #veyra-splash.vs-out {
+          animation: vs-fade 250ms linear forwards;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="veyra-splash" role="presentation" aria-hidden="true">
+      <div class="vs-stage">
+        <div class="vs-glow"></div>
+        <svg class="vs-mark" viewBox="0 0 96 96" width="128" height="128">
+          <defs>
+            <linearGradient id="vs-stroke" gradientUnits="userSpaceOnUse" x1="16" y1="14" x2="80" y2="80">
+              <stop class="vs-grad-a" offset="0" />
+              <stop class="vs-grad-b" offset="1" />
+            </linearGradient>
+            <linearGradient id="vs-sheen-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop class="vs-sheen-stop-edge" offset="0" />
+              <stop class="vs-sheen-stop-mid" offset="0.5" />
+              <stop class="vs-sheen-stop-edge" offset="1" />
+            </linearGradient>
+            <mask id="vs-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="96" height="96">
+              <path class="vs-mask-path" d="M17 25 L48 78 L79 25" />
+              <path class="vs-mask-path" d="M33 25 L48 51 L63 25" />
+            </mask>
+          </defs>
+          <circle class="vs-ring" cx="48" cy="48" r="46" pathLength="100" />
+          <path class="vs-v vs-v-outer" pathLength="100" d="M17 25 L48 78 L79 25" />
+          <path class="vs-v vs-v-inner" pathLength="100" d="M33 25 L48 51 L63 25" />
+          <g mask="url(#vs-mask)">
+            <rect class="vs-sheen" x="0" y="14" width="36" height="68" fill="url(#vs-sheen-grad)" />
+          </g>
+          <circle class="vs-node" cx="48" cy="13" r="3.2" />
+        </svg>
+        <div class="vs-word">
+          <span style="--i: 0">V</span><span style="--i: 1">e</span><span style="--i: 2">y</span><span style="--i: 3">r</span><span style="--i: 4">a</span>
+        </div>
+        <div class="vs-progress"></div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var doc = document;
+        var root = doc.documentElement;
+        var splash = doc.getElementById('veyra-splash');
+        if (!splash) return;
+        var light = false;
+        try {
+          light = /"theme"\s*:\s*"light"/.test(localStorage.getItem('veyra.settings.json') || '');
+        } catch (e) {}
+        var palette = light
+          ? { 'canvas-top': '#e6e6b6', 'canvas-bottom': '#c4d0da', text: '#24292e', a: '#3b82f6', b: '#8b5cf6', line: 'rgba(0, 0, 0, 0.14)', vignette: 'rgba(0, 0, 0, 0.07)', sheen: '#ffffff' }
+          : { 'canvas-top': '#4a4616', 'canvas-bottom': '#0a1423', text: '#e1e4e8', a: '#22d3ee', b: '#3b82f6', line: 'rgba(255, 255, 255, 0.16)', vignette: 'rgba(0, 0, 0, 0.4)', sheen: '#ffffff' };
+        for (var key in palette) splash.style.setProperty('--vs-' + key, palette[key]);
+
+        var MIN_VISIBLE_MS = 500;
+        var hold = new URLSearchParams(location.search).get('splash') === 'hold';
+        var paintedAt = 0;
+        var windowShown = false;
+        var leaving = false;
+        var ready = false;
+        var observer = null;
+
+        function painted() {
+          if (paintedAt) return;
+          paintedAt = performance.now();
+          performance.mark('splash:painted');
+          if (windowShown) return;
+          windowShown = true;
+          var internals = window.__TAURI_INTERNALS__;
+          if (internals && internals.invoke) {
+            try {
+              internals.invoke('plugin:window|show', { label: 'main' }).catch(function () {});
+            } catch (e) {}
+          }
+          if (ready) leave();
+        }
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(painted);
+        });
+        setTimeout(painted, 120);
+
+        function remove() {
+          if (!splash.parentNode) return;
+          splash.parentNode.removeChild(splash);
+          performance.mark('splash:removed');
+          root.classList.remove('vs-leaving');
+          window.dispatchEvent(new Event('veyra:splash-removed'));
+        }
+
+        function leave() {
+          if (leaving || hold) return;
+          if (!paintedAt) return;
+          var wait = MIN_VISIBLE_MS - (performance.now() - paintedAt);
+          if (wait > 0) {
+            setTimeout(leave, wait);
+            return;
+          }
+          leaving = true;
+          performance.mark('splash:leave');
+          if (observer) observer.disconnect();
+          root.classList.add('vs-leaving');
+          splash.classList.add('vs-out');
+          splash.addEventListener('animationend', function (event) {
+            if (event.target === splash) remove();
+          });
+          setTimeout(remove, 700);
+        }
+
+        function release() {
+          hold = false;
+          ready = true;
+          leave();
+        }
+
+        function appReady() {
+          ready = true;
+          requestAnimationFrame(function () {
+            requestAnimationFrame(leave);
+          });
+          setTimeout(leave, 50);
+        }
+
+        window.addEventListener('veyra:ready', appReady);
+        window.addEventListener('error', appReady);
+        setTimeout(appReady, 15000);
+        window.addEventListener('veyra:splash-release', release);
+        if (hold) splash.addEventListener('click', release);
+
+        var app = doc.getElementById('app');
+        if (!app) return;
+        if (app.firstChild) {
+          appReady();
+          return;
+        }
+        observer = new MutationObserver(function () {
+          if (app.firstChild) appReady();
+        });
+        observer.observe(app, { childList: true });
+      })();
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

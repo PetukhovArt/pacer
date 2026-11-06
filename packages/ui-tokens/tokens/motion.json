@@ -1,0 +1,13 @@
+{
+  "motion": {
+    "instant": { "$type": "duration", "$value": "0ms" },
+    "fast": { "$type": "duration", "$value": "100ms" },
+    "base": { "$type": "duration", "$value": "160ms" },
+    "slow": { "$type": "duration", "$value": "240ms" },
+    "overlay-in": { "$type": "duration", "$value": "140ms" },
+    "overlay-out": { "$type": "duration", "$value": "100ms" },
+    "ease-standard": { "$type": "cubicBezier", "$value": [0.2, 0, 0, 1] },
+    "ease-emphasized": { "$type": "cubicBezier", "$value": [0.05, 0.7, 0.1, 1] },
+    "ease-accelerate": { "$type": "cubicBezier", "$value": [0.3, 0, 1, 1] }
+  }
+}

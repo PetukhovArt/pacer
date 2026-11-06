@@ -1,0 +1,211 @@
+@import './motion/motion.css';
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--vr-font-family);
+  font-size: var(--vr-font-size-sm);
+  line-height: var(--vr-font-leading-message);
+  color: var(--vr-color-text);
+  background: linear-gradient(to bottom, var(--vr-color-canvas-top), var(--vr-color-canvas-bottom)) no-repeat;
+  background-size: 100vw 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis-weight: none;
+}
+
+.vr-dark {
+  color-scheme: dark;
+}
+
+button:not(:disabled),
+a[href],
+summary,
+[role='tab'] {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--vr-color-accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vr-color-nav-active);
+  border: 3px solid transparent;
+  border-radius: var(--vr-radius-full);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vr-muted {
+  color: var(--vr-color-text-muted);
+}
+
+.vr-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vr-color-border);
+}
+
+.vr-dot[data-online='true'],
+.vr-dot[data-status='done'] {
+  background: var(--vr-color-presence-online);
+}
+
+.vr-dot[data-status='running'] {
+  background: var(--vr-color-agent-running);
+}
+
+.vr-dot[data-status='failed'] {
+  background: var(--vr-color-danger);
+}
+
+.vr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: var(--vr-radius-sm);
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--vr-color-accent);
+  background: var(--vr-color-chip-bg);
+}
+
+.vr-code {
+  padding: 1px 6px;
+  font-family: var(--vr-font-mono);
+  font-size: var(--vr-font-size-2xs);
+  border-radius: var(--vr-radius-sm);
+  background: var(--vr-color-surface-muted);
+  overflow-wrap: anywhere;
+}
+
+.vr-pills {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.vr-pills > button {
+  height: 28px;
+  padding: 0 var(--vr-space-3);
+  font: inherit;
+  font-size: var(--vr-font-size-xs);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--vr-color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--vr-radius-full);
+  white-space: nowrap;
+}
+
+.vr-pills > button:hover {
+  color: var(--vr-color-text);
+  background: var(--vr-color-surface-muted);
+}
+
+.vr-pills > button[aria-selected='true'] {
+  color: var(--vr-color-accent-contrast);
+  background: var(--vr-color-accent);
+}
+
+.vr-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--vr-color-border);
+  border-radius: var(--vr-radius-xl);
+  overflow: hidden;
+}
+
+.vr-list > * + * {
+  border-top: 1px solid var(--vr-color-border);
+}
+
+.vr-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px var(--vr-space-3);
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  box-sizing: border-box;
+}
+
+button.vr-row:hover:not(:disabled) {
+  background: var(--vr-color-surface-muted);
+}
+
+.vr-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vr-space-1) var(--vr-space-2);
+  font-size: var(--vr-font-size-xs);
+  color: var(--vr-color-text-muted);
+}
+
+.vr-section-title {
+  margin: 0 0 var(--vr-space-2);
+  font-size: var(--vr-font-size-xs);
+  font-weight: 600;
+  color: var(--vr-color-text);
+}
+
+:where(button, a[href], summary, [role='tab'], [role='button'], input, textarea, select) {
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  transition-property: background-color, color, border-color, opacity, transform, outline-color, outline-offset;
+  transition-duration: var(--vr-motion-fast);
+  transition-timing-function: var(--vr-motion-ease-standard);
+}
+
+:where(button:not(:disabled, .vr-row, [role='tab'], [role='button'], .p-button):active) {
+  transform: scale(0.97);
+}
+
+:where(.vr-row, .vr-chip, .vr-dot, .vr-code) {
+  transition: background-color var(--vr-motion-fast) var(--vr-motion-ease-standard), color var(--vr-motion-fast) var(--vr-motion-ease-standard);
+}
+
+.vr-chevron {
+  display: inline-flex;
+  transition: transform var(--vr-motion-base) var(--vr-motion-ease-standard);
+}
+
+.vr-chevron[data-open='true'],
+[aria-expanded='true'] > .vr-chevron {
+  transform: rotate(var(--vr-chevron-open, 90deg));
+}
+
+.vr-chevron[data-dir='vertical'] {
+  --vr-chevron-open: 180deg;
+}
+
+.vr-fade-in {
+  animation: vr-fade-in var(--vr-motion-base) var(--vr-motion-ease-standard) both;
+}

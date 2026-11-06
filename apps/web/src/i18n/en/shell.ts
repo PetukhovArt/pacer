@@ -1,0 +1,28 @@
+export const shell = {
+  nav: {
+    label: 'Navigation',
+    tasks: 'Tasks',
+    agents: 'Workbench',
+    reviews: 'Reviews',
+    jira: 'Jira',
+    confluence: 'Confluence',
+    reviewsPending: 'Awaiting my review',
+  },
+  collapse: 'Collapse sidebar',
+  expand: 'Expand sidebar',
+  resize: 'Resize sidebar',
+  switchWorkspace: 'Switch to {name}',
+  topics: 'Topics',
+  tasks: 'Tasks',
+  online: 'online',
+  offline: 'disconnected',
+  settings: 'Settings',
+  themeLight: 'Light theme',
+  themeDark: 'Dark theme',
+  window: {
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    restore: 'Restore',
+    close: 'Close',
+  },
+} as const;

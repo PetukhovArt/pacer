@@ -1,0 +1,28 @@
+export const common = {
+  cancel: 'Cancel',
+  save: 'Save',
+  close: 'Close',
+  delete: 'Delete',
+  remove: 'Remove',
+  create: 'Create',
+  confirm: 'Confirm',
+  rename: 'Rename',
+  retry: 'Retry',
+  refresh: 'Refresh',
+  copy: 'Copy',
+  back: 'Back',
+  open: 'Open',
+  openInBrowser: 'Open in Browser',
+  search: 'Search',
+  loading: 'Loading…',
+  error: 'Error',
+  noResults: 'No results',
+  time: {
+    justNow: 'just now',
+  },
+  language: {
+    label: 'Language',
+    en: 'English',
+    ru: 'Русский',
+  },
+} as const;

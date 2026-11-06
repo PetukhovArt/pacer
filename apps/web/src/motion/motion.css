@@ -1,0 +1,79 @@
+.vt-main {
+  view-transition-name: vr-main;
+}
+
+.vt-detail {
+  view-transition-name: vr-detail;
+}
+
+.vt-nav[data-active='true'] {
+  view-transition-name: vr-nav-indicator;
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(vr-main),
+::view-transition-group(vr-detail) {
+  animation: none;
+}
+
+::view-transition-old(vr-main),
+::view-transition-old(vr-detail) {
+  animation: vr-vt-out var(--vr-motion-fast) var(--vr-motion-ease-accelerate) both;
+}
+
+::view-transition-new(vr-main) {
+  animation: vr-vt-in-y var(--vr-motion-base) var(--vr-motion-ease-emphasized) both;
+}
+
+::view-transition-new(vr-detail) {
+  animation: vr-vt-in-x var(--vr-motion-base) var(--vr-motion-ease-emphasized) both;
+}
+
+::view-transition-group(vr-nav-indicator) {
+  animation-duration: var(--vr-motion-base);
+  animation-timing-function: var(--vr-motion-ease-standard);
+}
+
+::view-transition-old(vr-nav-indicator),
+::view-transition-new(vr-nav-indicator) {
+  height: 100%;
+}
+
+@keyframes vr-vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vr-vt-in-y {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes vr-vt-in-x {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}
+
+:root.vr-reduce-motion::view-transition-group(*),
+:root.vr-reduce-motion::view-transition-old(*),
+:root.vr-reduce-motion::view-transition-new(*) {
+  animation: none;
+}
