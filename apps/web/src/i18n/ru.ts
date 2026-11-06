@@ -2,6 +2,7 @@ import type { Translation } from './types';
 import type { en } from './en';
 import { agents } from './ru/agents';
 import { atlassian } from './ru/atlassian';
+import { cleanup } from './ru/cleanup';
 import { commands } from './ru/commands';
 import { common } from './ru/common';
 import { confluence } from './ru/confluence';
@@ -19,4 +20,4 @@ import { workbench } from './ru/workbench';
 import { remote } from './ru/remote';
 import { update } from './ru/update';
 
-export const ru: Translation<typeof en> = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, forge, content, files, remote, mobile, workbench, hot, update };
+export const ru: Translation<typeof en> = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, forge, content, files, remote, mobile, workbench, hot, update, cleanup };

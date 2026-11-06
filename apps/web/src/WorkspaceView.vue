@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import AgentsView from './agents/AgentsView.vue';
+import CleanupDialog from './cleanup/CleanupDialog.vue';
+import { installCleanup } from './cleanup/state';
 import CommandPalette from './commands/CommandPalette.vue';
 import { paletteOpen } from './commands/context';
 import UnsavedDialog from './files/UnsavedDialog.vue';
@@ -25,6 +27,7 @@ const mobile = useIsMobile();
 const viewKey = 'berth.view.v2';
 const dock = useDock();
 installTray();
+installCleanup();
 installUpdate();
 
 try {
@@ -64,6 +67,7 @@ watch(
     <QuickOpen />
     <UnsavedDialog />
     <UpdateDialog v-if="inTauri" />
+    <CleanupDialog v-if="inTauri" />
     <HotHost />
     <Transition name="palette">
       <CommandPalette v-if="paletteOpen" />

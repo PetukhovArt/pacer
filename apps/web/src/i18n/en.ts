@@ -1,5 +1,6 @@
 import { agents } from './en/agents';
 import { atlassian } from './en/atlassian';
+import { cleanup } from './en/cleanup';
 import { commands } from './en/commands';
 import { common } from './en/common';
 import { confluence } from './en/confluence';
@@ -17,4 +18,4 @@ import { workbench } from './en/workbench';
 import { remote } from './en/remote';
 import { update } from './en/update';
 
-export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, forge, content, files, remote, mobile, workbench, hot, update } as const;
+export const en = { common, shell, settings, commands, agents, connectors, atlassian, jira, confluence, reviews, forge, content, files, remote, mobile, workbench, hot, update, cleanup } as const;

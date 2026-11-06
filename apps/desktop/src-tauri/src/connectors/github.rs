@@ -2,8 +2,9 @@ use serde_json::{json, Value};
 
 use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{
-    ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus, Fork,
-    InboxItem, Job, Note, Person, Pipeline, PipelineState, Position, Reason, SourceRepo,
+    BranchRequest, ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus,
+    Fork, InboxItem, Job, Kind, Note, Person, Pipeline, PipelineState, Position, Reason,
+    SourceRepo,
 };
 use super::Ctx;
 
@@ -195,6 +196,38 @@ pub async fn for_branch(
     Ok(data["repository"]["pullRequests"]["nodes"][0]
         .as_object()
         .and_then(|_| summary(&ctx.id, &data["repository"]["pullRequests"]["nodes"][0])))
+}
+
+pub async fn branch_requests(
+    ctx: &Ctx,
+    project: &str,
+    branch: &str,
+) -> ApiResult<Vec<BranchRequest>> {
+    let (owner, name) = split_project(project)?;
+    let query = "query($o: String!, $n: String!, $b: String!) { repository(owner: $o, name: $n) { \
+         pullRequests(headRefName: $b, first: 10, orderBy: {field: UPDATED_AT, direction: DESC}) \
+         { nodes { number state } } } }";
+    let data = graphql(ctx, query, json!({ "o": owner, "n": name, "b": branch })).await?;
+    let nodes = data["repository"]["pullRequests"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    Ok(nodes
+        .iter()
+        .filter_map(|node| {
+            Some(BranchRequest {
+                connector: ctx.id.clone(),
+                project: project.to_owned(),
+                number: node["number"].as_u64()?,
+                kind: Kind::Github,
+                state: match node["state"].as_str()? {
+                    "MERGED" => CrState::Merged,
+                    "CLOSED" => CrState::Closed,
+                    _ => CrState::Open,
+                },
+            })
+        })
+        .collect())
 }
 
 async fn pull_request(ctx: &Ctx, project: &str, number: u64, fields: &str) -> ApiResult<Value> {

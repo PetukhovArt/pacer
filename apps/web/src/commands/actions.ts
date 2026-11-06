@@ -1,5 +1,6 @@
 import { zoomTerminal } from '../agents/terminalFont';
 import { isDesktop } from '../bridge';
+import { openCleanup } from '../cleanup/state';
 import { navigate, openSettings } from '../nav';
 import { toggleTheme } from '../settings/appearance';
 import { requestSidebarSearch, toggleSidebar } from '../sidebarState';
@@ -37,6 +38,7 @@ defineAction({ id: 'keymap.openSettings', title: 'commands.action.keymapOpenSett
 if (isDesktop) {
   defineAction({ id: 'app.update', title: 'update.action.update', category: APP, run: () => openUpdate('update') });
   defineAction({ id: 'app.rollback', title: 'update.action.rollback', category: APP, run: () => openUpdate('rollback') });
+  defineAction({ id: 'worktrees.cleanup', title: 'cleanup.action', category: APP, run: openCleanup });
 }
 
 defineAction({ id: 'keymap.openFile', title: 'commands.action.keymapOpenFile', category: KEYS, run: () => openKeymapExternal() });

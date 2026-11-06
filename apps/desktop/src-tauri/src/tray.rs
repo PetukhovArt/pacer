@@ -13,6 +13,7 @@ const MAIN_WINDOW: &str = "main";
 const NEW_SESSION_EVENT: &str = "tray://new-session";
 const UPDATE_EVENT: &str = "tray://update";
 const ROLLBACK_EVENT: &str = "tray://rollback";
+const CLEANUP_EVENT: &str = "tray://cleanup";
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -52,7 +53,15 @@ impl Lang {
         }
     }
 
-    fn status(self, running: u32, waiting: u32) -> String {
+    fn cleanup(self, count: u32) -> String {
+        match self {
+            Self::En if count == 1 => "1 worktree can be cleaned up".to_owned(),
+            Self::En => format!("{count} worktrees can be cleaned up"),
+            Self::Ru => format!("Можно удалить worktree: {count}"),
+        }
+    }
+
+    fn status(self, running: u32, waiting: u32, cleanup: u32) -> String {
         let mut parts = Vec::new();
         if running > 0 {
             parts.push(match self {
@@ -66,11 +75,16 @@ impl Lang {
                 Self::Ru => format!("{waiting} ждут ответа"),
             });
         }
-        if parts.is_empty() {
+        let mut text = if parts.is_empty() {
             "Berth".to_owned()
         } else {
             format!("Berth\n{}", parts.join(", "))
+        };
+        if cleanup > 0 {
+            text.push('\n');
+            text.push_str(&self.cleanup(cleanup));
         }
+        text
     }
 }
 
@@ -94,24 +108,67 @@ fn read_prefs() -> Prefs {
 }
 
 #[derive(Default)]
-pub struct TrayStatus(Mutex<(u32, u32)>);
+pub struct TrayStatus(Mutex<(u32, u32, u32)>);
+
+struct CleanupEntry {
+    menu: Menu<Wry>,
+    item: MenuItem<Wry>,
+}
+
+fn sync_cleanup_entry(app: &AppHandle, lang: Lang) {
+    let Some(entry) = app.try_state::<CleanupEntry>() else {
+        return;
+    };
+    let count = app
+        .state::<TrayStatus>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .2;
+    let shown = entry
+        .menu
+        .items()
+        .map(|items| items.iter().any(|item| item.id() == entry.item.id()))
+        .unwrap_or(false);
+    if count == 0 {
+        if shown {
+            let _ = entry.menu.remove(&entry.item);
+        }
+        return;
+    }
+    let _ = entry.item.set_text(lang.cleanup(count));
+    if !shown {
+        let _ = entry.menu.insert(&entry.item, 3);
+    }
+}
 
 fn refresh_tooltip(app: &AppHandle, lang: Lang) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
-    let (running, waiting) = *app
+    let (running, waiting, cleanup) = *app
         .state::<TrayStatus>()
         .0
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let _ = tray.set_tooltip(Some(lang.status(running, waiting)));
+    let _ = tray.set_tooltip(Some(lang.status(running, waiting, cleanup)));
 }
 
 #[tauri::command]
 pub fn tray_status(app: AppHandle, status: State<'_, TrayStatus>, running: u32, waiting: u32) {
-    *status.0.lock().unwrap_or_else(|e| e.into_inner()) = (running, waiting);
+    let mut current = status.0.lock().unwrap_or_else(|e| e.into_inner());
+    current.0 = running;
+    current.1 = waiting;
+    drop(current);
     refresh_tooltip(&app, read_prefs().lang);
+}
+
+#[tauri::command]
+pub fn tray_cleanup(app: AppHandle, status: State<'_, TrayStatus>, count: u32) {
+    status.0.lock().unwrap_or_else(|e| e.into_inner()).2 = count;
+    let lang = read_prefs().lang;
+    refresh_tooltip(&app, lang);
+    sync_cleanup_entry(&app, lang);
 }
 
 fn show_main(app: &AppHandle) {
@@ -159,6 +216,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let update = MenuItem::with_id(app, "update", labels.update, true, None::<&str>)?;
     let rollback = MenuItem::with_id(app, "rollback", labels.rollback, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
+    let cleanup = MenuItem::with_id(app, "cleanup", prefs.lang.cleanup(0), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let tail = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
@@ -194,6 +252,10 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 show_main(app);
                 let _ = app.emit(ROLLBACK_EVENT, ());
             }
+            "cleanup" => {
+                show_main(app);
+                let _ = app.emit(CLEANUP_EVENT, ());
+            }
             "remote" => {
                 let enabled = toggled.is_checked().unwrap_or(false);
                 tauri::async_runtime::spawn(write_remote(enabled));
@@ -215,6 +277,10 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)?;
+    app.manage(CleanupEntry {
+        menu: menu.clone(),
+        item: cleanup,
+    });
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -236,6 +302,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             let _ = quit.set_text(labels.quit);
             let _ = remote.set_checked(prefs.remote);
             refresh_tooltip(&app, prefs.lang);
+            sync_cleanup_entry(&app, prefs.lang);
         }
     });
     Ok(())

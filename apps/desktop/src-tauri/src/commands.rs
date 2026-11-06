@@ -69,6 +69,11 @@ macro_rules! plain_commands {
             local_state stratum_visualize(connector: String, project: String, number: u64, repo: String, target: String) = $crate::stratum::stratum_visualize;
             local_free stratum_progress(connector: String, project: String, number: u64) = $crate::stratum::stratum_progress;
             local_free stratum_release(key: String) = $crate::stratum::stratum_release;
+            local_state cleanup_scan(projects: Vec<$crate::cleanup::ScanProject>, stale_days: u32) = $crate::cleanup::cleanup_scan;
+            local_free cleanup_sizes(paths: Vec<String>) = $crate::cleanup::cleanup_sizes;
+            local_free cleanup_unlink(repo: String, path: String, remove: bool) = $crate::cleanup::cleanup_unlink;
+            local_free cleanup_finish(repo: String, branch: Option<String>, delete_branch: bool) = $crate::cleanup::cleanup_finish;
+            local_free cleanup_diff(path: String) = $crate::cleanup::cleanup_diff;
         }
     };
 }

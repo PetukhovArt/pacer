@@ -102,6 +102,28 @@ pub struct ChangeRequestSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct BranchRequest {
+    pub connector: String,
+    pub project: String,
+    pub number: u64,
+    pub kind: Kind,
+    pub state: CrState,
+}
+
+pub fn pick_branch_request(found: Vec<BranchRequest>) -> Option<BranchRequest> {
+    let rank = |state: CrState| match state {
+        CrState::Open => 0,
+        CrState::Merged => 1,
+        CrState::Closed => 2,
+    };
+    found
+        .into_iter()
+        .enumerate()
+        .min_by_key(|(order, request)| (rank(request.state), *order))
+        .map(|(_, request)| request)
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct InboxItem {
     #[serde(flatten)]
     pub summary: ChangeRequestSummary,

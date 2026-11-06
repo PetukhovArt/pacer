@@ -3,8 +3,8 @@ use reqwest::Url;
 
 use super::http::ApiResult;
 use super::types::{
-    ChangeRequest, ChangeRequestSummary, DiffFile, Discussion, Inbox, InboxError, InboxItem, Kind,
-    Pipeline, SourceRepo,
+    pick_branch_request, BranchRequest, ChangeRequest, ChangeRequestSummary, DiffFile, Discussion,
+    Inbox, InboxError, InboxItem, Kind, Pipeline, SourceRepo,
 };
 use super::{cli, github, gitlab, Connectors, Ctx};
 
@@ -70,12 +70,8 @@ fn base_parts(base_url: &str) -> Option<(String, String)> {
     ))
 }
 
-pub async fn forge_for_worktree(
-    state: &Connectors,
-    path: String,
-    branch: String,
-) -> Result<Option<ChangeRequestSummary>, String> {
-    let output = match cli::capture("git", &["-C", &path, "remote", "get-url", "origin"]).await {
+async fn worktree_forge(state: &Connectors, path: &str) -> Result<Option<(Ctx, String)>, String> {
+    let output = match cli::capture("git", &["-C", path, "remote", "get-url", "origin"]).await {
         Ok(output) if output.status.success() => output,
         _ => return Ok(None),
     };
@@ -91,18 +87,45 @@ pub async fn forge_for_worktree(
         return Ok(None);
     };
     let project = if prefix.is_empty() {
-        remote_path.as_str()
+        remote_path.clone()
     } else {
         remote_path
             .strip_prefix(&format!("{prefix}/"))
             .unwrap_or(&remote_path)
+            .to_owned()
     };
     let ctx = forge_ctx(state, &record.id).await?;
+    Ok(Some((ctx, project)))
+}
+
+pub async fn forge_for_worktree(
+    state: &Connectors,
+    path: String,
+    branch: String,
+) -> Result<Option<ChangeRequestSummary>, String> {
+    let Some((ctx, project)) = worktree_forge(state, &path).await? else {
+        return Ok(None);
+    };
     let summary = match ctx.kind {
-        Kind::Github => github::for_branch(&ctx, project, &branch).await,
-        _ => gitlab::for_branch(&ctx, project, &branch).await,
+        Kind::Github => github::for_branch(&ctx, &project, &branch).await,
+        _ => gitlab::for_branch(&ctx, &project, &branch).await,
     };
     summary.map_err(String::from)
+}
+
+pub async fn branch_request(
+    state: &Connectors,
+    path: &str,
+    branch: &str,
+) -> Result<Option<BranchRequest>, String> {
+    let Some((ctx, project)) = worktree_forge(state, path).await? else {
+        return Ok(None);
+    };
+    let found = match ctx.kind {
+        Kind::Github => github::branch_requests(&ctx, &project, branch).await,
+        _ => gitlab::branch_requests(&ctx, &project, branch).await,
+    };
+    found.map(pick_branch_request).map_err(String::from)
 }
 
 pub async fn forge_change_request(

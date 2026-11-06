@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef } from 'vue';
-import { Activity, Eye, GitPullRequest, ListTodo, MessageSquare, Plus, RefreshCw, Search, SquareTerminal, TriangleAlert } from 'lucide-vue-next';
+import { Activity, Eye, GitPullRequest, ListTodo, MessageSquare, Plus, RefreshCw, Search, SquareTerminal, TriangleAlert, Trash2 } from 'lucide-vue-next';
 import { VContextMenu } from '@ui/kit';
 import ArchivedRow from '../agents/ArchivedRow.vue';
 import { useExternalSessions } from '../agents/external';
@@ -12,6 +12,9 @@ import NavNotices from '../agents/proto/NavNotices.vue';
 import SessionRow from '../agents/SessionRow.vue';
 import StatusDot from '../agents/StatusDot.vue';
 import TypeIcon from '../atlassian/TypeIcon.vue';
+import { isDesktop } from '../bridge';
+import CleanupBadge from '../cleanup/CleanupBadge.vue';
+import { cleanupCount, openCleanup } from '../cleanup/state';
 import type { InboxItem } from '../connectors/api';
 import ArchitectureAction from '../forge/ArchitectureAction.vue';
 import MrSessionNotice from '../forge/MrSessionNotice.vue';
@@ -95,6 +98,17 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
       </div>
       <span class="head-actions">
         <button class="icon" :title="t('agents.layouts.quickOpenTitle')" :aria-label="t('agents.layouts.quickOpen')" data-testid="quick-switch-open" @click="dock.switching.value = true"><Search :size="14" /></button>
+        <button
+          v-if="berth && isDesktop"
+          class="icon cleanup"
+          :title="cleanupCount ? t('cleanup.buttonCount', { count: cleanupCount }) : t('cleanup.button')"
+          :aria-label="t('cleanup.button')"
+          data-testid="open-cleanup"
+          @click="openCleanup"
+        >
+          <Trash2 :size="14" />
+          <span v-if="cleanupCount" class="count" data-testid="cleanup-count">{{ cleanupCount }}</span>
+        </button>
         <button v-if="berth" class="icon" :title="t('agents.metrics.open')" :aria-label="t('agents.metrics.title')" data-testid="open-metrics" @click="dock.openMetrics()"><Activity :size="14" /></button>
         <button class="icon" :title="t('workbench.refresh')" :aria-label="t('workbench.refresh')" :data-loading="loading" data-testid="tree-refresh" @click="refresh"><RefreshCw :size="14" :class="{ spin: loading }" /></button>
       </span>
@@ -156,6 +170,7 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
           <div v-else-if="node.kind === 'add-workspace'" class="extra new-workspace"><WorkspaceActions /></div>
         </template>
         <template #badges="{ node }">
+          <CleanupBadge v-if="node.kind === 'worktree' && node.data?.worktree && !node.data.worktree.main" :worktree-id="node.data.worktree.id" />
           <WorktreeBadge v-if="node.kind === 'worktree' && node.data?.worktree" :path="node.data.worktree.path" :branch="node.data.worktree.branch" :summary="node.data.worktreeMr" @open="(ref) => dock.openReview(ref)" />
         </template>
         <template #actions="{ node }">
@@ -349,6 +364,26 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
 
 .head-actions .icon {
   width: 20px;
+}
+
+.head-actions .icon.cleanup {
+  position: relative;
+}
+
+.count {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 2px;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
+  text-align: center;
+  color: var(--vr-color-accent-contrast);
+  background: var(--vr-color-accent);
+  border-radius: var(--vr-radius-full);
 }
 
 .icon:hover {

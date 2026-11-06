@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, shallowRef, useTemplateRef } from 'vue';
-import { ChevronRight, FileText, GitPullRequest, Ticket } from 'lucide-vue-next';
+import { ChevronRight, FileText, GitPullRequest, Ticket, Zap } from 'lucide-vue-next';
 import { subsequenceScore } from '../../commands/fuzzy';
 import { usePickerList } from '../../commands/usePickerList';
 import PipelineIcon from '../../forge/PipelineIcon.vue';
@@ -11,10 +11,11 @@ import HarnessIcon from '../HarnessIcon.vue';
 import StatusDot from '../StatusDot.vue';
 import type { MarkdownEntry } from './markdownFiles';
 
-type Item = { kind: 'leaf'; key: string; entry: QuickItem } | { kind: 'file'; key: string; file: MarkdownEntry };
+type QuickAction = { key: string; label: string };
+type Item = { kind: 'leaf'; key: string; entry: QuickItem } | { kind: 'file'; key: string; file: MarkdownEntry } | { kind: 'action'; key: string; action: QuickAction };
 
-const props = withDefaults(defineProps<{ entries: readonly QuickItem[]; files?: readonly MarkdownEntry[]; fileScope?: string }>(), { files: () => [], fileScope: '' });
-const emit = defineEmits<{ select: [node: WorkNode]; 'select-file': [path: string]; close: [] }>();
+const props = withDefaults(defineProps<{ entries: readonly QuickItem[]; files?: readonly MarkdownEntry[]; fileScope?: string; actions?: readonly QuickAction[] }>(), { files: () => [], fileScope: '', actions: () => [] });
+const emit = defineEmits<{ select: [node: WorkNode]; 'select-file': [path: string]; 'select-action': [key: string]; close: [] }>();
 
 const input = useTemplateRef<HTMLInputElement>('input');
 const list = useTemplateRef<HTMLElement>('list');
@@ -28,9 +29,10 @@ const results = computed<Item[]>(() => {
   const leaves: Item[] = props.entries.map((entry) => ({ kind: 'leaf', key: entry.key, entry }));
   if (!words.length) return leaves;
   const files: Item[] = props.files.map((file) => ({ kind: 'file', key: file.path, file }));
-  return [...leaves, ...files]
+  const actions: Item[] = props.actions.map((action) => ({ kind: 'action', key: `action:${action.key}`, action }));
+  return [...leaves, ...files, ...actions]
     .map((item, order) => {
-      const text = item.kind === 'leaf' ? item.entry.search : item.file.rel.toLowerCase();
+      const text = item.kind === 'leaf' ? item.entry.search : item.kind === 'file' ? item.file.rel.toLowerCase() : item.action.label.toLowerCase();
       let total = 0;
       for (const word of words) {
         const score = subsequenceScore(word, text);
@@ -47,7 +49,8 @@ const results = computed<Item[]>(() => {
 function choose(item: Item | undefined) {
   if (!item) return;
   if (item.kind === 'leaf') emit('select', item.entry.node);
-  else emit('select-file', item.file.path);
+  else if (item.kind === 'file') emit('select-file', item.file.path);
+  else emit('select-action', item.action.key);
 }
 
 const { index, onKey } = usePickerList({ results, query, list, choose, close: () => emit('close') });
@@ -76,8 +79,8 @@ onMounted(() => input.value?.focus());
           role="option"
           :aria-selected="position === index"
           :data-current="position === index"
-          :data-testid="item.kind === 'leaf' ? 'quick-switcher-item' : 'quick-switcher-file'"
-          :data-kind="item.kind === 'leaf' ? item.entry.node.kind : 'file'"
+          :data-testid="item.kind === 'leaf' ? 'quick-switcher-item' : item.kind === 'file' ? 'quick-switcher-file' : 'quick-switcher-action'"
+          :data-kind="item.kind === 'leaf' ? item.entry.node.kind : item.kind"
           :data-session-id="item.kind === 'leaf' ? item.entry.node.data?.session?.id : undefined"
           @pointermove="index = position"
           @click="choose(item)"
@@ -95,6 +98,10 @@ onMounted(() => input.value?.focus());
             </template>
             <span class="session">{{ item.entry.node.label }}</span>
             <PipelineIcon v-if="item.entry.node.data?.item && item.entry.node.data.item.pipeline !== 'none'" :status="item.entry.node.data.item.pipeline" :size="12" />
+          </template>
+          <template v-else-if="item.kind === 'action'">
+            <Zap :size="14" class="file-icon" />
+            <span class="session">{{ item.action.label }}</span>
           </template>
           <template v-else>
             <FileText :size="14" class="file-icon" />

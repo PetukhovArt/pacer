@@ -3,8 +3,9 @@ use serde_json::Value;
 
 use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{
-    count_patch, ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus,
-    Fork, InboxItem, Job, Note, Person, Pipeline, PipelineState, Position, Reason, SourceRepo,
+    count_patch, BranchRequest, ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion,
+    FileStatus, Fork, InboxItem, Job, Kind, Note, Person, Pipeline, PipelineState, Position,
+    Reason, SourceRepo,
 };
 use super::Ctx;
 
@@ -235,6 +236,49 @@ pub async fn for_branch(
         Some(base) => Ok(Some(enrich(ctx, base).await)),
         None => Ok(None),
     }
+}
+
+pub async fn branch_requests(
+    ctx: &Ctx,
+    project: &str,
+    branch: &str,
+) -> ApiResult<Vec<BranchRequest>> {
+    let url = format!(
+        "{}/projects/{}/merge_requests",
+        api(ctx),
+        encode_segment(project)
+    );
+    let found = ctx
+        .api
+        .json(
+            &url,
+            &[
+                ("source_branch", branch),
+                ("state", "all"),
+                ("order_by", "updated_at"),
+                ("per_page", "10"),
+            ],
+        )
+        .await?;
+    Ok(found
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|mr| {
+            Some(BranchRequest {
+                connector: ctx.id.clone(),
+                project: project.to_owned(),
+                number: mr["iid"].as_u64()?,
+                kind: Kind::Gitlab,
+                state: match mr["state"].as_str()? {
+                    "merged" => CrState::Merged,
+                    "closed" => CrState::Closed,
+                    _ => CrState::Open,
+                },
+            })
+        })
+        .collect())
 }
 
 fn absolutize(ctx: &Ctx, project: &str, body: &str) -> String {

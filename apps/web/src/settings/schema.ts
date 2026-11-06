@@ -174,6 +174,16 @@ export const SETTINGS = {
     max: 365,
     step: 1,
   },
+  'cleanup.staleDays': {
+    type: 'number',
+    default: 30,
+    label: 'cleanup.setting.label',
+    description: 'cleanup.setting.description',
+    category: 'sessions',
+    min: 1,
+    max: 365,
+    step: 1,
+  },
   'sessions.unloadIdleAfter': {
     type: 'enum',
     default: '1h',
