@@ -22,7 +22,7 @@ pub const CHANGED_ON_DISK: &str = "changed-on-disk";
 const LIST_LIMIT: usize = 2000;
 const DIRS_LIMIT: usize = 500;
 const SKIPPED_DIRS: [&str; 4] = ["node_modules", ".git", "target", "dist"];
-const MARKDOWN_EXTENSIONS: [&str; 3] = ["md", "markdown", "mdx"];
+const MARKDOWN_EXTENSIONS: [&str; 5] = ["md", "markdown", "mdx", "mmd", "mermaid"];
 const EXECUTABLE_EXTENSIONS: [&str; 24] = [
     "exe", "bat", "cmd", "com", "ps1", "psm1", "msi", "scr", "vbs", "vbe", "js", "jse", "wsf",
     "wsh", "lnk", "hta", "reg", "jar", "sh", "bash", "command", "app", "pif", "cpl",

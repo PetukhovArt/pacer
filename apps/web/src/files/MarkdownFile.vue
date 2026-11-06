@@ -61,6 +61,8 @@ const { previewText, failure: loadFailure, saveError, dirty, saving, loaded, con
 const failure = computed(() => loadFailure.value ?? externalFailure.value);
 const fileName = computed(() => props.path.split(/[\\/]/).pop() ?? props.path);
 const directory = computed(() => props.path.replace(/[\\/][^\\/]*$/, '') || props.path);
+const isDiagram = computed(() => /\.(mmd|mermaid)$/i.test(props.path));
+const renderedText = computed(() => (previewText.value !== null && isDiagram.value ? `\`\`\`mermaid\n${previewText.value}\n\`\`\`` : previewText.value));
 const showSource = computed(() => mode.value !== 'preview');
 const showPreview = computed(() => mode.value !== 'code');
 
@@ -351,7 +353,7 @@ onBeforeUnmount(() => {
     <div v-show="loaded && !comparing" class="panes" :data-mode="mode">
       <div v-show="showSource" ref="source" class="pane source" data-testid="markdown-source" />
       <div v-show="showPreview" ref="preview" class="pane preview" tabindex="0" data-testid="markdown-preview" @scroll.passive="onPreviewScroll">
-        <RichContent v-if="previewText !== null" :markdown="previewText" :base-path="directory" variant="document" :breaks="false" @open-file="(p, h) => emit('open-file', p, h)" @rendered="onRendered" />
+        <RichContent v-if="renderedText !== null" :markdown="renderedText" :base-path="directory" variant="document" :breaks="false" @open-file="(p, h) => emit('open-file', p, h)" @rendered="onRendered" />
       </div>
     </div>
   </section>
