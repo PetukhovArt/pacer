@@ -46,6 +46,9 @@ and its own database, or an unfinished binary is driving your live sessions.
   set the isolation env vars yourself, and use `scripts\update.ps1` to install and cut over. The
   commands are in `docs/windows.md`.
 
+Work on `main` only: no feature branches, no worktrees. The Veyra desktop shell moves into `apps/`
+next.
+
 <important if="you are changing paths, environment variables or hook installation">
 
 ## On-disk names
