@@ -1,42 +1,42 @@
 x-usage: |
-  Veyra in Docker: the Rust core (veyra-server), the pacer daemon, Claude Code CLI, git and gh in one container.
+  Berth in Docker: berth-server (the desktop app's core without a window), the berth daemon, Claude Code CLI, git and gh in one container.
   1. On the remote PC, from the repository root:
        docker compose -f docker/compose.yaml up -d --build
-     Repositories live in ./workspace next to this file (VEYRA_WORKSPACE=/path overrides).
+     Repositories live in ./workspace next to this file (BERTH_WORKSPACE=/path overrides).
   2. Pairing link and QR code:
-       docker compose -f docker/compose.yaml logs veyra
-     Set VEYRA_PUBLIC_URL=http://<pc address>:4477 so the link and QR carry the address the phone can reach.
+       docker compose -f docker/compose.yaml logs berth
+     Set BERTH_PUBLIC_URL=http://<pc address>:4477 so the link and QR carry the address the phone can reach.
   3. Claude login, once, kept in the claude volume:
-       docker compose -f docker/compose.yaml exec -it veyra claude
+       docker compose -f docker/compose.yaml exec -it berth claude
      then /login, or put ANTHROPIC_API_KEY into the environment before step 1.
   4. GitHub and GitLab CLIs, once:
-       docker compose -f docker/compose.yaml exec -it veyra gh auth login
-       docker compose -f docker/compose.yaml exec -it veyra glab auth login   (image built with GLAB_VERSION)
+       docker compose -f docker/compose.yaml exec -it berth gh auth login
+       docker compose -f docker/compose.yaml exec -it berth glab auth login   (image built with GLAB_VERSION)
   5. Git identity and repositories:
-       docker compose -f docker/compose.yaml exec veyra git config --global user.name "..."
-       docker compose -f docker/compose.yaml exec veyra git clone <url> /workspace/<name>
-       docker compose -f docker/compose.yaml exec veyra pacer add /workspace/<name>
+       docker compose -f docker/compose.yaml exec berth git config --global user.name "..."
+       docker compose -f docker/compose.yaml exec berth git clone <url> /workspace/<name>
+       docker compose -f docker/compose.yaml exec berth berth add /workspace/<name>
      SSH keys go into the ssh volume (/root/.ssh).
-  The token is in the veyra volume, secrets.json; delete its remote-pairing-token entry and restart to rotate it.
-  Expose the port only on a trusted network or a tailnet: VEYRA_HOST_BIND=100.x.y.z keeps it off other interfaces.
+  The token is in the home volume, secrets.json; delete its remote-pairing-token entry and restart to rotate it.
+  Expose the port only on a trusted network or a tailnet: BERTH_HOST_BIND=100.x.y.z keeps it off other interfaces.
 
-name: veyra
+name: berth
 
 services:
-  veyra:
+  berth:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       args:
         GLAB_VERSION: ${GLAB_VERSION:-}
         CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-latest}
-    image: veyra:local
+    image: berth:local
     restart: unless-stopped
     stop_grace_period: 20s
     ports:
-      - "${VEYRA_HOST_BIND:-0.0.0.0}:${VEYRA_HOST_PORT:-4477}:4477"
+      - "${BERTH_HOST_BIND:-0.0.0.0}:${BERTH_HOST_PORT:-4477}:4477"
     environment:
-      - VEYRA_PUBLIC_URL
+      - BERTH_PUBLIC_URL
       - ANTHROPIC_API_KEY
       - ANTHROPIC_BASE_URL
       - ANTHROPIC_AUTH_TOKEN
@@ -44,21 +44,21 @@ services:
       - GITLAB_TOKEN
       - TZ
     volumes:
-      - ${VEYRA_WORKSPACE:-./workspace}:/workspace
-      - veyra:/root/.veyra
+      - ${BERTH_WORKSPACE:-./workspace}:/workspace
+      - home:/root/.berth
       - claude:/root/.claude
-      - pacer:/root/.local/share/pacer
+      - daemon:/root/.local/share/berth
       - gh:/root/.config/gh
       - glab:/root/.config/glab-cli
       - git:/root/.config/git
       - ssh:/root/.ssh
     tmpfs:
-      - /run/pacer:mode=0700
+      - /run/berth:mode=0700
 
 volumes:
-  veyra:
+  home:
   claude:
-  pacer:
+  daemon:
   gh:
   glab:
   git:

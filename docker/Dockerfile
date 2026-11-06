@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_VERSION=22
-ARG RUST_VERSION=1.98.1
+ARG RUST_VERSION=1.99.1
 ARG DEBIAN=bookworm
 
 FROM node:${NODE_VERSION}-${DEBIAN}-slim AS web
@@ -10,35 +10,23 @@ WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json ./
 COPY packages packages
 COPY apps/desktop/package.json apps/desktop/
-COPY apps/mcp/package.json apps/mcp/
-COPY apps/model-router/package.json apps/model-router/
-COPY apps/runner/package.json apps/runner/
-COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 COPY apps/web apps/web
-RUN pnpm build:tokens && pnpm --filter @veyra/web build
+RUN pnpm build:tokens && pnpm --filter @berth/web build
 
 FROM rust:${RUST_VERSION}-${DEBIAN} AS core
-WORKDIR /src/apps/desktop/src-tauri
-COPY apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/Cargo.lock apps/desktop/src-tauri/build.rs ./
-COPY apps/desktop/src-tauri/src src
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+COPY vendor vendor
+COPY apps/desktop/src-tauri apps/desktop/src-tauri
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/src/apps/desktop/src-tauri/target \
-    cargo build --release --locked --no-default-features --bin veyra-server \
-    && install -m 0755 target/release/veyra-server /usr/local/bin/veyra-server
-
-FROM rust:${RUST_VERSION}-${DEBIAN} AS pacer
-ARG PACER_REPO=https://github.com/PetukhovArt/pacer
-ARG PACER_REF=v0.19.0
-RUN git clone --depth 1 --branch "${PACER_REF}" "${PACER_REPO}" /pacer
-WORKDIR /pacer
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/pacer/target \
-    cargo build --release --locked -p pacer \
-    && install -m 0755 target/release/pacer /usr/local/bin/pacer
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked -p berth \
+    && cargo build --release --locked -p berth-desktop --no-default-features --bin berth-server \
+    && install -m 0755 target/release/berth target/release/berth-server /usr/local/bin/
 
 FROM node:${NODE_VERSION}-${DEBIAN}-slim AS runtime
 ARG CLAUDE_CODE_VERSION=latest
@@ -56,22 +44,22 @@ RUN apt-get update \
        fi \
     && rm -rf /var/lib/apt/lists/*
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" && npm cache clean --force
-COPY --from=core /usr/local/bin/veyra-server /usr/local/bin/veyra-server
-COPY --from=pacer /usr/local/bin/pacer /usr/local/bin/pacer
-COPY --from=web /src/apps/web/dist /opt/veyra/web
-COPY docker/entrypoint.sh /usr/local/bin/veyra-entrypoint
-RUN chmod 0755 /usr/local/bin/veyra-entrypoint && mkdir -p /workspace
-ENV VEYRA_BIND=0.0.0.0 \
-    VEYRA_PORT=4477 \
-    VEYRA_HOME=/root/.veyra \
-    VEYRA_WEB_DIR=/opt/veyra/web \
-    VEYRA_SECRETS=file \
-    PACER_RUNTIME_DIR=/run/pacer \
+COPY --from=core /usr/local/bin/berth /usr/local/bin/berth
+COPY --from=core /usr/local/bin/berth-server /usr/local/bin/berth-server
+COPY --from=web /src/apps/web/dist /opt/berth/web
+COPY docker/entrypoint.sh /usr/local/bin/berth-entrypoint
+RUN chmod 0755 /usr/local/bin/berth-entrypoint && mkdir -p /workspace
+ENV BERTH_BIND=0.0.0.0 \
+    BERTH_PORT=4477 \
+    BERTH_HOME=/root/.berth \
+    BERTH_WEB_DIR=/opt/berth/web \
+    BERTH_SECRETS=file \
+    BERTH_RUNTIME_DIR=/run/berth \
     CLAUDE_CONFIG_DIR=/root/.claude \
     GIT_CONFIG_GLOBAL=/root/.config/git/config
 WORKDIR /workspace
 EXPOSE 4477
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${VEYRA_PORT}/__veyra/health" || exit 1
+    CMD curl -fsS "http://127.0.0.1:${BERTH_PORT}/__berth/health" || exit 1
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/veyra-entrypoint"]
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/berth-entrypoint"]
