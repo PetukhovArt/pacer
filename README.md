@@ -108,6 +108,20 @@ either way.
 
 Then read [docs/getting-started.md](docs/getting-started.md).
 
+## Desktop app
+
+`apps/desktop` is a Tauri window over the same daemon: a project tree of sessions, merge requests and
+Jira tasks, terminals in a dock, diffs and reviews, Markdown and Mermaid files, and remote access from a
+phone. It needs Node 22 and pnpm next to the Rust toolchain, and builds from the repository root:
+
+```sh
+pnpm install
+pnpm build:desktop        # installer and standalone exe under target/release
+```
+
+The app connects to the running `berth` daemon and never starts one, so run `berth` (or `berth daemon`)
+first. `docker/` packs the same core without a window (`berth-server`) with the daemon for a remote machine.
+
 ## Documentation
 
 | | |

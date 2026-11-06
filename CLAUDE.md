@@ -46,8 +46,26 @@ and its own database, or an unfinished binary is driving your live sessions.
   set the isolation env vars yourself, and use `scripts\update.ps1` to install and cut over. The
   commands are in `docs/windows.md`.
 
-Work on `main` only: no feature branches, no worktrees. The Veyra desktop shell moves into `apps/`
-next.
+Work on `main` only: no feature branches, no worktrees.
+
+## Desktop app (apps/, packages/, docker/)
+
+The Tauri desktop app, its Vue UI and the ui packages came over from Veyra; `apps/desktop/src-tauri/src/legacy.rs`
+holds every old name it still reads (`~/.veyra`, the `veyra` keychain service, `VEYRA_*`, the old Tauri
+identifier). Rules there differ from the Rust crates:
+
+- No code comments and no tests in `apps/` and `packages/`. The crates under `crates/` keep their own tests.
+- Check a change with `node scripts/checks.mjs <files>` (comments, raw colors, oxlint, knip, types, rustfmt,
+  clippy for `berth-desktop`) and `node ~/.claude/hooks/diff-verify.mjs`. Never run a full `vue-tsc` or `tsc`
+  over the project. The husky pre-commit runs `checks.mjs` on staged files under `apps/`, `packages/` and
+  `docker/` only.
+- Colors come from `packages/ui-tokens` through `var(--vr-…)`; the web side reaches Rust only through
+  `apps/web/src/bridge.ts`.
+- Dev run on Windows, isolated from your real daemon and your real `~/.berth` and keychain:
+  `powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 -Desktop` (builds berth, starts a dev daemon on
+  this checkout's `BERTH_RUNTIME_DIR`/`BERTH_DATA_DIR`, sets `BERTH_HOME` and `BERTH_SECRETS=file`, runs
+  `pnpm tauri dev` with WebView2 debugging on port 9334, stops the daemon after). Without the script, set the
+  same variables and run `berth daemon` and `pnpm dev:desktop` yourself.
 
 <important if="you are changing paths, environment variables or hook installation">
 

@@ -49,5 +49,17 @@ and the metrics sampler behind the memory modal and the diagnostics card.
 | `berth-daemon` | PTYs, SQLite, git, hook receiver, status engine |
 | `berth-tui` | ratatui UI, keyboard/mouse, attach/scrollback |
 
+## Apps
+
+| Path | Role |
+|---|---|
+| `apps/desktop/src-tauri` | `berth-desktop` crate: the Tauri shell, a daemon client on `berth-core` (`berth.rs`), connectors, remote access, and the headless `berth-server` binary |
+| `apps/web` | Vue UI the desktop window and `berth-server` both serve; talks to Rust through `bridge.ts` only |
+| `packages/ui-kit`, `packages/ui-tokens` | components and design tokens for `apps/web` |
+| `docker` | image with `berth` and `berth-server` for a remote machine |
+
+The desktop crate is a workspace member but not a default member: a bare `cargo build` and the
+release workflow skip it, and CI excludes it because it needs a webview toolchain.
+
 `vendor/vt100` is a patched fork (DECSTBM scrollback fix — see its Cargo.toml); don't swap it for
 crates.io vt100.

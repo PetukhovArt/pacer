@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a desktop app (`apps/desktop`): a window over the berth daemon with a project tree, docked terminals, merge request reviews, Jira tasks and remote access from a phone, which carries over Veyra settings, keychain tokens and layout on first start.
 - Added `shift+c` diagnostics card: a floating panel with per-session CPU, RAM and Claude token use, moved by dragging its title row or with `shift+v`, and remembered across restarts.
 - Added `model_prices` setting: fill in per-model rates and the diagnostics card shows a cost column.
 - Added `]` and `[` to jump to the next and previous session waiting on you, in any workspace.
