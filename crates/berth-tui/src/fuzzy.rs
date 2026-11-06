@@ -194,27 +194,27 @@ mod tests {
     #[test]
     fn space_separated_terms_match_independently() {
         // The reported case: one subsequence pass wants a literal space
-        // between "pac" and "#10", which the PR row does not have.
-        let m = fuzzy_match("pac #10", "berth/#10 Credit Codex and Cursor in the README").unwrap();
+        // between "ber" and "#10", which the PR row does not have.
+        let m = fuzzy_match("ber #10", "berth/#10 Credit Codex and Cursor in the README").unwrap();
         assert_eq!(m.positions, vec![0, 1, 2, 6, 7, 8]);
     }
 
     #[test]
     fn terms_may_appear_in_any_order() {
-        assert!(fuzzy_match("#10 pac", "berth/#10 Credit Codex").is_some());
+        assert!(fuzzy_match("#10 ber", "berth/#10 Credit Codex").is_some());
         assert!(fuzzy_match("requests show", "berth/main/Show Open Pull Requests").is_some());
     }
 
     #[test]
     fn every_term_must_match() {
-        assert!(fuzzy_match("pac #11", "berth/#10 Credit Codex").is_none());
-        assert!(fuzzy_match("pac zzz", "berth/#10 Credit Codex").is_none());
+        assert!(fuzzy_match("ber #11", "berth/#10 Credit Codex").is_none());
+        assert!(fuzzy_match("ber zzz", "berth/#10 Credit Codex").is_none());
     }
 
     #[test]
     fn positions_are_ascending_and_deduped_across_overlapping_terms() {
-        // "pa" and "pac" both land on the same leading chars.
-        let m = fuzzy_match("pa pac", "berth/main").unwrap();
+        // "be" and "ber" both land on the same leading chars.
+        let m = fuzzy_match("be ber", "berth/main").unwrap();
         assert_eq!(m.positions, vec![0, 1, 2]);
     }
 
@@ -242,7 +242,7 @@ mod tests {
             "berth/worktree-readme-tweak/Readme Tweak Pull Request",
             "berth/#10 Credit Codex and Cursor in the README tagline",
         ];
-        let ranked = rank("pac #10", rows.clone());
+        let ranked = rank("ber #10", rows.clone());
         assert_eq!(ranked.len(), 1, "only the #10 row has both terms");
         assert_eq!(ranked[0].0, 2);
     }

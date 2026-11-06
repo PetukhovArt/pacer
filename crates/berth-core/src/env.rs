@@ -36,7 +36,14 @@ pub const EDITOR: &str = "BERTH_EDITOR";
 
 /// Env vars that identify an agent session to the daemon. They are set on
 /// every agent PTY and must never leak into plain terminals.
-pub const AGENT_SESSION_VARS: &[&str] = &[AGENT_ID, API_URL, API_TOKEN];
+pub const AGENT_SESSION_VARS: &[&str] = &[
+    AGENT_ID,
+    API_URL,
+    API_TOKEN,
+    crate::legacy::AGENT_ID,
+    crate::legacy::API_URL,
+    crate::legacy::API_TOKEN,
+];
 
 /// `TERM` every PTY child is given. The pane is berth's own grid, a vt100
 /// parser the TUI repaints through ratatui, and that grid keeps 24-bit
@@ -56,7 +63,27 @@ pub const PANE_COLOR_OVERRIDES: &[&str] = &["NO_COLOR", "FORCE_COLOR"];
 /// The value of `var`, treating unset and empty the same way — an empty
 /// override is how a caller says "use the default".
 pub fn non_empty(var: &str) -> Option<String> {
-    std::env::var(var).ok().filter(|v| !v.is_empty())
+    self::var(var).filter(|v| !v.is_empty())
+}
+
+pub fn var(var: &str) -> Option<String> {
+    std::env::var(var)
+        .ok()
+        .or_else(|| crate::legacy::env_name(var).and_then(|old| std::env::var(old).ok()))
+}
+
+pub fn check_isolation_vars() -> Result<(), String> {
+    for (new, old) in [
+        (RUNTIME_DIR, crate::legacy::RUNTIME_DIR),
+        (DATA_DIR, crate::legacy::DATA_DIR),
+    ] {
+        if std::env::var_os(new).is_none() && non_empty(old).is_some() {
+            return Err(format!(
+                "{old} is set but berth reads {new}: set {new} to a path of berth's own, or unset {old}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The user's home directory, when the environment has one. Read as an

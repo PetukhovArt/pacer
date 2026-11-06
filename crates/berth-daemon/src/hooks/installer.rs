@@ -16,6 +16,8 @@
 //! - Our groups carry `_berthManaged: true` and are stripped + rebuilt on
 //!   every spawn, so upgrades never accumulate duplicates. A legacy-signature
 //!   check (command contains our endpoint + env var) catches untagged strays.
+//!   Groups pacer wrote (`_pacerManaged`, `PACER_AGENT_ID`) count as ours,
+//!   so a berth install replaces them instead of running beside them.
 //! - A corrupt file ABORTS the install — never clobber user data.
 //! - Commands are env-guarded, so the hooks are inert when the user runs
 //!   `claude`/`codex`/`cursor-agent` outside berth (no BERTH_* in env →
@@ -34,12 +36,14 @@
 
 use anyhow::{bail, Context, Result};
 use berth_core::env::{AGENT_ID, API_TOKEN, API_URL};
+use berth_core::legacy;
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 /// The hooks file's name under codex's home and cursor's per-worktree dir.
 /// Claude keeps its hooks in its settings file instead.
 const HOOKS_FILE: &str = "hooks.json";
+const HOOK_TAG: &str = "_berthManaged";
 /// Claude Code's per-checkout settings: hooks and permission rules both.
 const CLAUDE_SETTINGS_FILE: &str = "settings.local.json";
 /// The CLIs' config directories: `.claude` and `.cursor` are per-worktree;
@@ -164,12 +168,17 @@ fn cursor_hook_command(event: &str) -> String {
 
 fn is_berth_command(cmd: Option<&Value>) -> bool {
     cmd.and_then(Value::as_str)
-        .map(|c| c.contains("/api/hooks/") && c.contains(AGENT_ID))
+        .map(|c| {
+            c.contains("/api/hooks/") && (c.contains(AGENT_ID) || c.contains(legacy::AGENT_ID))
+        })
         .unwrap_or(false)
 }
 
 fn is_berth_group(group: &Value) -> bool {
-    if group.get("_berthManaged").and_then(Value::as_bool) == Some(true) {
+    if [HOOK_TAG, legacy::HOOK_TAG]
+        .iter()
+        .any(|tag| group.get(*tag).and_then(Value::as_bool) == Some(true))
+    {
         return true;
     }
     // Legacy/untagged detection by command signature — nested Claude/Codex
@@ -193,7 +202,7 @@ fn managed_group(endpoint: &str, event: &str, matcher: Option<&str>) -> Value {
         "hooks".into(),
         json!([{ "type": "command", "command": hook_command(endpoint, event) }]),
     );
-    group.insert("_berthManaged".into(), json!(true));
+    group.insert(HOOK_TAG.into(), json!(true));
     Value::Object(group)
 }
 
@@ -448,7 +457,12 @@ fn merge_managed_hooks(
 /// the daemon accepts at most one auto-title per session.
 pub fn install_cursor_title_rule(cwd: &Path) -> Result<()> {
     let dir = cwd.join(CURSOR_DIR).join("rules");
-    write_text_atomic(&dir, "berth-title.mdc", &cursor_title_rule())
+    write_text_atomic(&dir, "berth-title.mdc", &cursor_title_rule())?;
+    let old = dir.join(legacy::CURSOR_TITLE_RULE);
+    if old.exists() {
+        std::fs::remove_file(&old).with_context(|| format!("remove {}", old.display()))?;
+    }
+    Ok(())
 }
 
 /// Same instruction the injectable CLIs get, wrapped in cursor's rule

@@ -5,6 +5,7 @@ pub mod entities;
 pub mod env;
 pub mod host;
 pub mod ids;
+pub mod legacy;
 pub mod mem;
 pub mod paths;
 pub mod protocol;

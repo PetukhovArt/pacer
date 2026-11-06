@@ -49,8 +49,9 @@ single binary and declaring its `os`/`cpu`, plus a launcher package that lists a
 time.
 
 The packages publish as **`@petukhovart/berth`** plus `@petukhovart/berth-<os>-<cpu>`. The scope is there
-because plain `berth` is taken on npm — an abandoned Redis rate-limiter, last published 2016. It changes
-the install command only; the binary and the command stay `berth`.
+because plain `berth` is taken on npm by a deprecated package last published in 2022. It changes the
+install command only; the binary and the command stay `berth`. Up to 0.20 the same packages published
+as `@petukhovart/pacer` and `@petukhovart/pacer-<os>-<cpu>`; nothing publishes those names any more.
 
 **One-time setup**
 

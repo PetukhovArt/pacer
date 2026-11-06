@@ -93,21 +93,23 @@ dev-prep:
 # settings, minus `agents` and `terminals`: those rows are the live sessions
 # the real daemon owns, and the dev daemon must not resume them. `.backup`
 # reads the WAL, so the copy is consistent even with the real daemon running.
-# The real dir is where `directories::ProjectDirs::from("dev","berth","berth")`
-# puts it (berth-core/src/paths.rs). Keep the two in step.
+# The real dir is where `directories::ProjectDirs::from("dev","","berth")`
+# puts it (berth-core/src/paths.rs), and pacer's (berth-core/src/legacy.rs)
+# when berth has none yet. Keep the three in step with docs/configuration.md.
 dev-seed: ## Copy real projects/workspaces/settings into the dev instance (only if it has no DB yet)
 	@[ ! -e $(DEV_DATA)/berth.db ] || exit 0; \
 	case "$$(uname -s)" in \
-		Darwin) real="$$HOME/Library/Application Support/dev.berth";; \
-		*)      real="$${XDG_DATA_HOME:-$$HOME/.local/share}/berth";; \
+		Darwin) base="$$HOME/Library/Application Support/dev.";; \
+		*)      base="$${XDG_DATA_HOME:-$$HOME/.local/share}/";; \
 	esac; \
-	if [ ! -f "$$real/berth.db" ]; then \
-		echo "no real berth data at $$real - dev instance starts empty"; exit 0; fi; \
-	else echo "no real berth data at $$new - dev instance starts empty"; exit 0; fi; \
+	real="$${base}berth"; db="$$real/berth.db"; \
+	if [ ! -f "$$db" ]; then real="$${base}pacer"; db="$$real/pacer.db"; fi; \
+	if [ ! -f "$$db" ]; then \
+		echo "no real berth or pacer data under $$base - dev instance starts empty"; exit 0; fi; \
 	if ! command -v sqlite3 >/dev/null 2>&1; then \
 		echo "sqlite3 not on PATH - dev instance starts empty"; exit 0; fi; \
 	mkdir -p $(DEV_DATA); \
-	sqlite3 "$$real/berth.db" ".backup '$(DEV_DATA)/berth.db'"; \
+	sqlite3 "$$db" ".backup '$(DEV_DATA)/berth.db'"; \
 	sqlite3 $(DEV_DATA)/berth.db "DELETE FROM agents; DELETE FROM terminals;"; \
 	for f in config.json reviewed.json; do \
 		if [ -f "$$real/$$f" ]; then cp "$$real/$$f" $(DEV_DATA)/; fi; \

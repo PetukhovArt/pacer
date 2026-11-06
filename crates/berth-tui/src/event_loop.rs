@@ -11294,7 +11294,7 @@ diff --git a/src/b.rs b/src/b.rs
             panic!("prompt closed")
         };
         assert_eq!(p.input, format!("{}/workspace/", tmp.path().display()));
-        assert_eq!(dir_names(p), vec!["herdr", "berth"]);
+        assert_eq!(dir_names(p), vec!["berth", "herdr"]);
 
         // Ambiguous: Tab makes no progress, the listing already shows both.
         handle_key(
@@ -11306,12 +11306,12 @@ diff --git a/src/b.rs b/src/b.rs
             panic!("prompt closed")
         };
         assert_eq!(p.input, format!("{}/workspace/", tmp.path().display()));
-        assert_eq!(dir_names(p), vec!["herdr", "berth"]);
+        assert_eq!(dir_names(p), vec!["berth", "herdr"]);
 
         // Typing narrows the listing; the next Tab completes fully.
         handle_key(
             &mut app,
-            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE),
             &mut out,
         );
         let Some(Overlay::Prompt(p)) = &app.overlay else {

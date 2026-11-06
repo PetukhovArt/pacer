@@ -3498,6 +3498,7 @@ fn agent_cli(env: &TestEnv, agent_id: &berth_core::AgentId, args: &[&str]) -> st
     std::process::Command::new(env!("CARGO_BIN_EXE_berth"))
         .args(args)
         .env(env::RUNTIME_DIR, &env.runtime_dir)
+        .env(env::DATA_DIR, env.tmp.path().join("data"))
         .env(env::AGENT_ID, &agent_id.0)
         .output()
         .unwrap()

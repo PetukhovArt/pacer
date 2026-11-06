@@ -5,6 +5,7 @@ pub mod launch;
 pub mod lifecycle;
 pub mod metrics;
 pub mod orphans;
+pub mod pacer_migration;
 pub mod pty;
 pub mod registry;
 pub mod sampler;
@@ -35,7 +36,7 @@ fn env_period_ms(value: Option<&str>, default_ms: u64) -> u64 {
 /// The ticker for a background loop whose period the env var `var` may
 /// override (see [`env_period_ms`]).
 fn env_interval(var: &str, default_ms: u64) -> tokio::time::Interval {
-    let period = env_period_ms(std::env::var(var).ok().as_deref(), default_ms);
+    let period = env_period_ms(berth_core::env::var(var).as_deref(), default_ms);
     tokio::time::interval(std::time::Duration::from_millis(period))
 }
 

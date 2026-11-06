@@ -66,10 +66,7 @@ const CLI_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 fn cloud_mirror_refresh() -> Option<Duration> {
     static CADENCE: std::sync::OnceLock<Option<Duration>> = std::sync::OnceLock::new();
     *CADENCE.get_or_init(|| {
-        match std::env::var(env::CLOUD_MIRROR_SECS)
-            .ok()
-            .and_then(|v| v.trim().parse::<u64>().ok())
-        {
+        match env::var(env::CLOUD_MIRROR_SECS).and_then(|v| v.trim().parse::<u64>().ok()) {
             Some(0) => None,
             Some(secs) => Some(Duration::from_secs(secs).max(CLOUD_MIRROR_MIN)),
             None => Some(CLOUD_MIRROR_REFRESH),
@@ -1432,7 +1429,7 @@ impl Daemon {
     /// gets picked up quickly. Probe trouble (timeout, spawn error) fails
     /// open — a doomed warm spawn is still graceful.
     async fn cli_available(&self, kind: AgentKind) -> bool {
-        if std::env::var(env::AGENT_CMD).is_ok() {
+        if env::var(env::AGENT_CMD).is_some() {
             return true; // test override is spawned verbatim
         }
         const OK_TTL: Duration = Duration::from_secs(3600);
@@ -2110,7 +2107,7 @@ impl Daemon {
             .get_worktree(&agent.worktree_id)?
             .context("worktree not found")?;
 
-        let cmd_override = std::env::var(env::AGENT_CMD).ok();
+        let cmd_override = env::var(env::AGENT_CMD);
         let (program, args) = match cmd_override.as_deref() {
             Some(over) => (over.to_string(), Vec::new()),
             None => launch::wrap_for_user_env(
@@ -2544,7 +2541,7 @@ impl Daemon {
         }
 
         // BERTH_AGENT_CMD overrides for tests; default is the kind's CLI.
-        let cmd_override = std::env::var(env::AGENT_CMD).ok();
+        let cmd_override = env::var(env::AGENT_CMD);
         let pr_system_prompt = if cloud.is_none() {
             self.store
                 .agent_pr_url(&agent.id)?

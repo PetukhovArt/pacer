@@ -14,6 +14,36 @@ without a restart — and `s` in the TUI is an overlay over the same file.
 That directory holds `config.json`, `agent_presets.json`, `berth.db`, and a `state/` subdirectory with
 `daemon.log` and `tui.log`.
 
+## Moving from pacer
+
+berth was called pacer up to 0.20. The first time berth starts and finds no data directory of its own,
+it copies pacer's over:
+
+| | From | To |
+|---|---|---|
+| macOS | `~/Library/Application Support/dev.pacer/` | `~/Library/Application Support/dev.berth/` |
+| Linux | `~/.local/share/pacer/` | `~/.local/share/berth/` |
+| Windows | `%APPDATA%\pacer\data\` | `%APPDATA%\berth\data\` |
+
+Your projects, workspaces, pins, settings, presets and ssh hosts come along, and `pacer.db` becomes
+`berth.db`. Logs, database backups and the runtime directory stay behind. The copy happens once: when
+berth's directory exists, pacer's is never read again. pacer's directory is never changed or deleted,
+so pacer keeps working, and you remove it yourself when you no longer need it.
+
+The copy is a snapshot of the moment berth first starts. Anything you do in pacer after that stays in
+pacer, so stop pacer's daemon with `pacer kill` before the first `berth` to carry everything over.
+
+berth runs its own daemon (`%TEMP%\berth` on Windows, `/tmp/berth-<uid>` or `$XDG_RUNTIME_DIR/berth`
+elsewhere), so a running pacer daemon and its sessions are left alone. When berth starts a session in
+a checkout, it replaces the hooks pacer installed there with its own.
+
+Environment variables are spelled `BERTH_*` now. berth still reads the old `PACER_*` spelling of
+`AGENT_CMD`, `LOG`, `EDITOR`, `INSTALL_URL` and the test timing knobs when the new one is unset.
+`PACER_RUNTIME_DIR` and `PACER_DATA_DIR` are different: berth refuses to start while one is set
+without its `BERTH_*` counterpart, because following it would put berth on pacer's daemon or
+database. With both data variables set, berth copies from `PACER_DATA_DIR` into a `BERTH_DATA_DIR`
+that does not exist yet.
+
 ## Settings
 
 Everything below is both a key in `config.json` and a row in the `s` overlay.

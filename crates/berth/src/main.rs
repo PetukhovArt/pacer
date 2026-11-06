@@ -190,6 +190,10 @@ enum WorkspaceCommand {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    berth_core::env::check_isolation_vars().map_err(anyhow::Error::msg)?;
+    if let Some(note) = berth_daemon::pacer_migration::run()? {
+        eprintln!("berth: {note}");
+    }
     match cli.command {
         Some(Command::Daemon { foreground }) => {
             init_daemon_logging(foreground)?;
@@ -295,8 +299,9 @@ fn log_fatal<T>(result: Result<T>, log_path: &Path) -> Result<T> {
 }
 
 fn log_filter() -> tracing_subscriber::EnvFilter {
-    tracing_subscriber::EnvFilter::try_from_env(berth_core::env::LOG)
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+    berth_core::env::var(berth_core::env::LOG)
+        .and_then(|filter| tracing_subscriber::EnvFilter::try_new(filter).ok())
+        .unwrap_or_else(|| tracing_subscriber::EnvFilter::new("info"))
 }
 
 /// Route tracing to `log_path` (created on demand, appended, no ANSI) —

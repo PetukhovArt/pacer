@@ -13,10 +13,10 @@ git show 0415b71^:.claude/memory/entries/<slug>.md
 ```
 
 Two things to know before trusting a line. **It describes what was true when it was written** — if
-one names a file, flag or symbol, grep for it before relying on it. **All of it predates the rename
-to berth**, which finished before the first release: env vars are `BERTH_*`, the data dir is
-`dev.berth.berth` / `~/.local/share/berth`, the database is `berth.db` and the hook tag is
-`_berthManaged`. Lines below have been respelled; the `⟵` slugs have not, because they are
+one names a file, flag or symbol, grep for it before relying on it. **All of it predates two renames**,
+nebula to pacer before the first release and pacer to berth after 0.20: env vars are `BERTH_*`, the
+data dir is `dev.berth` / `~/.local/share/berth` / `%APPDATA%\berth\data`, the database is `berth.db`
+and the hook tag is `_berthManaged`. Lines below have been respelled; the `⟵` slugs have not, because they are
 filenames in git history and only resolve spelled the way they were written.
 
 The ALL-CAPS lead-in is the old memory log's index key, not the project vocabulary; `GLOSSARY.md`
@@ -46,7 +46,9 @@ history.
 - **ATTACH** — Input is dropped for a session the daemon hasn't spawned, so a pending attach must land before the first keystroke (`handle_terminal_event` fires it when `term_locked`; `Action::Activate` and `Action::Zoom` fire it too). ⟵ 2026-08-26-a-workspace-switch-cold-booted-a-fleet-of-claude-clis
 - **DAEMON LOG** — DAEMON LOG records no hook traffic at `info` (`hook received` is `debug`; `hookEvent=` never appears), so the SQLITE STORE row (`claude_session_id` on `agents`) is the only cheap live oracle for status timing. ⟵ 2026-08-28-background-subagents-turned-the-session-green-idle-prompt-no
 - **DAEMON SETSID** — Garbage tokens in the TUI were a shell job-control fight over the controlling terminal, not vt100: a new process group is not enough — a new session makes zsh's `/dev/tty` open fail so it skips job-control init. ⟵ 2026-08-20-the-daemon-needs-its-own-session-not-just-a-process-group
-- **DATA DIR** — The real DATA DIR is `~/Library/Application Support/dev.berth.berth/` on macOS (`ProjectDirs::from("dev","berth","berth")`), `$XDG_DATA_HOME/berth` on Linux; nothing prints it. ⟵ 2026-08-25-make-dev-showed-v0-4-0-and-no-projects
+- **DATA DIR** — The real DATA DIR is `~/Library/Application Support/dev.berth/` on macOS (`ProjectDirs::from("dev","","berth")`), `$XDG_DATA_HOME/berth` on Linux, `%APPDATA%\berth\data` on Windows; nothing prints it. ⟵ 2026-08-25-make-dev-showed-v0-4-0-and-no-projects
+- **DATA DIR** — The pacer → berth rename is a one-shot COPY in `pacer_migration::run`, called first thing in `main` for every subcommand: berth's DATA DIR existing at all is the "already migrated" flag, so anything that creates it before `main` runs (log init, `Config::save`) silently skips the copy forever, and any `berth` run without `BERTH_DATA_DIR` (a test spawning `CARGO_BIN_EXE_berth`, a smoke check) snapshots the real pacer data into the real berth dir — give every such spawn its own `BERTH_DATA_DIR`. Old names live only in `berth-core/src/legacy.rs`.
+- **DATA DIR** — Opening a WAL database read-only still creates its `-wal`/`-shm` when they are missing, so the migration file-copies `pacer.db` when no `pacer.db-wal` exists and only uses `VACUUM INTO` over a read-only connection when one does (a live or crashed pacer daemon); that is what leaves pacer's directory byte-identical. On Windows `directories` asks the shell for `FOLDERID_RoamingAppData`, so a temp `APPDATA` does not redirect the default path — test the copy with `PACER_DATA_DIR` plus `BERTH_DATA_DIR`.
 - **MIGRATION** — Migrations 2, 3, 7 and the migration-14 rebuild still spell out the divider columns and must — they already ran on every DB; only migration 18 drops them, so don't "tidy" old SQL. ⟵ 2026-08-25-project-dividers-removed-from-the-projects-column
 - **PROTOCOL VERSION** — A PROTOCOL VERSION bump means the daemon still running from before the build refuses the new client until BERTH KILL (or MAKE CYCLE) restarts it — expected; the client offers the kill-and-restart. ⟵ 2026-08-28-r-renames-a-project-row-without-touching-its-folder; 2026-08-28-released-v0-15-0-by-cherry-picking-only-the-post-v0-14-0-del
 - **PTY SESSION** — Agent PTYs get `TERM=xterm-256color` (`pty/mod.rs`) but inherit the daemon's `TERM_PROGRAM`, so `/terminal-setup` inside berth detects the terminal the daemon was first spawned from, not the one attached. ⟵ 2026-08-18-cmd-p-never-reaches-the-agent-in-terminal-app
@@ -156,6 +158,7 @@ history.
 - **SETTINGS OVERLAY** — `s` lands on the tab strip, where `j`/`Enter` mean "drop into the list"; route new settings tests through the `open_settings_on` helper or failures look like keymap bugs (`left: "?" right: "F6"`). ⟵ 2026-08-26-settings-opens-on-the-tab-strip
 
 ## Agents and hooks
+- **HOOK TAG** — berth treats pacer's hook groups (`_pacerManaged`, or a command naming `PACER_AGENT_ID`) as its own, so a berth spawn replaces them; pacer 0.20 does not know `_berthManaged`, so a pacer spawn in the same checkout or `~/.codex` adds its groups back beside berth's. Both sets stay inert outside their own sessions only because the daemon scrubs the other product's `*_AGENT_ID`/`*_API_*` from every PTY (`env::AGENT_SESSION_VARS`): drop the `PACER_*` names from that list and a berth started inside a pacer pane posts its sessions' hooks to pacer's daemon. The `Bash(pacer …)` permission rules are left in `settings.local.json` on purpose.
 - **AGENT KIND** — Every CLI takes a trailing positional prompt (`claude [prompt]`, `codex [PROMPT]` / `codex resume [SESSION_ID] [PROMPT]`, `cursor-agent [prompt...]`), but only Claude's `--resume <sid> "<prompt>"` is verified live — the RELOCATION PROMPT is Claude-only for that reason. ⟵ 2026-08-28-agent-presets-launch-a-session-with-a-composed-first-prompt · retire: a live codex/cursor resume-with-prompt check
 - **AUTO-TITLE** — The `berth rename` every session issues before anything else is injected context from the AUTO-TITLE INSTRUCTION, not something the user typed — don't mistake it for part of the request. ⟵ 2026-08-20-sessions-auto-rename-themselves
 - **AUTO-TITLE** — Untitled `agent-N` rows *after* a prompt are VERSION SKEW, not a hook failure: the injection is unversioned HTTP but the bare `berth rename` resolves on PATH, so any session's `make install` untitles every SESSION a still-running (dev) daemon starts afterwards — date it by `auto_title_pending=1` rows' `created_at` vs `~/.cargo/bin/berth`'s mtime. ⟵ 2026-08-28-agent-n-rows-after-prompting-are-version-skew-not-auto-title

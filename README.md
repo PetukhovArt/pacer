@@ -88,6 +88,9 @@ cargo install --git https://github.com/PetukhovArt/pacer berth --locked
 Either way the command is `berth`. On Windows, see [docs/windows.md](docs/windows.md) for what to install
 alongside it and what differs on the platform.
 
+berth was called pacer up to 0.20. Its first start copies your pacer data over and leaves pacer
+running; see [Moving from pacer](docs/configuration.md#moving-from-pacer).
+
 > **Prerequisite:** at least one agent CLI on your `PATH` — `claude`, `codex` or `cursor-agent`. berth
 > spawns them; it doesn't ship them. `gh` and/or `glab` unlock the pull-request views.
 

@@ -56,11 +56,11 @@ Paths, env vars and the hook tag are load-bearing on data that already exists on
 tag and the Cursor rule file). Changing any of them needs a migration, not a find-and-replace — the
 tests pass either way, and existing installations lose their sessions, pins and settings.
 
-There is no precedent to copy. The one rename that happened carried a fallback for a while, and
-`7e53751` deleted it on the grounds that the fork had never been published, so `data_dir`, `db_path`
-and `log_dir` each resolve one place today. That reasoning has expired: 0.18.0 ships on npm and
-GitHub releases, so the next rename does need the migration. The Makefile's `dev-seed` target and
-`docs/configuration.md` quote the same paths, so keep the three in step.
+The pacer → berth rename is the precedent: every old name sits in `crates/berth-core/src/legacy.rs`,
+and `crates/berth-daemon/src/pacer_migration.rs` copies pacer's data dir into an absent berth one on
+first start, never touching the old one. Keep it until nobody runs pacer 0.20 any more. The
+Makefile's `dev-seed` target and `docs/configuration.md` quote the same paths, so keep the three in
+step.
 
 </important>
 
