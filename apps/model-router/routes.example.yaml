@@ -1,0 +1,12 @@
+providers:
+  claude: { type: anthropic, base: https://api.anthropic.com, auth: passthrough }
+  openrouter: { type: anthropic, base: https://openrouter.ai/api, key: OPENROUTER_API_KEY, auth: bearer, compat: true }
+
+models:
+  main: [claude/*, openrouter/nvidia/nemotron-3-ultra-550b-a55b:free, openrouter/google/gemma-4-31b-it:free]
+  fast: [claude/*, openrouter/nvidia/nemotron-3.5-lightning:free, openrouter/google/gemma-4-26b-a4b-it:free]
+
+routes:
+  - match: haiku
+    use: fast
+  - use: main

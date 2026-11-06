@@ -36,6 +36,15 @@ importers:
         specifier: ^2.0.0
         version: 2.12.4
 
+  apps/model-router:
+    dependencies:
+      undici:
+        specifier: ^7.16.0
+        version: 7.30.2
+      yaml:
+        specifier: ^2.8.1
+        version: 2.9.1
+
   apps/web:
     dependencies:
       '@codemirror/commands':
@@ -2248,6 +2257,10 @@ packages:
 
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
+
+  undici@7.30.2:
+    resolution: {integrity: sha512-mLyPQnHwUxaM/rideoK/+KL8DaAJLRl4aBCfmX444aCSLnIaomqPLtNRe2jdCYcsk5wZzXrDIQC8ZeYNRAYyIA==}
+    engines: {node: '>=20.18.1'}
 
   url@0.11.4:
     resolution: {integrity: sha512-oCwdVC7mTuWiPyjLUz/COz5TLk6wgp0RCsN+wHZ2Ekneac9w8uuV0njcbbie2ME+Vs+d6duwmYuR3HgQXs1fOg==}
@@ -4513,6 +4526,8 @@ snapshots:
   unbash@6.0.3: {}
 
   undici-types@8.9.0: {}
+
+  undici@7.30.2: {}
 
   url@0.11.4:
     dependencies:
