@@ -10,8 +10,12 @@
 #
 #   -Agent cmd.exe   stub agents out, so nothing spawns a real claude
 #   -Reset           wipe this checkout's dev database first
+#   -Desktop         run the desktop app (`pnpm tauri dev`) instead of the TUI,
+#                    against a dev daemon this script starts and stops; the
+#                    app's own dir (BERTH_HOME) lives in the dev data dir too
+#   -CdpPort 9334    WebView2 remote-debugging port for the desktop app
 
-param([string]$Agent, [switch]$Reset)
+param([string]$Agent, [switch]$Reset, [switch]$Desktop, [int]$CdpPort = 9334)
 
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
@@ -37,5 +41,16 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($Reset) { Remove-Item -Recurse -Force $env:BERTH_DATA_DIR -ErrorAction SilentlyContinue }
 
 Write-Host "dev instance [$(Split-Path -Leaf $PWD)] -> runtime $env:BERTH_RUNTIME_DIR, data $env:BERTH_DATA_DIR"
-& $bin
+if ($Desktop) {
+    # The desktop app connects to a daemon but never starts one, and its own
+    # settings, connectors and secrets (a file, not the OS keychain) go to
+    # BERTH_HOME instead of your real ~/.berth.
+    $env:BERTH_HOME = Join-Path $env:BERTH_DATA_DIR 'home'
+    $env:BERTH_SECRETS = 'file'
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$CdpPort"
+    Start-Process -FilePath $bin -ArgumentList 'daemon' -WindowStyle Hidden
+    pnpm --filter @berth/desktop tauri dev
+} else {
+    & $bin
+}
 & $bin kill | Out-Null

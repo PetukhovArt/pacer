@@ -165,6 +165,13 @@ pub fn run() {
     if !cfg!(debug_assertions) {
         crate::legacy::adopt_webview_profile();
     }
+    if crate::legacy::env("BERTH_SECRETS").as_deref() == Some("file") {
+        if let Ok(dir) = settings::berth_dir() {
+            crate::connectors::secrets::install(Box::new(
+                crate::connectors::secrets::FileStore::new(dir.join("secrets.json")),
+            ));
+        }
+    }
     let connectors = Arc::new(Connectors::load());
     let berth = tauri::async_runtime::block_on(async { Berth::spawn() });
     tauri::Builder::default()
