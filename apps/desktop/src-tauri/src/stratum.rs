@@ -319,14 +319,22 @@ async fn start(
     .await
     .map_err(|error| format!("не найдена общая база с {target}: {error}"))?;
     let spec = format!("{head}:{CONFIG}");
-    if git(&repo, &["cat-file", "-e", &spec], PROBE_TIMEOUT)
+    let borrowed = if git(&repo, &["cat-file", "-e", &spec], PROBE_TIMEOUT)
         .await
         .is_err()
     {
-        return Err(format!(
-            "в ветке запроса {project}!{number} нет {CONFIG}: она создана до его добавления, обновите ветку от {target}"
-        ));
-    }
+        let target_spec = format!("{target_sha}:{CONFIG}");
+        let text = git(&repo, &["show", &target_spec], PROBE_TIMEOUT)
+            .await
+            .map_err(|_| format!("нет {CONFIG} ни в {project}!{number}, ни в {target}"))?;
+        push(
+            &log,
+            format!("в ветке запроса нет {CONFIG}: беру его из {target}"),
+        );
+        Some(text)
+    } else {
+        None
+    };
 
     evict_for_room().await;
 
@@ -350,6 +358,9 @@ async fn start(
         GIT_TIMEOUT,
     )
     .await?;
+    if let Some(text) = borrowed {
+        std::fs::write(dir.join(CONFIG), format!("{text}\n")).map_err(|error| error.to_string())?;
+    }
 
     phase(&log, "start");
     let spawned = launch(&linter, &dir, &base, &log).await;
