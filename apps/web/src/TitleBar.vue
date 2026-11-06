@@ -47,10 +47,8 @@ onUnmounted(() => stopResize?.());
 <template>
   <header class="titlebar" data-tauri-drag-region data-testid="titlebar">
     <svg class="mark" data-tauri-drag-region viewBox="0 0 96 96" width="16" height="16" aria-hidden="true">
-      <circle class="ring" cx="48" cy="48" r="46" />
-      <path class="stroke" d="M17 25 L48 78 L79 25" />
-      <path class="stroke" d="M33 25 L48 51 L63 25" />
-      <circle class="node" cx="48" cy="13" r="4" />
+      <path class="stroke" d="M32 8 V60 C32 76 42 86 54 86 C68 86 80 76 80 62 C80 48 68 38 54 38 C44 38 34 44 18 60" />
+      <circle class="node" cx="55" cy="62" r="6.5" />
     </svg>
     <span class="title" data-tauri-drag-region data-testid="titlebar-title">{{ title }}</span>
     <HotChips v-if="hotEnabled" />
@@ -94,14 +92,9 @@ onUnmounted(() => stopResize?.());
   fill: none;
 }
 
-.ring {
-  stroke: var(--vr-color-nav-muted);
-  stroke-width: 4;
-}
-
 .stroke {
   stroke: var(--vr-color-text);
-  stroke-width: 9;
+  stroke-width: 10;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

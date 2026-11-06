@@ -68,7 +68,7 @@
       }
 
       .vs-ring,
-      .vs-v {
+      .vs-line {
         fill: none;
         stroke-linecap: round;
         stroke-linejoin: round;
@@ -84,16 +84,10 @@
         animation: vs-draw 800ms var(--vs-ease) backwards;
       }
 
-      .vs-v-outer {
+      .vs-line {
         stroke: url(#vs-stroke);
         stroke-width: 5;
-        animation: vs-draw 640ms var(--vs-ease) 100ms backwards;
-      }
-
-      .vs-v-inner {
-        stroke: url(#vs-stroke);
-        stroke-width: 5;
-        animation: vs-draw 520ms var(--vs-ease) 330ms backwards;
+        animation: vs-draw 900ms var(--vs-ease) 100ms backwards;
       }
 
       .vs-node {
@@ -263,8 +257,7 @@
       @media (prefers-reduced-motion: reduce) {
         .vs-glow,
         .vs-ring,
-        .vs-v-outer,
-        .vs-v-inner,
+        .vs-line,
         .vs-node,
         .vs-sheen,
         .vs-word span {
@@ -303,17 +296,15 @@
               <stop class="vs-sheen-stop-edge" offset="1" />
             </linearGradient>
             <mask id="vs-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="96" height="96">
-              <path class="vs-mask-path" d="M17 25 L48 78 L79 25" />
-              <path class="vs-mask-path" d="M33 25 L48 51 L63 25" />
+              <path class="vs-mask-path" d="M36 14 V60 C36 72 44 80 54 80 C64 80 72 72 72 62 C72 52 64 44 54 44 C46 44 39 49 28 60" />
             </mask>
           </defs>
           <circle class="vs-ring" cx="48" cy="48" r="46" pathLength="100" />
-          <path class="vs-v vs-v-outer" pathLength="100" d="M17 25 L48 78 L79 25" />
-          <path class="vs-v vs-v-inner" pathLength="100" d="M33 25 L48 51 L63 25" />
+          <path class="vs-line" pathLength="100" d="M36 14 V60 C36 72 44 80 54 80 C64 80 72 72 72 62 C72 52 64 44 54 44 C46 44 39 49 28 60" />
           <g mask="url(#vs-mask)">
-            <rect class="vs-sheen" x="0" y="14" width="36" height="68" fill="url(#vs-sheen-grad)" />
+            <rect class="vs-sheen" x="0" y="10" width="36" height="76" fill="url(#vs-sheen-grad)" />
           </g>
-          <circle class="vs-node" cx="48" cy="13" r="3.2" />
+          <circle class="vs-node" cx="54" cy="62" r="4" />
         </svg>
         <div class="vs-word">
           <span style="--i: 0">B</span><span style="--i: 1">e</span><span style="--i: 2">r</span><span style="--i: 3">t</span><span style="--i: 4">h</span>
