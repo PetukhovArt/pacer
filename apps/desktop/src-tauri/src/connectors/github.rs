@@ -2,8 +2,8 @@ use serde_json::{json, Value};
 
 use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{
-    ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus, InboxItem, Job,
-    Note, Person, Pipeline, PipelineState, Position, Reason,
+    ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus, Fork,
+    InboxItem, Job, Note, Person, Pipeline, PipelineState, Position, Reason, SourceRepo,
 };
 use super::Ctx;
 
@@ -264,6 +264,50 @@ pub async fn change_request(ctx: &Ctx, project: &str, number: u64) -> ApiResult<
             Some("CONFLICTING") => Some(false),
             _ => None,
         },
+    })
+}
+
+pub async fn source(ctx: &Ctx, project: &str, number: u64) -> ApiResult<SourceRepo> {
+    let url = format!("{}/repos/{project}/pulls/{number}", api_base(ctx));
+    let pull = ctx.api.json(&url, &[]).await?;
+    let head = &pull["head"];
+    let branch = text(&head["ref"]);
+    let repo = &head["repo"];
+    if repo.is_null() {
+        return Ok(SourceRepo {
+            branch,
+            fork: None,
+            gone: true,
+            can_push: None,
+        });
+    }
+    let head_name = text(&repo["full_name"]);
+    let base_name = text(&pull["base"]["repo"]["full_name"]);
+    if head_name.eq_ignore_ascii_case(&base_name) {
+        return Ok(SourceRepo {
+            branch,
+            fork: None,
+            gone: false,
+            can_push: repo["permissions"]["push"].as_bool(),
+        });
+    }
+    let maintainer = pull["maintainer_can_modify"].as_bool().unwrap_or(false)
+        && pull["base"]["repo"]["permissions"]["push"].as_bool() == Some(true);
+    let can_push = match repo["permissions"]["push"].as_bool() {
+        Some(true) => Some(true),
+        _ if maintainer => Some(true),
+        other => other,
+    };
+    Ok(SourceRepo {
+        branch,
+        fork: Some(Fork {
+            owner: opt(&repo["owner"]["login"])
+                .unwrap_or_else(|| head_name.split('/').next().unwrap_or_default().to_owned()),
+            http_url: text(&repo["clone_url"]),
+            ssh_url: text(&repo["ssh_url"]),
+        }),
+        gone: false,
+        can_push,
     })
 }
 

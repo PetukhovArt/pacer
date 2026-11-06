@@ -155,6 +155,14 @@ export const forgeDiscussions = (ref: ChangeRequestRef) => invoke<Discussion[]>(
 export const forgePipeline = (ref: ChangeRequestRef) => invoke<Pipeline | null>('forge_pipeline', { ...ref });
 export const forgeFile = (connector: string, project: string, ref: string, path: string) => invoke<string>('forge_file', { connector, project, ref, path });
 
+export type ForkSource = { owner: string; http_url: string; ssh_url: string };
+export type SourceRepo = { branch: string; fork: ForkSource | null; gone: boolean; can_push: boolean | null };
+type FetchProblem = 'branch_missing' | 'no_clone_url' | 'failed';
+export type FetchedSource = { remote: string; base: string | null; problem: FetchProblem | null; detail: string | null; diverged: boolean };
+
+export const forgeSource = (ref: ChangeRequestRef) => invoke<SourceRepo>('forge_source', { connector: ref.connector, project: ref.project, number: ref.number });
+export const mrFetchSource = (repo: string, branch: string, local: string, fork: ForkSource | null) => invoke<FetchedSource>('mr_fetch_source', { repo, branch, local, fork });
+
 export const jiraSearch = (connector: string, jql: string, start: number, limit: number) =>
   invoke<{ total: number; issues: JiraIssueSummary[] }>('jira_search', { connector, jql, start, limit });
 export const jiraIssue = (connector: string, key: string) => invoke<JiraIssue>('jira_issue', { connector, key });

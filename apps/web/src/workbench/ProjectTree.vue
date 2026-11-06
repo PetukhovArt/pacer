@@ -14,7 +14,11 @@ import StatusDot from '../agents/StatusDot.vue';
 import TypeIcon from '../atlassian/TypeIcon.vue';
 import type { InboxItem } from '../connectors/api';
 import ArchitectureAction from '../forge/ArchitectureAction.vue';
+import MrSessionNotice from '../forge/MrSessionNotice.vue';
+import OpenInSessionAction from '../forge/OpenInSessionAction.vue';
+import { useOpenInSession } from '../forge/openInSession';
 import { numberLabel, pipelineLabel } from '../forge/format';
+import { itemId } from '../forge/inbox';
 import { useArchitecture } from '../forge/stratum';
 import PipelineIcon from '../forge/PipelineIcon.vue';
 import WorktreeBadge from '../forge/WorktreeBadge.vue';
@@ -39,19 +43,22 @@ const selected = computed(() => {
 });
 
 const archMenu = useTemplateRef<InstanceType<typeof VContextMenu>>('archMenu');
-const archItem = shallowRef<InboxItem | null>(null);
-const { availability: archState } = useArchitecture(() => archItem.value ?? undefined);
+const archItem = shallowRef<{ item: InboxItem; review?: ReviewMeta } | null>(null);
+const { availability: archState } = useArchitecture(() => archItem.value?.item);
+const mrSession = useOpenInSession();
 const archItems = computed(() => {
-  const item = archItem.value;
+  const target = archItem.value;
+  if (!target) return [];
+  const { item, review } = target;
   const state = archState.value;
-  if (!item || state.status === 'hidden') return [];
+  const items = [{ key: 'open-session', label: t('forge.openSession.action'), title: t('forge.openSession.title'), disabled: !berth || (mrSession.runs.value.get(itemId(item))?.busy ?? false), command: () => void mrSession.open(item, review?.refs) }];
+  if (state.status === 'hidden') return items;
   const reason = state.status === 'disabled' ? state.reason : state.status === 'checking' ? t('forge.stratum.checking') : t('forge.stratum.title');
-  return [{ key: 'architecture', label: t('forge.stratum.action'), title: reason, disabled: state.status !== 'ready', command: () => state.status === 'ready' && dock.openArchitecture(state.params, numberLabel(item)) }];
+  return [...items, { key: 'architecture', label: t('forge.stratum.action'), title: reason, disabled: state.status !== 'ready', command: () => state.status === 'ready' && dock.openArchitecture(state.params, numberLabel(item)) }];
 });
 
-function showArchMenu(event: MouseEvent, item: InboxItem) {
-  archItem.value = item;
-  if (archState.value.status === 'hidden') return;
+function showArchMenu(event: MouseEvent, item: InboxItem, review?: ReviewMeta) {
+  archItem.value = { item, review };
   event.preventDefault();
   archMenu.value?.show(event);
 }
@@ -94,6 +101,7 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
     </div>
     <div class="scroll">
       <NavNotices />
+      <MrSessionNotice v-for="run in mrSession.runs.value.values()" :key="run.id" :run="run" />
       <p v-for="error in errors" :key="`${error.connector}:${error.message}`" class="strip" role="alert" data-testid="tree-error" :title="error.message">{{ error.connector }}: {{ error.message }}</p>
       <ExplorerTree
         :nodes="nodes"
@@ -109,7 +117,7 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
           <PipelineIcon v-if="node.data?.pipeline && node.data.pipeline !== 'none'" :status="node.data.pipeline" :size="12" :title="pipelineLabel(node.data.pipeline)" />
         </template>
         <template #leaf="{ node, data }">
-          <span v-if="data?.item" class="line" data-testid="tree-mr-row" :data-mr="`${data.item.project}!${data.item.number}`" @contextmenu="showArchMenu($event, data.item)">
+          <span v-if="data?.item" class="line" data-testid="tree-mr-row" :data-mr="`${data.item.project}!${data.item.number}`" @contextmenu="showArchMenu($event, data.item, data.review)">
             <span class="key">{{ numberLabel(data.item) }}</span>
             <span v-if="jiraRefs(data.review)" class="refs" data-testid="tree-mr-refs">{{ jiraRefs(data.review) }}</span>
             <span class="title"><span v-if="data.item.draft" class="draft">{{ t('forge.draft') }}</span>{{ shownTitle(data.item) }}</span>
@@ -157,7 +165,10 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
           </template>
           <WorkspaceActions v-else-if="node.kind === 'workspace' && node.data?.workspaceId" :workspace-id="node.data.workspaceId" />
           <RepoActions v-else-if="node.kind === 'repo' && node.data?.repo" :repo="node.data.repo" />
-          <ArchitectureAction v-else-if="node.data?.item" :item="node.data.item" variant="icon" />
+          <template v-else-if="node.data?.item">
+            <OpenInSessionAction :item="node.data.item" :refs="node.data.review?.refs" variant="icon" />
+            <ArchitectureAction :item="node.data.item" variant="icon" />
+          </template>
           <ProjectActions
             v-else-if="node.kind === 'project' && node.data?.projectId"
             :project-id="node.data.projectId"
@@ -172,7 +183,7 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
     </div>
     <VContextMenu ref="archMenu" :model="archItems">
       <template #item="{ item, props: itemProps }">
-        <a v-bind="itemProps.action" :title="item.title" data-testid="mr-menu-architecture">{{ item.label }}</a>
+        <a v-bind="itemProps.action" :title="item.title" :data-testid="`mr-menu-${item.key}`">{{ item.label }}</a>
       </template>
     </VContextMenu>
   </section>

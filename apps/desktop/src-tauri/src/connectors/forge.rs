@@ -4,7 +4,7 @@ use reqwest::Url;
 use super::http::ApiResult;
 use super::types::{
     ChangeRequest, ChangeRequestSummary, DiffFile, Discussion, Inbox, InboxError, InboxItem, Kind,
-    Pipeline,
+    Pipeline, SourceRepo,
 };
 use super::{cli, github, gitlab, Connectors, Ctx};
 
@@ -41,7 +41,7 @@ pub async fn forge_inbox(state: &Connectors) -> Result<Inbox, String> {
     Ok(Inbox { items, errors })
 }
 
-fn parse_remote(remote: &str) -> Option<(String, String)> {
+pub(crate) fn parse_remote(remote: &str) -> Option<(String, String)> {
     let remote = remote.trim();
     let (host, path) = if remote.contains("://") {
         let url = Url::parse(remote).ok()?;
@@ -172,6 +172,20 @@ pub async fn forge_file(
     match ctx.kind {
         Kind::Github => github::file(&ctx, &project, &r#ref, &path).await,
         _ => gitlab::file(&ctx, &project, &r#ref, &path).await,
+    }
+    .map_err(String::from)
+}
+
+pub async fn forge_source(
+    state: &Connectors,
+    connector: String,
+    project: String,
+    number: u64,
+) -> Result<SourceRepo, String> {
+    let ctx = forge_ctx(state, &connector).await?;
+    match ctx.kind {
+        Kind::Github => github::source(&ctx, &project, number).await,
+        _ => gitlab::source(&ctx, &project, number).await,
     }
     .map_err(String::from)
 }

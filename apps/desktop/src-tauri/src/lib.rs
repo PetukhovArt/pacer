@@ -7,6 +7,7 @@ pub mod connectors;
 mod desktop;
 pub mod files;
 pub mod legacy;
+mod mr_checkout;
 pub mod remote;
 mod review;
 pub mod rpc;

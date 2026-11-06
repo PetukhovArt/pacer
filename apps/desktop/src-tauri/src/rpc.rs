@@ -18,7 +18,7 @@ use crate::files::{self, FileWatches};
 use crate::settings::{self, ConfigFile, SettingsWatch};
 use crate::sink::{BoxSink, Sink};
 
-const GUARDED: [(&str, &str); 10] = [
+const GUARDED: [(&str, &str); 11] = [
     ("review_queue", "repo"),
     ("review_adapter", "repo"),
     ("fs_read_text", "path"),
@@ -29,6 +29,7 @@ const GUARDED: [(&str, &str); 10] = [
     ("fs_list_dirs", "root"),
     ("fs_watch", "path"),
     ("forge_for_worktree", "path"),
+    ("mr_fetch_source", "repo"),
 ];
 
 fn bad_args(error: serde_json::Error) -> String {

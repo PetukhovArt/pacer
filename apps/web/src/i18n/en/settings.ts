@@ -86,6 +86,10 @@ export const settings = {
       description: 'Prefilled in the new session form. Empty: the agent picks the value.',
       placeholder: 'default',
     },
+    sessionsMrPrompt: {
+      label: 'Merge request session prompt',
+      description: 'First prompt of a session opened from a merge request. Placeholders: {url} {title} {description} {branch} {target} {issue} {author}. Empty: the built-in prompt in the interface language.',
+    },
     sessionsExternalDays: {
       label: 'Sessions started outside Berth',
       description: 'How many days back the tree shows Claude Code and Codex sessions started in a terminal or an IDE. 0 hides them.',

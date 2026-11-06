@@ -31,6 +31,7 @@ function createDock() {
   const visible = shallowRef(false);
   const creatingIn = shallowRef<string | null>(null);
   const openingKey = shallowRef<string | null>(null);
+  let openingBeside: string | undefined;
   const detail = shallowRef(false);
   const switching = shallowRef(false);
   const pending: ((api: DockviewApi) => void)[] = [];
@@ -74,13 +75,14 @@ function createDock() {
   watch(
     () => berth?.sessions.value,
     (sessions) => {
+      if (!sessions || berth?.connection.value.state !== 'connected') return;
       const api = dock.value;
-      if (!api || !sessions || berth?.connection.value.state !== 'connected') return;
-      for (const panel of api.panels) if (isSessionPanel(panel.id) && !sessions.has(panel.id)) panel.api.close();
+      if (api) for (const panel of api.panels) if (isSessionPanel(panel.id) && !sessions.has(panel.id)) panel.api.close();
       const opening = openingKey.value ? sessions.get(openingKey.value) : undefined;
       if (!opening) return;
       openingKey.value = null;
-      openSession(opening);
+      openSession(opening, openingBeside);
+      openingBeside = undefined;
     },
   );
 
@@ -119,14 +121,15 @@ function createDock() {
     api.addPanel({ id: session.key, component: 'session', title: session.name, params: { session: session.ref }, renderer: 'always', ...(position ? { position } : {}) });
   }
 
-  function openSession(session: SessionNode) {
+  function openSession(session: SessionNode, beside?: string) {
     withDock((api) => {
       const existing = api.getPanel(session.key);
       if (existing) {
         existing.api.setActive();
         return;
       }
-      addSessionPanel(session, api);
+      if (beside && api.getPanel(beside)) api.addPanel({ id: session.key, component: 'session', title: session.name, params: { session: session.ref }, renderer: 'always', position: { referencePanel: beside, direction: 'within' } });
+      else addSessionPanel(session, api);
     });
   }
 
@@ -192,11 +195,19 @@ function createDock() {
     openPanel({ id: METRICS_PANEL, component: 'metrics', title: t('agents.metrics.title') });
   }
 
-  function openWhenListed(session: SessionRef) {
+  function openWhenListed(session: SessionRef, beside?: string) {
     const key = sessionKey(session);
     const node = berth?.sessions.value.get(key);
-    if (node) openSession(node);
-    else openingKey.value = key;
+    if (node) openSession(node, beside);
+    else {
+      openingBeside = beside;
+      openingKey.value = key;
+    }
+  }
+
+  function openMrSession(session: SessionRef, mr: ChangeRequestRef, title: string) {
+    openReview(mr, title);
+    openWhenListed(session, itemId(mr));
   }
 
   function startCreate(worktreeId: string) {
@@ -287,6 +298,7 @@ function createDock() {
     openLeaf,
     openMetrics,
     openWhenListed,
+    openMrSession,
     startCreate,
     startCreateInMain,
     onCreated,

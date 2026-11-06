@@ -156,6 +156,14 @@ export const SETTINGS = {
     category: 'sessions',
     placeholder: 'settings.def.sessionsDefaultEffort.placeholder',
   },
+  'sessions.mrPrompt': {
+    type: 'string',
+    default: '',
+    label: 'settings.def.sessionsMrPrompt.label',
+    description: 'settings.def.sessionsMrPrompt.description',
+    category: 'sessions',
+    placeholder: 'forge.openSession.prompt',
+  },
   'sessions.externalDays': {
     type: 'number',
     default: 14,

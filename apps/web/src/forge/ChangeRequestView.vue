@@ -20,6 +20,10 @@ import PersonAvatar from '../connectors/PersonAvatar.vue';
 import RichContent from '../content/RichContent.vue';
 import { t } from '../i18n';
 import ArchitectureAction from './ArchitectureAction.vue';
+import MrSessionNotice from './MrSessionNotice.vue';
+import OpenInSessionAction from './OpenInSessionAction.vue';
+import { itemId } from './inbox';
+import { mrRuns } from './openInSession';
 import DiffView from './DiffView.vue';
 import { fullDate, numberLabel, pipelineLabel, relativeTime } from './format';
 import PipelineIcon from './PipelineIcon.vue';
@@ -50,6 +54,7 @@ const target = computed<ChangeRequestRef>(() => ({ connector: props.connector, p
 const unresolved = computed(() => discussions.value.filter((d) => d.resolvable && !d.resolved).length);
 const conversation = computed(() => discussions.value.filter((d) => d.notes.some((n) => !n.system) || !d.position));
 const anchored = computed(() => discussions.value.some((d) => d.position));
+const sessionRun = computed(() => mrRuns.value.get(itemId(target.value)));
 let generation = 0;
 
 async function loadDiff() {
@@ -152,6 +157,7 @@ onMounted(() => void load());
           <VButton size="small" severity="secondary" :label="t('common.openInBrowser')" data-testid="cr-open-browser" @click="openUrl(cr.url)">
             <template #icon><ExternalLink :size="14" /></template>
           </VButton>
+          <OpenInSessionAction :item="cr" />
           <ArchitectureAction :item="cr" />
         </div>
 
@@ -183,6 +189,7 @@ onMounted(() => void load());
           <PipelineJobs :pipeline="pipeline" />
         </div>
         <p v-if="sideFailure" class="side-failure" role="alert">{{ sideFailure }}</p>
+        <MrSessionNotice v-if="sessionRun" :run="sessionRun" />
       </header>
 
       <nav class="tabs" role="tablist">

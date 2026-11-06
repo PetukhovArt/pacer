@@ -4,7 +4,7 @@ use serde_json::Value;
 use super::http::{encode_segment, opt, text, ApiError, ApiResult};
 use super::types::{
     count_patch, ChangeRequest, ChangeRequestSummary, CrState, DiffFile, Discussion, FileStatus,
-    InboxItem, Job, Note, Person, Pipeline, PipelineState, Position, Reason,
+    Fork, InboxItem, Job, Note, Person, Pipeline, PipelineState, Position, Reason, SourceRepo,
 };
 use super::Ctx;
 
@@ -281,6 +281,78 @@ pub async fn change_request(ctx: &Ctx, project: &str, number: u64) -> ApiResult<
         head_sha: opt(&mr["diff_refs"]["head_sha"])
             .or_else(|| opt(&mr["sha"]))
             .unwrap_or_default(),
+    })
+}
+
+const DEVELOPER_ACCESS: u64 = 30;
+
+fn access_level(project: &Value) -> u64 {
+    let permissions = &project["permissions"];
+    ["project_access", "group_access"]
+        .iter()
+        .filter_map(|scope| permissions[scope]["access_level"].as_u64())
+        .max()
+        .unwrap_or(0)
+}
+
+async fn project_by_id(ctx: &Ctx, id: u64) -> ApiResult<Value> {
+    ctx.api
+        .json(&format!("{}/projects/{id}", api(ctx)), &[])
+        .await
+}
+
+pub async fn source(ctx: &Ctx, project: &str, number: u64) -> ApiResult<SourceRepo> {
+    let mr = ctx.api.json(&mr_url(ctx, project, number), &[]).await?;
+    let branch = text(&mr["source_branch"]);
+    let target_id = mr["target_project_id"].as_u64();
+    let Some(source_id) = mr["source_project_id"]
+        .as_u64()
+        .filter(|id| Some(*id) != target_id)
+    else {
+        return Ok(SourceRepo {
+            branch,
+            fork: None,
+            gone: false,
+            can_push: None,
+        });
+    };
+    let source = match project_by_id(ctx, source_id).await {
+        Ok(found) => found,
+        Err(ApiError::Failed(message)) if message.contains("(404)") => {
+            return Ok(SourceRepo {
+                branch,
+                fork: None,
+                gone: true,
+                can_push: None,
+            })
+        }
+        Err(error) => return Err(error),
+    };
+    let collaboration = mr["allow_collaboration"].as_bool().unwrap_or(false);
+    let target_access = match (collaboration, target_id) {
+        (true, Some(id)) => project_by_id(ctx, id)
+            .await
+            .map(|target| access_level(&target))
+            .unwrap_or(0),
+        _ => 0,
+    };
+    let can_push = access_level(&source) >= DEVELOPER_ACCESS
+        || (collaboration && target_access >= DEVELOPER_ACCESS);
+    let owner = opt(&source["namespace"]["full_path"])
+        .or_else(|| {
+            opt(&source["path_with_namespace"])
+                .and_then(|path| path.rsplit_once('/').map(|(owner, _)| owner.to_owned()))
+        })
+        .unwrap_or_else(|| format!("fork-{source_id}"));
+    Ok(SourceRepo {
+        branch,
+        fork: Some(Fork {
+            owner: owner.replace('/', "-"),
+            http_url: text(&source["http_url_to_repo"]),
+            ssh_url: text(&source["ssh_url_to_repo"]),
+        }),
+        gone: false,
+        can_push: Some(can_push),
     })
 }
 

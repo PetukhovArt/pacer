@@ -208,3 +208,18 @@ pub fn count_patch(patch: &str) -> (u32, u32) {
     }
     (additions, deletions)
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Fork {
+    pub owner: String,
+    pub http_url: String,
+    pub ssh_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceRepo {
+    pub branch: String,
+    pub fork: Option<Fork>,
+    pub gone: bool,
+    pub can_push: Option<bool>,
+}

@@ -35,6 +35,8 @@ macro_rules! plain_commands {
             state forge_discussions(connector: String, project: String, number: u64) = $crate::connectors::forge::forge_discussions;
             state forge_pipeline(connector: String, project: String, number: u64) = $crate::connectors::forge::forge_pipeline;
             state forge_file(connector: String, project: String, r#ref: String, path: String) = $crate::connectors::forge::forge_file;
+            state forge_source(connector: String, project: String, number: u64) = $crate::connectors::forge::forge_source;
+            free mr_fetch_source(repo: String, branch: String, local: String, fork: Option<$crate::connectors::types::Fork>) = $crate::mr_checkout::mr_fetch_source;
             state jira_search(connector: String, jql: String, start: Option<u32>, limit: Option<u32>) = $crate::connectors::jira::jira_search;
             state jira_issue(connector: String, key: String) = $crate::connectors::jira::jira_issue;
             state confluence_search(connector: String, text: String, limit: Option<u32>) = $crate::connectors::confluence::confluence_search;

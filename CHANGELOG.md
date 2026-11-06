@@ -4,6 +4,7 @@
 
 - Added a desktop app (`apps/desktop`): a window over the berth daemon with a project tree, docked terminals, merge request reviews, Jira tasks and remote access from a phone, which carries over Veyra settings, keychain tokens and layout on first start.
 - Added `Update Berth…` and `Roll back to previous build` to the desktop app's tray menu and command palette. Windows: they rebuild a working copy installed with `scripts\install-app.ps1` from the local `main` in the background and switch to it on restart.
+- Added `Open in session` to merge and pull requests in the desktop app: it checks the source branch out in a worktree (adding a remote for a fork), starts an agent there with a first prompt from the `sessions.mrPrompt` setting and opens it beside the request, or focuses the session already there.
 - Added `shift+c` diagnostics card: a floating panel with per-session CPU, RAM and Claude token use, moved by dragging its title row or with `shift+v`, and remembered across restarts.
 - Added `model_prices` setting: fill in per-model rates and the diagnostics card shows a cost column.
 - Added `]` and `[` to jump to the next and previous session waiting on you, in any workspace.

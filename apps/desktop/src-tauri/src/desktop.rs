@@ -258,6 +258,8 @@ pub fn run() {
             forge_discussions,
             forge_pipeline,
             forge_file,
+            forge_source,
+            mr_fetch_source,
             fs_read_text,
             review_queue,
             review_adapter,

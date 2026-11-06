@@ -71,6 +71,20 @@ const JIRA_KEY = /[A-Z][A-Z0-9]+-\d+/g;
 
 const push = <K, V>(map: Map<K, V[]>, key: K, value: V) => map.set(key, [...(map.get(key) ?? []), value]);
 
+export function repoRefOf(item: { connector: string; project: string }, base: Remote | null | undefined): RepoRef {
+  const path = [base?.path, item.project].filter(Boolean).join('/');
+  const host = base?.host ?? item.connector;
+  return { key: `${host}/${path.toLowerCase()}`, host, path };
+}
+
+export function projectOfRepo<P extends { repo_path: string }>(repo: RepoRef, projects: readonly P[], remotes: ReadonlyMap<string, Remote | null>): P | undefined {
+  const full = repo.path.toLowerCase();
+  return projects.find((candidate) => {
+    const remote = remotes.get(candidate.repo_path);
+    return remote?.host === repo.host && remote.path.toLowerCase() === full;
+  });
+}
+
 function link(sources: Sources): Links {
   const entities = sources.entities;
   const projects = entities ? [...entities.projects.values()] : [];
@@ -79,16 +93,9 @@ function link(sources: Sources): Links {
 
   for (const item of [...sources.mrs].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))) {
     const base = bases.get(item.connector);
-    const path = [base?.path, item.project].filter(Boolean).join('/');
-    const full = path.toLowerCase();
-    const host = base?.host ?? item.connector;
-    links.repoOf.set(itemId(item), { key: `${host}/${full}`, host, path });
-    const project = base
-      ? projects.find((candidate) => {
-          const remote = sources.remotes.get(candidate.repo_path);
-          return remote?.host === base.host && remote.path.toLowerCase() === full;
-        })
-      : undefined;
+    const repo = repoRefOf(item, base);
+    links.repoOf.set(itemId(item), repo);
+    const project = base ? projectOfRepo(repo, projects, sources.remotes) : undefined;
     push(links.mrs, project?.id ?? null, item);
     if (!project || !entities) continue;
     for (const worktree of worktreesOfProject(entities, project.id)) if (worktree.branch === item.source_branch && !links.worktreeMr.has(worktree.id)) links.worktreeMr.set(worktree.id, item);

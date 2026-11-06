@@ -89,6 +89,10 @@ export const settings: Translation<typeof en> = {
       description: 'Подставляется в форму новой сессии. Пусто — значение выбирает сам агент.',
       placeholder: 'по умолчанию',
     },
+    sessionsMrPrompt: {
+      label: 'Промпт сессии из merge request',
+      description: 'Первый промпт сессии, открытой из merge request. Подстановки: {url} {title} {description} {branch} {target} {issue} {author}. Пусто — встроенный промпт на языке интерфейса.',
+    },
     sessionsExternalDays: {
       label: 'Сессии, запущенные вне Berth',
       description: 'За сколько дней дерево показывает сессии Claude Code и Codex, запущенные в терминале или IDE. 0 — не показывать.',
