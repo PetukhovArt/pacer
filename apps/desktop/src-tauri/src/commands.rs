@@ -10,6 +10,7 @@ macro_rules! plain_commands {
         $then! {
             state connectors_list() = $crate::connectors::connectors_list;
             state connectors_check() = $crate::connectors::connectors_check;
+            state connectors_reconnect() = $crate::connectors::monitor::connectors_reconnect;
             state connectors_detect() = $crate::connectors::connectors_detect;
             state connector_add(
                 kind: $crate::connectors::types::Kind,
@@ -48,12 +49,24 @@ macro_rules! plain_commands {
             local_state ai_env() = $crate::connectors::ai::ai_env;
             free settings_read(file: Option<$crate::settings::ConfigFile>) = $crate::settings::settings_read;
             free settings_write(text: String, file: Option<$crate::settings::ConfigFile>) = $crate::settings::settings_write;
+            free pacer_idle_timeout_read() = $crate::settings::pacer_idle_timeout_read;
+            free pacer_idle_timeout_write(value: String) = $crate::settings::pacer_idle_timeout_write;
+            free agent_sessions_list(since_days: Option<u32>) = $crate::agent_sessions::agent_sessions_list;
+            free agent_session_transcript(harness: $crate::agent_sessions::Harness, id: String, tail: Option<u32>) = $crate::agent_sessions::agent_session_transcript;
+            free review_queue(repo: String) = $crate::review::review_queue;
+            free review_adapter(repo: String) = $crate::review::review_adapter;
             free fs_read_text(path: String) = $crate::files::fs_read_text;
+            free fs_read_doc(path: String) = $crate::files::fs_read_doc;
+            free fs_write_text(path: String, text: String, expected: String) = $crate::files::fs_write_text;
             free fs_read_binary(path: String) = $crate::files::fs_read_binary;
             free fs_list_markdown(root: String) = $crate::files::fs_list_markdown;
             free fs_list_dirs(root: String) = $crate::files::fs_list_dirs;
             local_free settings_open_external(file: Option<$crate::settings::ConfigFile>) = $crate::settings::settings_open_external;
             local_free fs_open_external(path: String) = $crate::files::fs_open_external;
+            local_free stratum_probe(repo: String, target: String) = $crate::stratum::stratum_probe;
+            local_state stratum_visualize(connector: String, project: String, number: u64, repo: String, target: String) = $crate::stratum::stratum_visualize;
+            local_free stratum_progress(connector: String, project: String, number: u64) = $crate::stratum::stratum_progress;
+            local_free stratum_release(key: String) = $crate::stratum::stratum_release;
         }
     };
 }

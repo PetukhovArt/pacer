@@ -11,6 +11,7 @@ use tokio::process::Command;
 
 use super::cli::capture;
 use super::http::{Api, ApiError, ApiResult};
+use super::types::Status;
 use super::{secrets, Connectors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -311,7 +312,7 @@ impl Probe {
     }
 }
 
-fn claude_dir() -> Option<PathBuf> {
+pub(crate) fn claude_dir() -> Option<PathBuf> {
     std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
         .or_else(|| home().map(|home| home.join(".claude")))
@@ -350,7 +351,7 @@ async fn probe_claude(program: &str) -> Probe {
     }
 }
 
-fn codex_home() -> Option<PathBuf> {
+pub(crate) fn codex_home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| home().map(|home| home.join(".codex")))
@@ -620,13 +621,41 @@ pub async fn ai_check(state: &Connectors) -> Result<Vec<AiView>, String> {
     for view in &views {
         state.ai.put(view);
     }
+    state.publish();
     Ok(views)
 }
 
 pub async fn ai_refresh(state: &Connectors, kind: AiKind) -> Result<AiView, String> {
     let view = check_kind(kind).await;
     state.ai.put(&view);
+    state.publish();
     Ok(view)
+}
+
+pub(super) fn snapshots(state: &Connectors) -> Vec<AiView> {
+    ALL.iter().map(|kind| state.ai.snapshot(*kind)).collect()
+}
+
+fn health_of(status: AiStatus) -> Status {
+    match status {
+        AiStatus::SignedIn => Status::Ok,
+        AiStatus::Unreachable => Status::Unreachable,
+        AiStatus::Unchecked => Status::Unchecked,
+        _ => Status::Error,
+    }
+}
+
+pub(super) fn watched(state: &Connectors) -> Vec<(AiKind, Status)> {
+    ALL.iter()
+        .filter(|kind| kind.key().is_some())
+        .map(|kind| (*kind, health_of(state.ai.snapshot(*kind).status)))
+        .collect()
+}
+
+pub(super) async fn recheck(state: &Connectors, kind: AiKind) -> Status {
+    let view = check_kind(kind).await;
+    state.ai.put(&view);
+    health_of(view.status)
 }
 
 pub async fn ai_login(state: &Connectors, kind: AiKind) -> Result<(), String> {

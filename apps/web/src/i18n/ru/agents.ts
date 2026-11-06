@@ -27,6 +27,7 @@ export const agents: Translation<typeof en> = {
     confirmDelete: 'Удалить «{name}» насовсем?',
     exited: 'сессия завершена',
     exitedWithCode: 'сессия завершена, код {code}',
+    released: 'Терминал выгружен для экономии памяти. Он подключится снова, когда вы откроете вкладку.',
   },
   newSession: {
     title: 'Новая сессия · {branch}',

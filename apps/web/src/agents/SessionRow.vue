@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
-import { Ellipsis } from 'lucide-vue-next';
+import { Ellipsis, MessageSquare } from 'lucide-vue-next';
 import { VButton, VContextMenu, VInputText } from '@ui/kit';
 import { t } from '../i18n';
+import { externalDot, externalStatusLabel, type ExternalSession } from './external';
+import HarnessIcon from './HarnessIcon.vue';
 import { archiveAgent, closeTerminal, deleteAgent, renameSession, restartAgent, type SessionNode, type SessionStatus } from './pacer';
 import { useAction } from './useAction';
 import MoveAgentDialog from './manage/MoveAgentDialog.vue';
 import StatusDot from './StatusDot.vue';
 
-const props = defineProps<{ session: SessionNode; active: boolean }>();
-const emit = defineEmits<{ open: [] }>();
+const props = defineProps<{ session: SessionNode; active: boolean; linked?: ExternalSession }>();
+const emit = defineEmits<{ open: []; 'open-conversation': [] }>();
 
 function statusLabel(status: SessionStatus): string {
   return t(`agents.status.${status}`);
@@ -30,6 +32,7 @@ const menuItems = computed<MenuAction[]>(() => {
   const session = props.session.ref;
   if ('Terminal' in session)
     return [
+      ...(props.linked ? [{ key: 'conversation', label: t('workbench.external.open'), command: () => emit('open-conversation') }] : []),
       { key: 'rename', label: t('common.rename'), command: startRename },
       { key: 'close', label: t('common.close'), command: () => void action.run(() => closeTerminal(session.Terminal)) },
     ];
@@ -97,14 +100,19 @@ async function confirmDelete() {
         :data-status="session.status"
         :data-unseen="session.unseen"
         :data-active="active"
-        :title="`${session.name} — ${statusLabel(session.status)}`"
+        :data-linked-harness="linked?.harness"
+        :data-linked-session-id="linked?.id"
+        :data-linked-status="linked?.status"
+        :title="linked ? `${linked.title}\n${externalStatusLabel(linked)}\n${session.name}` : `${session.name} — ${statusLabel(session.status)}`"
         @click="emit('open')"
         @contextmenu.prevent="showMenu"
       >
-        <StatusDot :status="session.status" :unseen="session.unseen" />
-        <span class="name">{{ session.name }}</span>
-        <span class="label">{{ statusLabel(session.status) }}</span>
+        <StatusDot :status="linked ? externalDot(linked) : session.status" :unseen="session.unseen" />
+        <HarnessIcon v-if="linked" :harness="linked.harness" />
+        <span class="name">{{ linked ? linked.title : session.name }}</span>
+        <span class="label">{{ linked ? externalStatusLabel(linked) : statusLabel(session.status) }}</span>
       </button>
+      <button v-if="linked" class="more conversation" :title="t('workbench.external.open')" :aria-label="t('workbench.external.open')" data-testid="session-open-conversation" @click="emit('open-conversation')"><MessageSquare :size="14" /></button>
       <button class="more" :title="t('agents.session.actions')" :aria-label="t('agents.session.actions')" aria-haspopup="menu" data-testid="session-menu" @click="showMenu"><Ellipsis :size="14" /></button>
     </template>
     <VContextMenu ref="menu" :model="menuItems">
@@ -201,6 +209,10 @@ async function confirmDelete() {
   border: 0;
   border-radius: var(--vr-radius-sm);
   opacity: 0;
+}
+
+.more.conversation {
+  right: calc(var(--vr-space-1) + 22px);
 }
 
 .session:hover .more,

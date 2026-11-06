@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
+use veyra_desktop_lib::connectors::monitor;
 use veyra_desktop_lib::connectors::secrets::{self, FileStore};
 use veyra_desktop_lib::connectors::Connectors;
 use veyra_desktop_lib::remote::{Pinned, Remote, WebAsset, WebSource};
@@ -236,6 +237,8 @@ async fn serve(options: Options, token_note: String) -> ExitCode {
         );
     }
     let connectors = Arc::new(Connectors::load());
+    tokio::spawn(monitor::run(connectors.clone()));
+    tokio::spawn(veyra_desktop_lib::stratum::sweep_once());
     let remote = Remote::pinned(
         connectors,
         directory(options.web.clone()),

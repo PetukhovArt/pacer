@@ -21,9 +21,7 @@ pub async fn capture(program: &str, args: &[&str]) -> Result<Output, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
-    let run = command.output();
+    let run = async { crate::child::spawn(&mut command)?.wait_with_output().await };
     match tokio::time::timeout(COMMAND_TIMEOUT, run).await {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {

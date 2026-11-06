@@ -60,6 +60,10 @@ export const settings = {
       label: 'Terminal scrollback',
       description: 'How many scrollback lines each terminal keeps.',
     },
+    terminalEvictHiddenAfter: {
+      label: 'Release hidden terminals after (minutes)',
+      description: 'A session tab hidden this long frees its terminal and reconnects with history when shown again. 0 keeps terminals forever.',
+    },
     terminalCursorBlink: {
       label: 'Blinking cursor',
       description: 'Cursor blinking in the terminal.',
@@ -81,6 +85,24 @@ export const settings = {
       label: 'Default effort',
       description: 'Prefilled in the new session form. Empty: the agent picks the value.',
       placeholder: 'default',
+    },
+    sessionsExternalDays: {
+      label: 'Sessions started outside Veyra',
+      description: 'How many days back the tree shows Claude Code and Codex sessions started in a terminal or an IDE. 0 hides them.',
+    },
+    sessionsUnloadIdleAfter: {
+      label: 'Unload idle sessions after',
+      description: 'Closes the processes of sessions nobody has open once they sit idle this long. Each Claude session holds roughly 0.7-0.9 GB of memory, and an unloaded one resumes its conversation when you open it. Sessions with a running agent, a waiting prompt or a running terminal command are kept. Stored in the pacer config, so it applies to every client.',
+      off: 'Never',
+      m1: '1 minute',
+      m5: '5 minutes',
+      m15: '15 minutes',
+      m30: '30 minutes',
+      h1: '1 hour',
+    },
+    connectorsAutoReconnect: {
+      label: 'Reconnect connectors automatically',
+      description: 'While the network is up, retries unreachable connectors every 15 seconds up to 5 minutes and re-checks working ones every 5 minutes. Connectors with a rejected token are not retried.',
     },
     treeJiraProjects: {
       label: 'Jira projects in the tree',
@@ -120,5 +142,6 @@ export const settings = {
     empty: 'Nothing found',
     contextTerminal: 'in terminal',
     contextOutsideTerminal: 'outside terminal',
+    contextOutsideEditor: 'outside terminal and editor',
   },
 } as const;

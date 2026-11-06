@@ -134,6 +134,58 @@ pub async fn settings_write(text: String, file: Option<ConfigFile>) -> Result<()
     })
 }
 
+const IDLE_KEY: &str = "session_idle_timeout";
+const IDLE_DEFAULT: &str = "5m";
+const IDLE_CHOICES: [&str; 6] = ["off", "1m", "5m", "15m", "30m", "1h"];
+
+fn pacer_config_object(path: &Path) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let text =
+        read_text(path).map_err(|e| format!("не удалось прочитать {}: {e}", path.display()))?;
+    if text.trim().is_empty() {
+        return Ok(serde_json::Map::new());
+    }
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(serde_json::Value::Object(map)) => Ok(map),
+        Ok(_) => Err(format!("{} не является JSON-объектом", path.display())),
+        Err(e) => Err(format!("{} повреждён: {e}", path.display())),
+    }
+}
+
+pub async fn pacer_idle_timeout_read() -> Result<String, String> {
+    let map = pacer_config_object(&pacer_core::paths::config_path())?;
+    Ok(map
+        .get(IDLE_KEY)
+        .and_then(|value| value.as_str())
+        .unwrap_or(IDLE_DEFAULT)
+        .to_owned())
+}
+
+pub async fn pacer_idle_timeout_write(value: String) -> Result<(), String> {
+    if !IDLE_CHOICES.contains(&value.as_str()) {
+        return Err(format!("недопустимое значение {value}"));
+    }
+    let path = pacer_core::paths::config_path();
+    let mut map = pacer_config_object(&path)?;
+    if map.get(IDLE_KEY).and_then(|v| v.as_str()) == Some(value.as_str()) {
+        return Ok(());
+    }
+    map.insert(IDLE_KEY.to_owned(), serde_json::Value::String(value));
+    let mut text = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
+    text.push('\n');
+    let temp = path.with_extension("json.veyra-tmp");
+    let write = || -> io::Result<()> {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        fs::write(&temp, text.as_bytes())?;
+        fs::rename(&temp, &path)
+    };
+    write().map_err(|e| {
+        let _ = fs::remove_file(&temp);
+        format!("не удалось записать {}: {e}", path.display())
+    })
+}
+
 pub fn settings_watch(
     watch: &SettingsWatch,
     on_event: BoxSink<SettingsChanged>,

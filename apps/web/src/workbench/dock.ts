@@ -1,11 +1,13 @@
 import { computed, onActivated, onBeforeUnmount, onDeactivated, shallowRef, watch } from 'vue';
 import type { DockviewApi, DockviewReadyEvent } from 'dockview-vue';
+import { externalKey, type ExternalSession } from '../agents/external';
 import { markSeen, sessionKey, usePacer, type SessionNode, type SessionRef, type WorktreeNode } from '../agents/pacer';
 import { FILE_PANEL_PREFIX, fileNameOf, filePanelId, isFilePanel, normalizePath } from '../agents/proto/markdownFiles';
 import { sessionPaths } from '../agents/proto/nav';
 import type { ChangeRequestRef } from '../connectors/api';
 import { numberLabel } from '../forge/format';
 import { itemId } from '../forge/inbox';
+import { architecturePanelId, type ArchitectureParams } from '../forge/stratum';
 import { t } from '../i18n';
 import { useIsMobile } from '../mobile/useIsMobile';
 import { navigate, openTopic, view } from '../nav';
@@ -113,6 +115,11 @@ function createDock() {
     return undefined;
   }
 
+  function addSessionPanel(session: SessionNode, api: DockviewApi) {
+    const position = sessionPosition(session, api);
+    api.addPanel({ id: session.key, component: 'session', title: session.name, params: { session: session.ref }, renderer: 'always', ...(position ? { position } : {}) });
+  }
+
   function openSession(session: SessionNode) {
     withDock((api) => {
       const existing = api.getPanel(session.key);
@@ -120,8 +127,20 @@ function createDock() {
         existing.api.setActive();
         return;
       }
-      const position = sessionPosition(session, api);
-      api.addPanel({ id: session.key, component: 'session', title: session.name, params: { session: session.ref }, renderer: 'always', ...(position ? { position } : {}) });
+      addSessionPanel(session, api);
+    });
+  }
+
+  function openLinkedConversation(session: SessionNode, linked: ExternalSession) {
+    withDock((api) => {
+      const id = externalKey(linked);
+      const existing = api.getPanel(id);
+      if (existing) {
+        existing.api.setActive();
+        return;
+      }
+      if (!api.getPanel(session.key)) addSessionPanel(session, api);
+      api.addPanel({ id, component: 'conversation', title: linked.title, params: { harness: linked.harness, id: linked.id }, position: { referencePanel: session.key, direction: 'within' } });
     });
   }
 
@@ -150,6 +169,10 @@ function createDock() {
     openPanel({ id: itemId(ref), component: 'review', title: title ?? `${ref.project.split('/').pop() ?? ref.project} ${ref.number}`, params: { ...ref } });
   }
 
+  function openArchitecture(params: ArchitectureParams, label: string) {
+    openPanel({ id: architecturePanelId(params), component: 'architecture', title: t('forge.stratum.tab', { label }), renderer: 'always', params: { ...params } });
+  }
+
   function openIssue(connector: string, key: string) {
     openPanel({ id: issuePanelId(connector, key), component: 'issue', title: key, params: { connector, key } });
   }
@@ -158,9 +181,14 @@ function createDock() {
     openPanel({ id: taskPanelId(id), component: 'task', title, params: { id } });
   }
 
+  function openExternal(session: ExternalSession) {
+    openPanel({ id: externalKey(session), component: 'conversation', title: session.title, params: { harness: session.harness, id: session.id } });
+  }
+
   function openLeaf(node: WorkNode) {
     const data = node.data;
     if (node.kind === 'session' && data?.session) openSession(data.session);
+    else if (data?.external) openExternal(data.external);
     else if (data?.item) openReview(data.item, `${numberLabel(data.item)} ${data.item.title}`);
     else if (data?.issue) openIssue(data.issue.connector, data.issue.key);
     else if (data?.task) openTask(data.task.id, data.task.externalRef);
@@ -200,7 +228,7 @@ function createDock() {
     const sessions = pacer?.sessions.value;
     for (const panel of carried.panels) {
       if (isSessionPanel(panel.id) && !sessions?.has(panel.id)) continue;
-      const always = panel.component === 'session' || panel.component === 'markdown';
+      const always = panel.component === 'session' || panel.component === 'markdown' || panel.component === 'architecture';
       api.addPanel({ id: panel.id, component: panel.component, title: panel.title, params: panel.params, ...(always ? { renderer: 'always' as const } : {}) });
     }
     if (carried.active) api.getPanel(carried.active)?.api.setActive();
@@ -257,10 +285,13 @@ function createDock() {
     detail,
     switching,
     openSession,
+    openLinkedConversation,
     openFile,
     openReview,
+    openArchitecture,
     openIssue,
     openTask,
+    openExternal,
     openLeaf,
     openMetrics,
     openWhenListed,

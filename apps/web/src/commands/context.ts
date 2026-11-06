@@ -4,6 +4,7 @@ import type { Context } from './when';
 
 export type KeyContext = {
   terminalFocus: boolean;
+  editorFocus: boolean;
   inputFocus: boolean;
   paletteOpen: boolean;
   view: string;
@@ -17,5 +18,6 @@ export function readContext(target: EventTarget | null): KeyContext & Context {
   const element = target instanceof Element ? target : document.activeElement;
   const terminalFocus = Boolean(element?.closest('.xterm'));
   const inputFocus = !terminalFocus && element instanceof HTMLElement && (INPUT_TAGS.has(element.tagName) || element.isContentEditable);
-  return { terminalFocus, inputFocus, paletteOpen: paletteOpen.value, view: view.value.kind };
+  const editorFocus = Boolean(element?.closest('.cm-editor'));
+  return { terminalFocus, editorFocus, inputFocus, paletteOpen: paletteOpen.value, view: view.value.kind };
 }

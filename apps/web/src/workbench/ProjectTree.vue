@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, shallowRef, type Directive } from 'vue';
-import { Activity, FolderTree, MessageSquare, Plus, RefreshCw, Search, Shapes } from 'lucide-vue-next';
+import { computed, shallowRef, useTemplateRef, type Directive } from 'vue';
+import { Activity, Eye, GitPullRequest, ListTodo, MessageSquare, Plus, RefreshCw, Search, SquareTerminal, TriangleAlert } from 'lucide-vue-next';
 import { useClient, useClientState } from '@core/vue-bindings';
+import { VContextMenu } from '@ui/kit';
 import ArchivedRow from '../agents/ArchivedRow.vue';
+import { useExternalSessions } from '../agents/external';
+import ExternalSessionRow from '../agents/ExternalSessionRow.vue';
 import ProjectActions from '../agents/manage/ProjectActions.vue';
 import WorkspaceActions from '../agents/manage/WorkspaceActions.vue';
 import MarkdownPicker from '../agents/proto/MarkdownPicker.vue';
@@ -11,7 +14,9 @@ import SessionRow from '../agents/SessionRow.vue';
 import StatusDot from '../agents/StatusDot.vue';
 import TypeIcon from '../atlassian/TypeIcon.vue';
 import type { InboxItem } from '../connectors/api';
+import ArchitectureAction from '../forge/ArchitectureAction.vue';
 import { numberLabel, pipelineLabel } from '../forge/format';
+import { useArchitecture } from '../forge/stratum';
 import PipelineIcon from '../forge/PipelineIcon.vue';
 import WorktreeBadge from '../forge/WorktreeBadge.vue';
 import { t } from '../i18n';
@@ -19,22 +24,48 @@ import { openTopic, view } from '../nav';
 import ExplorerTree from '../tree/ExplorerTree.vue';
 import { useDock } from './dock';
 import RepoActions from './RepoActions.vue';
-import { treeMode, treeQuery, useWorkTree } from './useWorkTree';
+import type { ReviewMeta } from './tree';
+import { treeQuery, treeTab, useWorkTree } from './useWorkTree';
 
 withDefaults(defineProps<{ withFilter?: boolean }>(), { withFilter: false });
 
 const dock = useDock();
 const client = useClient();
 const state = useClientState();
-const { pacer, nodes, refresh, loading, errors } = useWorkTree();
+const { pacer, nodes, tabs, activeTab, refresh, loading, errors } = useWorkTree();
+const tabIcons = { sessions: SquareTerminal, mrs: GitPullRequest, reviews: Eye, tasks: ListTodo, all: SquareTerminal };
 
 const filtering = computed(() => treeQuery.value.trim().length > 0);
-const selected = computed(() => (view.value.kind === 'topic' ? `topic:${view.value.id}` : dock.activeKey.value));
+const external = useExternalSessions();
+const selected = computed(() => {
+  if (view.value.kind === 'topic') return `topic:${view.value.id}`;
+  const key = dock.activeKey.value;
+  return key ? (external?.terminalOf.value.get(key) ?? key) : null;
+});
 const vFocus: Directive<HTMLElement> = { mounted: (el) => el.focus() };
 const creatingTopic = shallowRef(false);
 const topicName = shallowRef('');
 const topicError = shallowRef('');
 
+const archMenu = useTemplateRef<InstanceType<typeof VContextMenu>>('archMenu');
+const archItem = shallowRef<InboxItem | null>(null);
+const { availability: archState } = useArchitecture(() => archItem.value ?? undefined);
+const archItems = computed(() => {
+  const item = archItem.value;
+  const state = archState.value;
+  if (!item || state.status === 'hidden') return [];
+  const reason = state.status === 'disabled' ? state.reason : state.status === 'checking' ? t('forge.stratum.checking') : t('forge.stratum.title');
+  return [{ key: 'architecture', label: t('forge.stratum.action'), title: reason, disabled: state.status !== 'ready', command: () => state.status === 'ready' && dock.openArchitecture(state.params, numberLabel(item)) }];
+});
+
+function showArchMenu(event: MouseEvent, item: InboxItem) {
+  archItem.value = item;
+  if (archState.value.status === 'hidden') return;
+  event.preventDefault();
+  archMenu.value?.show(event);
+}
+
+const jiraRefs = (review: ReviewMeta | undefined) => review?.refs.filter((ref) => !ref.startsWith('!')).join(', ') ?? '';
 const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft:|\[draft\]|\(draft\)|wip:)\s*/i, '') : item.title);
 
 async function createTopic() {
@@ -59,13 +90,24 @@ async function createTopic() {
       <input v-model="treeQuery" :placeholder="t('workbench.filter')" :aria-label="t('workbench.filter')" data-testid="tree-filter" @keydown.esc="treeQuery = ''" />
     </label>
     <div class="head">
-      <div class="modes" role="radiogroup" :aria-label="t('workbench.grouping')">
-        <button role="radio" :aria-checked="treeMode === 'project'" :aria-label="t('workbench.byProject')" :title="t('workbench.byProject')" data-testid="tree-mode-project" @click="treeMode = 'project'">
-          <FolderTree :size="14" />
-        </button>
-        <button role="radio" :aria-checked="treeMode === 'type'" :aria-label="t('workbench.byType')" :title="t('workbench.byType')" data-testid="tree-mode-type" @click="treeMode = 'type'">
-          <Shapes :size="14" />
-        </button>
+      <div class="tabs-box">
+        <div class="tabs" role="tablist" :aria-label="t('workbench.tabs')" :data-n="tabs.length">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            class="tab"
+            role="tab"
+            :aria-selected="activeTab === tab.id"
+            :aria-label="tab.label"
+            :title="tab.title"
+            :data-testid="`tree-tab-${tab.id}`"
+            @click="treeTab = tab.id"
+          >
+            <component :is="tabIcons[tab.id]" :size="13" class="tab-icon" />
+            <span class="tab-label">{{ tab.label }}</span>
+            <span v-if="tab.count" class="badge" :data-tone="tab.tone" :data-testid="`tree-tab-count-${tab.id}`">{{ tab.count }}</span>
+          </button>
+        </div>
       </div>
       <span class="head-actions">
         <button class="icon" :title="t('agents.layouts.quickOpenTitle')" :aria-label="t('agents.layouts.quickOpen')" data-testid="quick-switch-open" @click="dock.switching.value = true"><Search :size="14" /></button>
@@ -78,7 +120,7 @@ async function createTopic() {
       <p v-for="error in errors" :key="`${error.connector}:${error.message}`" class="strip" role="alert" data-testid="tree-error" :title="error.message">{{ error.connector }}: {{ error.message }}</p>
       <ExplorerTree
         :nodes="nodes"
-        :storage-key="`veyra.tree.expanded.${treeMode}`"
+        :storage-key="`veyra.tree.expanded.${activeTab}`"
         :label="t('workbench.tree')"
         :selected="selected"
         :reveal-all="filtering"
@@ -90,9 +132,11 @@ async function createTopic() {
           <PipelineIcon v-if="node.data?.pipeline && node.data.pipeline !== 'none'" :status="node.data.pipeline" :size="12" :title="pipelineLabel(node.data.pipeline)" />
         </template>
         <template #leaf="{ node, data }">
-          <span v-if="data?.item" class="line" data-testid="tree-mr-row" :data-mr="`${data.item.project}!${data.item.number}`">
+          <span v-if="data?.item" class="line" data-testid="tree-mr-row" :data-mr="`${data.item.project}!${data.item.number}`" @contextmenu="showArchMenu($event, data.item)">
             <span class="key">{{ numberLabel(data.item) }}</span>
+            <span v-if="jiraRefs(data.review)" class="refs" data-testid="tree-mr-refs">{{ jiraRefs(data.review) }}</span>
             <span class="title"><span v-if="data.item.draft" class="draft">{{ t('forge.draft') }}</span>{{ shownTitle(data.item) }}</span>
+            <span v-if="data.review" class="verdict" :data-approved="data.review.approved" :title="data.review.approved ? t('workbench.review.approvedTitle') : t('workbench.review.pendingTitle')" data-testid="tree-mr-verdict">{{ data.review.approved ? t('workbench.review.approved') : t('workbench.review.pending') }}</span>
             <span v-if="data.item.unresolved_threads" class="threads" :title="t('forge.unresolvedThreads', { count: data.item.unresolved_threads })"><MessageSquare :size="12" />{{ data.item.unresolved_threads }}</span>
             <PipelineIcon v-if="data.item.pipeline !== 'none'" :status="data.item.pipeline" :size="12" :title="pipelineLabel(data.item.pipeline)" />
           </span>
@@ -112,8 +156,23 @@ async function createTopic() {
           </span>
         </template>
         <template #row="{ node }">
-          <SessionRow v-if="node.kind === 'session' && node.data?.session" :session="node.data.session" :active="node.id === dock.activeKey.value" @open="dock.openSession(node.data.session)" />
+          <SessionRow
+            v-if="node.kind === 'session' && node.data?.session"
+            :session="node.data.session"
+            :linked="node.data.linked"
+            :active="node.id === selected"
+            @open="dock.openSession(node.data.session)"
+            @open-conversation="node.data.linked && dock.openLinkedConversation(node.data.session, node.data.linked)"
+          />
+          <ExternalSessionRow v-else-if="node.kind === 'external' && node.data?.external" :session="node.data.external" :active="node.id === dock.activeKey.value" @open="dock.openExternal(node.data.external)" />
           <ArchivedRow v-else-if="node.kind === 'archived' && node.data?.session" :session="node.data.session" />
+          <div v-else-if="node.kind === 'review-state' && node.data?.reviewState" class="review-state" :data-error="!!node.data.reviewState.error" :title="node.data.reviewState.error ?? undefined" role="status" data-testid="review-state">
+            <template v-if="node.data.reviewState.error"><TriangleAlert :size="12" /><span class="review-text">{{ node.data.reviewState.error }}</span></template>
+            <template v-else><RefreshCw :size="12" class="spin" /><span class="review-text">{{ node.label }}</span></template>
+          </div>
+          <ul v-else-if="node.kind === 'review-notes' && node.data?.notes" class="review-notes" :aria-label="node.label" data-testid="review-notes">
+            <li v-for="(note, index) in node.data.notes" :key="index" :title="note.text"><b v-if="note.refs.length">{{ note.refs.join(', ') }}</b> {{ note.text }}</li>
+          </ul>
           <div v-else-if="node.kind === 'add-project' && node.data?.workspaceId" class="extra"><ProjectActions :workspace-id="node.data.workspaceId" /></div>
           <div v-else-if="node.kind === 'add-workspace'" class="extra new-workspace"><WorkspaceActions /></div>
         </template>
@@ -127,8 +186,9 @@ async function createTopic() {
           </template>
           <WorkspaceActions v-else-if="node.kind === 'workspace' && node.data?.workspaceId" :workspace-id="node.data.workspaceId" />
           <RepoActions v-else-if="node.kind === 'repo' && node.data?.repo" :repo="node.data.repo" />
+          <ArchitectureAction v-else-if="node.data?.item" :item="node.data.item" variant="icon" />
           <ProjectActions
-            v-else-if="node.kind === 'project' && node.data?.projectId && treeMode === 'project'"
+            v-else-if="node.kind === 'project' && node.data?.projectId"
             :project-id="node.data.projectId"
             @resumed="dock.openWhenListed({ Agent: $event })"
             @create="dock.startCreate($event)"
@@ -146,6 +206,11 @@ async function createTopic() {
         </template>
       </ExplorerTree>
     </div>
+    <VContextMenu ref="archMenu" :model="archItems">
+      <template #item="{ item, props: itemProps }">
+        <a v-bind="itemProps.action" :title="item.title" data-testid="mr-menu-architecture">{{ item.label }}</a>
+      </template>
+    </VContextMenu>
   </section>
 </template>
 
@@ -187,34 +252,105 @@ async function createTopic() {
   align-items: center;
   justify-content: space-between;
   gap: var(--vr-space-1);
-  padding: var(--vr-space-1) var(--vr-space-1) var(--vr-space-1) var(--vr-space-2);
+  padding: var(--vr-space-1) var(--vr-space-1) var(--vr-space-1) var(--vr-space-1);
 }
 
-.modes {
-  display: inline-flex;
+.tabs-box {
+  flex: 1;
+  min-width: 0;
+  container: tabs / inline-size;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
   padding: 2px;
   background: var(--vr-color-nav-hover);
   border-radius: var(--vr-radius-md);
 }
 
-.modes button {
+.tab {
   display: inline-flex;
+  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 20px;
-  padding: 0;
+  gap: 3px;
+  min-width: 0;
+  height: 22px;
+  padding: 0 2px;
+  font: inherit;
+  font-size: var(--vr-font-size-2xs);
   color: var(--vr-color-nav-muted);
+  white-space: nowrap;
   background: none;
   border: 0;
   border-radius: var(--vr-radius-sm);
   transition: background var(--vr-motion-overlay-in, 0.12s) ease;
 }
 
-.modes button[aria-checked='true'] {
+.tab:hover {
+  color: var(--vr-color-text);
+}
+
+.tab[aria-selected='true'] {
   color: var(--vr-color-text);
   background: var(--vr-color-surface);
   box-shadow: var(--vr-elevation-card);
+}
+
+.tab-icon {
+  display: none;
+  flex: none;
+}
+
+.tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  flex: none;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-align: center;
+  color: var(--vr-color-text-muted);
+  background: var(--vr-color-chip-bg);
+  border-radius: var(--vr-radius-full);
+}
+
+.badge[data-tone='accent'] {
+  color: var(--vr-color-accent);
+}
+
+.badge[data-tone='alert'] {
+  font-weight: 600;
+  color: var(--vr-color-danger);
+  background: color-mix(in srgb, var(--vr-color-danger) 20%, transparent);
+}
+
+@container tabs (max-width: 214px) {
+  .tab-label {
+    display: none;
+  }
+
+  .tab-icon {
+    display: block;
+  }
+}
+
+@container tabs (max-width: 262px) {
+  .tabs[data-n='4'] .tab-label {
+    display: none;
+  }
+
+  .tabs[data-n='4'] .tab-icon {
+    display: block;
+  }
 }
 
 .head-actions {
@@ -234,6 +370,10 @@ async function createTopic() {
   background: none;
   border: 0;
   border-radius: var(--vr-radius-sm);
+}
+
+.head-actions .icon {
+  width: 20px;
 }
 
 .icon:hover {
@@ -280,7 +420,9 @@ async function createTopic() {
 .scroll :deep(.label[data-kind='mrs']),
 .scroll :deep(.label[data-kind='tasks']),
 .scroll :deep(.label[data-kind='section']),
-.scroll :deep(.label[data-kind='archive']) {
+.scroll :deep(.label[data-kind='archive']),
+.scroll :deep(.label[data-kind='earlier']),
+.scroll :deep(.label[data-kind='folders']) {
   font-size: var(--vr-font-size-xs);
   font-weight: 500;
   color: var(--vr-color-text-muted);
@@ -353,6 +495,64 @@ async function createTopic() {
   gap: 2px;
   font-size: var(--vr-font-size-2xs);
   color: var(--vr-color-conflict);
+}
+
+.refs {
+  flex: none;
+  padding: 0 var(--vr-space-1);
+  font-size: var(--vr-font-size-2xs);
+  color: var(--vr-color-accent);
+  background: var(--vr-color-chip-bg);
+  border-radius: var(--vr-radius-full);
+}
+
+.verdict {
+  flex: none;
+  padding: 0 var(--vr-space-1);
+  font-size: var(--vr-font-size-2xs);
+  color: var(--vr-color-text-muted);
+  background: var(--vr-color-chip-bg);
+  border-radius: var(--vr-radius-full);
+}
+
+.verdict[data-approved='true'] {
+  color: var(--vr-color-success, var(--vr-color-accent));
+}
+
+.review-state {
+  display: flex;
+  align-items: center;
+  gap: var(--vr-space-1);
+  padding: var(--vr-space-1) var(--vr-space-2) var(--vr-space-1) calc(var(--vr-space-2) + 14px);
+  font-size: var(--vr-font-size-2xs);
+  color: var(--vr-color-text-muted);
+}
+
+.review-state[data-error='true'] {
+  color: var(--vr-color-danger);
+}
+
+.review-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.review-notes {
+  margin: 0;
+  padding: var(--vr-space-1) var(--vr-space-2) var(--vr-space-1) calc(var(--vr-space-2) + 14px);
+  font-size: var(--vr-font-size-2xs);
+  color: var(--vr-color-text-muted);
+  list-style: none;
+}
+
+.review-notes li {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .unread-dot {

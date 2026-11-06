@@ -3,7 +3,7 @@ import { onBeforeUnmount, ref, watch } from 'vue';
 import { VButton } from '@ui/kit';
 import RichContent from '../content/RichContent.vue';
 import { t } from '../i18n';
-import { confluencePage, describeError, openUrl, type ConfluencePage } from '../connectors/api';
+import { confluencePage, describeError, openUrl, reloadWhenRecovered, type ConfluencePage } from '../connectors/api';
 import ErrorInline from './ErrorInline.vue';
 import Skeleton from './Skeleton.vue';
 import { rememberPage } from './util';
@@ -77,6 +77,12 @@ function jump(index: number) {
 }
 
 watch(bodyEl, (el) => (el ? observe() : observer?.disconnect()), { flush: 'post' });
+reloadWhenRecovered(
+  () => props.connector,
+  () => error.value !== '',
+  () => void load(),
+);
+
 watch(() => [props.connector, props.id], load, { immediate: true });
 onBeforeUnmount(() => {
   observer?.disconnect();

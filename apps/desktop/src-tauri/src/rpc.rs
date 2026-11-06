@@ -5,17 +5,25 @@ use pacer_core::{AgentId, Entity, SessionRef};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::Notify;
 
+use crate::agent_sessions::{self, AgentSessionWatch};
 use crate::commands::{plain_commands, to_json};
+use crate::connectors::monitor;
 use crate::connectors::Connectors;
 use crate::files::{self, FileWatches};
 use crate::pacer::{self, Pacer, WatchEvent};
 use crate::settings::{self, ConfigFile, SettingsWatch};
 use crate::sink::{BoxSink, Sink};
 
-const GUARDED: [(&str, &str); 6] = [
+const GUARDED: [(&str, &str); 10] = [
+    ("review_queue", "repo"),
+    ("review_adapter", "repo"),
     ("fs_read_text", "path"),
+    ("fs_read_doc", "path"),
+    ("fs_write_text", "path"),
     ("fs_read_binary", "path"),
     ("fs_list_markdown", "root"),
     ("fs_list_dirs", "root"),
@@ -77,15 +85,49 @@ struct ChannelRef {
     channel: u32,
 }
 
+pub const OUTBOX_CAPACITY: usize = 1024;
+
+#[derive(Clone)]
+pub struct Outbox {
+    queue: Sender<String>,
+    overflow: Arc<Notify>,
+}
+
+impl Outbox {
+    pub fn new() -> (Self, Receiver<String>) {
+        let (queue, receiver) = mpsc::channel(OUTBOX_CAPACITY);
+        let outbox = Self {
+            queue,
+            overflow: Arc::new(Notify::new()),
+        };
+        (outbox, receiver)
+    }
+
+    pub fn push(&self, frame: String) -> bool {
+        match self.queue.try_send(frame) {
+            Ok(()) => true,
+            Err(TrySendError::Full(_)) => {
+                self.overflow.notify_one();
+                false
+            }
+            Err(TrySendError::Closed(_)) => false,
+        }
+    }
+
+    pub async fn overflowed(&self) {
+        self.overflow.notified().await;
+    }
+}
+
 struct WsSink {
     channel: u32,
-    out: UnboundedSender<String>,
+    out: Outbox,
 }
 
 impl<T: Serialize + Send + 'static> Sink<T> for WsSink {
     fn send(&self, event: T) -> bool {
         let frame = json!({ "channel": self.channel, "message": event });
-        self.out.send(frame.to_string()).is_ok()
+        self.out.push(frame.to_string())
     }
 }
 
@@ -139,8 +181,9 @@ pub struct Client {
     pacer: Pacer,
     settings: SettingsWatch,
     files: FileWatches,
+    sessions: AgentSessionWatch,
     roots: Roots,
-    out: UnboundedSender<String>,
+    out: Outbox,
 }
 
 fn parse<T: DeserializeOwned>(args: Value) -> Result<T, String> {
@@ -161,12 +204,13 @@ fn parent_of_root(roots: &[PathBuf], raw: &str) -> bool {
 }
 
 impl Client {
-    pub fn new(connectors: Arc<Connectors>, out: UnboundedSender<String>) -> Self {
+    pub fn new(connectors: Arc<Connectors>, out: Outbox) -> Self {
         Self {
             connectors,
             pacer: Pacer::spawn(),
             settings: SettingsWatch::default(),
             files: FileWatches::default(),
+            sessions: AgentSessionWatch::default(),
             roots: Roots::default(),
             out,
         }
@@ -297,6 +341,17 @@ impl Client {
                 settings::settings_watch(&self.settings, sink, file);
                 Ok(Value::Null)
             }
+            "connectors_watch" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                struct Args {
+                    on_event: ChannelRef,
+                }
+                let Args { on_event } = parse(args)?;
+                let sink = Box::new(self.sink(on_event.channel));
+                monitor::connectors_watch(&self.connectors, sink).await?;
+                Ok(Value::Null)
+            }
             "fs_watch" => {
                 #[derive(Deserialize)]
                 #[serde(rename_all = "camelCase")]
@@ -307,6 +362,21 @@ impl Client {
                 let Args { path, on_event } = parse(args)?;
                 let sink = Box::new(self.sink(on_event.channel));
                 Ok(json!(files::fs_watch(&self.files, path, sink)))
+            }
+            "agent_session_watch" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                struct Args {
+                    since_days: Option<u32>,
+                    on_event: ChannelRef,
+                }
+                let Args {
+                    since_days,
+                    on_event,
+                } = parse(args)?;
+                let sink = Box::new(self.sink(on_event.channel));
+                agent_sessions::agent_session_watch(&self.sessions, since_days, sink);
+                Ok(Value::Null)
             }
             "fs_unwatch" => {
                 #[derive(Deserialize)]

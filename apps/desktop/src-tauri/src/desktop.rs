@@ -5,7 +5,9 @@ use serde_json::Value;
 use tauri::ipc::{Channel, IpcResponse};
 use tauri::{AppHandle, Manager, Runtime, State};
 
+use crate::agent_sessions::{self, AgentSessionWatch, AgentSessionsChanged};
 use crate::commands::{plain_commands, to_json};
+use crate::connectors::monitor::{self, ConnectorsChanged};
 use crate::connectors::Connectors;
 use crate::files::{self, FileChanged, FileWatches};
 use crate::pacer::{self, Pacer, SessionEvent, WatchEvent};
@@ -102,12 +104,30 @@ pub async fn settings_watch(
 }
 
 #[tauri::command]
+pub async fn connectors_watch(
+    state: State<'_, Arc<Connectors>>,
+    on_event: Channel<ConnectorsChanged>,
+) -> Result<(), String> {
+    monitor::connectors_watch(&state, sink(on_event)).await
+}
+
+#[tauri::command]
 pub async fn fs_watch(
     watches: State<'_, FileWatches>,
     path: String,
     on_event: Channel<FileChanged>,
 ) -> Result<u32, String> {
     Ok(files::fs_watch(&watches, path, sink(on_event)))
+}
+
+#[tauri::command]
+pub async fn agent_session_watch(
+    watch: State<'_, AgentSessionWatch>,
+    since_days: Option<u32>,
+    on_event: Channel<AgentSessionsChanged>,
+) -> Result<(), String> {
+    agent_sessions::agent_session_watch(&watch, since_days, sink(on_event));
+    Ok(())
 }
 
 #[tauri::command]
@@ -150,7 +170,10 @@ pub fn run() {
         .manage(pacer)
         .manage(SettingsWatch::default())
         .manage(FileWatches::default())
+        .manage(AgentSessionWatch::default())
         .setup(move |app| {
+            tauri::async_runtime::spawn(monitor::run(connectors.clone()));
+            tauri::async_runtime::spawn(crate::stratum::sweep_once());
             let remote = Remote::new(connectors, web_source(app.handle()));
             let watcher = remote.clone();
             tauri::async_runtime::spawn(async move { watcher.spawn_watch() });
@@ -169,10 +192,14 @@ pub fn run() {
             pacer_call,
             settings_read,
             settings_write,
+            pacer_idle_timeout_read,
+            pacer_idle_timeout_write,
             settings_watch,
             settings_open_external,
             connectors_list,
             connectors_check,
+            connectors_reconnect,
+            connectors_watch,
             connectors_detect,
             connector_add,
             connector_update,
@@ -186,12 +213,23 @@ pub fn run() {
             forge_pipeline,
             forge_file,
             fs_read_text,
+            review_queue,
+            review_adapter,
+            fs_read_doc,
+            fs_write_text,
             fs_read_binary,
             fs_watch,
             fs_unwatch,
             fs_list_markdown,
             fs_list_dirs,
             fs_open_external,
+            stratum_probe,
+            stratum_visualize,
+            stratum_progress,
+            stratum_release,
+            agent_sessions_list,
+            agent_session_watch,
+            agent_session_transcript,
             jira_search,
             jira_issue,
             confluence_search,
@@ -208,6 +246,11 @@ pub fn run() {
             remote_regenerate_token,
             tray::tray_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running veyra desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building veyra desktop")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                crate::stratum::shutdown();
+            }
+        });
 }

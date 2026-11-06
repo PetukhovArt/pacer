@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue';
-import { describeError, forgeFile } from '../connectors/api';
+import { describeError, forgeFile, reloadWhenRecovered } from '../connectors/api';
 import RichContent from '../content/RichContent.vue';
 import { t } from '../i18n';
 import { fileBaseUrl } from './fileBase';
@@ -24,6 +24,12 @@ async function load() {
     if (ticket === generation) failure.value = describeError(e);
   }
 }
+
+reloadWhenRecovered(
+  () => props.connector,
+  () => failure.value !== null,
+  () => void load(),
+);
 
 watch(() => [props.connector, props.project, props.sha, props.path], load, { immediate: true });
 </script>

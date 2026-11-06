@@ -6,6 +6,8 @@ import { usePickerList } from '../../commands/usePickerList';
 import PipelineIcon from '../../forge/PipelineIcon.vue';
 import { t } from '../../i18n';
 import type { QuickItem, WorkNode } from '../../workbench/tree';
+import { externalDot } from '../external';
+import HarnessIcon from '../HarnessIcon.vue';
 import StatusDot from '../StatusDot.vue';
 import type { MarkdownEntry } from './markdownFiles';
 
@@ -82,6 +84,10 @@ onMounted(() => input.value?.focus());
         >
           <template v-if="item.kind === 'leaf'">
             <StatusDot v-if="item.entry.node.data?.session" :status="item.entry.node.data.session.status" :unseen="item.entry.node.data.session.unseen" />
+            <template v-else-if="item.entry.node.data?.external">
+              <StatusDot :status="externalDot(item.entry.node.data.external)" :unseen="false" />
+              <HarnessIcon :harness="item.entry.node.data.external.harness" />
+            </template>
             <component :is="iconOf(item.entry.node.kind)" v-else-if="iconOf(item.entry.node.kind)" :size="14" class="file-icon" />
             <template v-for="crumb in item.entry.crumbs" :key="crumb">
               <span class="path">{{ crumb }}</span>

@@ -60,6 +60,7 @@ const hintOf = (context: string | null) => {
   if (context === null) return '';
   if (context === 'terminalFocus') return t('settings.keymap.contextTerminal');
   if (context === '!terminalFocus') return t('settings.keymap.contextOutsideTerminal');
+  if (context === '!terminalFocus && !editorFocus') return t('settings.keymap.contextOutsideEditor');
   return context;
 };
 

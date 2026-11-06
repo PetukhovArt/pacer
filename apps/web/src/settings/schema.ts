@@ -1,7 +1,7 @@
 import type { MessageKey } from '../i18n';
 import { tr } from './translate';
 
-type Category = 'appearance' | 'terminal' | 'sessions' | 'connectors' | 'remote' | 'keymap';
+type Category = 'appearance' | 'terminal' | 'sessions' | 'files' | 'connectors' | 'remote' | 'keymap';
 type Option = { readonly value: string; readonly label: MessageKey };
 type Base = { readonly label: MessageKey; readonly description: MessageKey; readonly category: Category };
 type BooleanDef = Base & { readonly type: 'boolean'; readonly default: boolean };
@@ -15,6 +15,7 @@ export const CATEGORIES = [
   { id: 'appearance', label: 'settings.category.appearance' },
   { id: 'terminal', label: 'settings.category.terminal' },
   { id: 'sessions', label: 'settings.category.sessions' },
+  { id: 'files', label: 'files.settings.category' },
   { id: 'connectors', label: 'settings.category.connectors' },
   { id: 'remote', label: 'remote.category' },
   { id: 'keymap', label: 'settings.category.keymap' },
@@ -100,13 +101,23 @@ export const SETTINGS = {
   },
   'terminal.scrollback': {
     type: 'number',
-    default: 10000,
+    default: 3000,
     label: 'settings.def.terminalScrollback.label',
     description: 'settings.def.terminalScrollback.description',
     category: 'terminal',
     min: 0,
     max: 100000,
     step: 1000,
+  },
+  'terminal.evictHiddenAfter': {
+    type: 'number',
+    default: 10,
+    label: 'settings.def.terminalEvictHiddenAfter.label',
+    description: 'settings.def.terminalEvictHiddenAfter.description',
+    category: 'terminal',
+    min: 0,
+    max: 1440,
+    step: 1,
   },
   'terminal.cursor_blink': {
     type: 'boolean',
@@ -144,6 +155,54 @@ export const SETTINGS = {
     category: 'sessions',
     placeholder: 'settings.def.sessionsDefaultEffort.placeholder',
   },
+  'sessions.externalDays': {
+    type: 'number',
+    default: 14,
+    label: 'settings.def.sessionsExternalDays.label',
+    description: 'settings.def.sessionsExternalDays.description',
+    category: 'sessions',
+    min: 0,
+    max: 365,
+    step: 1,
+  },
+  'sessions.unloadIdleAfter': {
+    type: 'enum',
+    default: '1h',
+    label: 'settings.def.sessionsUnloadIdleAfter.label',
+    description: 'settings.def.sessionsUnloadIdleAfter.description',
+    category: 'sessions',
+    options: [
+      { value: 'off', label: 'settings.def.sessionsUnloadIdleAfter.off' },
+      { value: '1m', label: 'settings.def.sessionsUnloadIdleAfter.m1' },
+      { value: '5m', label: 'settings.def.sessionsUnloadIdleAfter.m5' },
+      { value: '15m', label: 'settings.def.sessionsUnloadIdleAfter.m15' },
+      { value: '30m', label: 'settings.def.sessionsUnloadIdleAfter.m30' },
+      { value: '1h', label: 'settings.def.sessionsUnloadIdleAfter.h1' },
+    ],
+  },
+  'workbench.hot': {
+    type: 'enum',
+    default: 'titlebar',
+    label: 'hot.setting.label',
+    description: 'hot.setting.description',
+    category: 'sessions',
+    options: [
+      { value: 'titlebar', label: 'hot.mode.titlebar' },
+      { value: 'off', label: 'hot.mode.off' },
+    ],
+  },
+  'files.autoSave': {
+    type: 'enum',
+    default: 'off',
+    label: 'files.settings.autoSave.label',
+    description: 'files.settings.autoSave.description',
+    category: 'files',
+    options: [
+      { value: 'off', label: 'files.settings.autoSave.off' },
+      { value: 'onBlur', label: 'files.settings.autoSave.onBlur' },
+      { value: 'afterDelay', label: 'files.settings.autoSave.afterDelay' },
+    ],
+  },
   'tree.jiraProjects': {
     type: 'map',
     default: {},
@@ -151,6 +210,13 @@ export const SETTINGS = {
     description: 'settings.def.treeJiraProjects.description',
     category: 'connectors',
     placeholder: 'settings.def.treeJiraProjects.placeholder',
+  },
+  'connectors.autoReconnect': {
+    type: 'boolean',
+    default: true,
+    label: 'settings.def.connectorsAutoReconnect.label',
+    description: 'settings.def.connectorsAutoReconnect.description',
+    category: 'connectors',
   },
   'remote.enabled': {
     type: 'boolean',

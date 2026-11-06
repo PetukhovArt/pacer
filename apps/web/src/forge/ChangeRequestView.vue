@@ -9,6 +9,7 @@ import {
   forgeDiscussions,
   forgePipeline,
   openUrl,
+  reloadWhenRecovered,
   type ChangeRequest,
   type ChangeRequestRef,
   type DiffFile,
@@ -18,6 +19,7 @@ import {
 import PersonAvatar from '../connectors/PersonAvatar.vue';
 import RichContent from '../content/RichContent.vue';
 import { t } from '../i18n';
+import ArchitectureAction from './ArchitectureAction.vue';
 import DiffView from './DiffView.vue';
 import { fullDate, numberLabel, pipelineLabel, relativeTime } from './format';
 import PipelineIcon from './PipelineIcon.vue';
@@ -125,6 +127,12 @@ watch(
   },
 );
 
+reloadWhenRecovered(
+  () => props.connector,
+  () => failure.value !== null || sideFailure.value !== null,
+  () => void load(),
+);
+
 onMounted(() => void load());
 </script>
 
@@ -144,6 +152,7 @@ onMounted(() => void load());
           <VButton size="small" severity="secondary" :label="t('common.openInBrowser')" data-testid="cr-open-browser" @click="openUrl(cr.url)">
             <template #icon><ExternalLink :size="14" /></template>
           </VButton>
+          <ArchitectureAction :item="cr" />
         </div>
 
         <div class="meta">

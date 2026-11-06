@@ -4,6 +4,8 @@ import { useClient, useClientState } from '@core/vue-bindings';
 import AgentsView from './agents/AgentsView.vue';
 import CommandPalette from './commands/CommandPalette.vue';
 import { paletteOpen } from './commands/context';
+import UnsavedDialog from './files/UnsavedDialog.vue';
+import HotHost from './hot/HotHost.vue';
 import MobileNav from './mobile/MobileNav.vue';
 import { useIsMobile } from './mobile/useIsMobile';
 import Sidebar from './Sidebar.vue';
@@ -73,6 +75,8 @@ function switchWorkspace(id: string) {
     </div>
     <MobileNav v-if="mobile" />
     <QuickOpen />
+    <UnsavedDialog />
+    <HotHost />
     <Transition name="palette">
       <CommandPalette v-if="paletteOpen" />
     </Transition>

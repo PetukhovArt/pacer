@@ -1,6 +1,7 @@
 import { invoke } from '../bridge';
 export { openUrl } from '../bridge';
-import { shallowRef, type ShallowRef } from 'vue';
+import { onScopeDispose, shallowRef, watch, type ShallowRef } from 'vue';
+import { onConnectorsChanged } from './live';
 
 export type ConnectorKind = 'github' | 'gitlab' | 'jira' | 'confluence';
 type ConnectorAuth = 'cli' | 'token';
@@ -140,6 +141,12 @@ const connectorUpdate = (input: ConnectorUpdateInput) => invoke<ConnectorView>('
 const connectorRemove = (id: string) => invoke<void>('connector_remove', { id });
 export const connectorAsset = (id: string, url: string) => invoke<{ mime: string; base64: string }>('connector_asset', { id, url });
 
+export type ReviewQueueRow = { refs: string[]; dir: string; number: number; branch: string; draft: boolean; approved: boolean; url: string };
+export type ReviewQueueNote = { refs: string[]; text: string };
+export type ReviewQueueResult = { adapter: string | null; rows: ReviewQueueRow[]; notes: ReviewQueueNote[] };
+
+export const reviewQueue = (repo: string) => invoke<ReviewQueueResult>('review_queue', { repo });
+export const reviewAdapter = (repo: string) => invoke<string | null>('review_adapter', { repo });
 export const forgeInbox = () => invoke<Inbox>('forge_inbox');
 export const forgeForWorktree = (path: string, branch: string) => invoke<ChangeRequestSummary | null>('forge_for_worktree', { path, branch });
 export const forgeChangeRequest = (ref: ChangeRequestRef) => invoke<ChangeRequest>('forge_change_request', { ...ref });
@@ -172,12 +179,39 @@ type ConnectorsStore = {
 
 let store: ConnectorsStore | null = null;
 
+const recoveredListeners = new Set<(id: string) => void>();
+
+export function onConnectorRecovered(listener: (id: string) => void): () => void {
+  useConnectors();
+  recoveredListeners.add(listener);
+  return () => recoveredListeners.delete(listener);
+}
+
+export function reloadWhenRecovered(connector: () => string, failed: () => boolean, reload: () => void) {
+  const stop = onConnectorRecovered((id) => {
+    if (id === connector() && failed()) reload();
+  });
+  onScopeDispose(stop);
+}
+
 function createStore(): ConnectorsStore {
   const connectors = shallowRef<ConnectorView[]>([]);
   const detected = shallowRef<Detected[]>([]);
   const loading = shallowRef(false);
   const checking = shallowRef(false);
   const error = shallowRef<string | null>(null);
+
+  watch(connectors, (next, previous) => {
+    for (const view of next) {
+      if (view.status !== 'ok') continue;
+      const before = previous.find((c) => c.id === view.id);
+      if (before && before.status !== 'ok') for (const listener of recoveredListeners) listener(view.id);
+    }
+  });
+
+  onConnectorsChanged((event) => {
+    connectors.value = event.connectors;
+  });
 
   async function guarded(flag: ShallowRef<boolean>, operation: () => Promise<void>) {
     if (flag.value) return;

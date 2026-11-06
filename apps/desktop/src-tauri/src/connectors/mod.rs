@@ -6,13 +6,14 @@ mod github;
 mod gitlab;
 mod http;
 pub mod jira;
+pub mod monitor;
 pub mod secrets;
 pub mod types;
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -72,7 +73,7 @@ impl Health {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ConnectorView {
     id: String,
     kind: Kind,
@@ -115,6 +116,7 @@ pub struct Connectors {
     inner: Mutex<Inner>,
     tokens: cli::TokenCache,
     ai: ai::AiState,
+    hub: Arc<monitor::Hub>,
 }
 
 fn registry_path() -> Result<PathBuf, String> {
@@ -220,6 +222,7 @@ impl Connectors {
             }),
             tokens: cli::TokenCache::default(),
             ai: ai::AiState::default(),
+            hub: Arc::default(),
         }
     }
 
@@ -264,11 +267,17 @@ impl Connectors {
                 AuthMode::Token => secrets::load(&record.id)?,
             },
         };
+        let hub = self.hub.clone();
+        let id = record.id.clone();
+        let api = Api::new(headers_for(record.kind, record.email.as_deref(), &token))
+            .on_unreachable(Arc::new(move |message: &str| {
+                hub.report_unreachable(&id, message)
+            }));
         Ok(Ctx {
             id: record.id.clone(),
             kind: record.kind,
             base_url: record.base_url.clone(),
-            api: Api::new(headers_for(record.kind, record.email.as_deref(), &token)),
+            api,
         })
     }
 
@@ -325,6 +334,7 @@ pub async fn connectors_check(state: &Connectors) -> Result<Vec<ConnectorView>, 
     for (record, result) in records.iter().zip(results.iter()) {
         state.set_health(&record.id, Health::from_result(result));
     }
+    state.publish();
     Ok(state.views())
 }
 
@@ -418,6 +428,7 @@ pub async fn connector_add(
             .health
             .insert(record.id.clone(), Health::from_result(&Ok(person)));
     }
+    state.publish();
     let inner = state.lock();
     Ok(view(&record, inner.health.get(&record.id)))
 }
@@ -471,6 +482,7 @@ pub async fn connector_update(
             inner.health.insert(id.clone(), health);
         }
     }
+    state.publish();
     let inner = state.lock();
     Ok(view(&record, inner.health.get(&id)))
 }
@@ -489,6 +501,7 @@ pub async fn connector_remove(state: &Connectors, id: String) -> Result<(), Stri
         inner.health.remove(&id);
     }
     secrets::delete(&id);
+    state.publish();
     Ok(())
 }
 

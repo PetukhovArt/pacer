@@ -1,6 +1,7 @@
 import { invoke } from '../bridge';
 import { shallowRef, type ShallowRef } from 'vue';
 import { describeError } from './api';
+import { onConnectorsChanged } from './live';
 
 export type AiKind = 'claude' | 'codex' | 'gemini' | 'anthropic_api' | 'openai_api' | 'openrouter' | 'grok';
 export type AiStatus = 'signed_in' | 'signed_out' | 'not_installed' | 'rejected' | 'unreachable' | 'error' | 'unchecked';
@@ -46,6 +47,10 @@ function createStore(): AiStore {
   const pending = shallowRef<Partial<Record<AiKind, AiPending>>>({});
   const problems = shallowRef<Partial<Record<AiKind, string>>>({});
   const checking = shallowRef(false);
+
+  onConnectorsChanged((event) => {
+    accounts.value = event.ai;
+  });
 
   const setProblem = (kind: AiKind, message: string | null) => {
     const next = { ...problems.value };

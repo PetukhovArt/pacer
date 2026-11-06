@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import { VButton } from '@ui/kit';
 import RichContent from '../content/RichContent.vue';
 import { t, useI18n } from '../i18n';
-import { describeError, jiraIssue, openUrl, type JiraIssue } from '../connectors/api';
+import { describeError, jiraIssue, openUrl, reloadWhenRecovered, type JiraIssue } from '../connectors/api';
 import ErrorInline from './ErrorInline.vue';
 import PersonAvatar from './PersonAvatar.vue';
 import PriorityMark from './PriorityMark.vue';
@@ -50,6 +50,12 @@ async function copyKey() {
 function openKey(key: string) {
   emit('open', { connector: props.connector, key });
 }
+
+reloadWhenRecovered(
+  () => props.connector,
+  () => error.value !== '',
+  () => void load(),
+);
 
 watch(() => [props.connector, props.issueKey], load, { immediate: true });
 </script>

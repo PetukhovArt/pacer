@@ -14,12 +14,12 @@ use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::connectors::secrets::{self, Lookup};
 use crate::connectors::Connectors;
-use crate::rpc::Client;
+use crate::rpc::{Client, Outbox};
 use crate::settings;
 
 const TOKEN_ID: &str = "remote-pairing-token";
@@ -758,20 +758,36 @@ async fn session(ctx: Ctx, mut socket: WebSocket, ip: IpAddr, agent: String, aut
         return;
     }
     let (mut sink, mut stream) = socket.split();
-    let (out, mut outgoing) = mpsc::unbounded_channel::<String>();
+    let (out, mut outgoing) = Outbox::new();
     let client = Arc::new(Client::new(ctx.shared.connectors.clone(), out.clone()));
     let id = ctx.shared.register(ip, agent);
-    let _ = out.send(json!({ "ready": true }).to_string());
-    let writer = tokio::spawn(async move {
-        while let Some(text) = outgoing.recv().await {
-            if sink.send(Message::Text(text.into())).await.is_err() {
-                break;
+    out.push(json!({ "ready": true }).to_string());
+    let overflow = out.clone();
+    let mut writer = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                biased;
+                () = overflow.overflowed() => {
+                    let close = Message::Close(Some(CloseFrame {
+                        code: 1013,
+                        reason: "output backlog overflow, reconnect".into(),
+                    }));
+                    let _ = tokio::time::timeout(Duration::from_secs(2), sink.send(close)).await;
+                    break;
+                }
+                text = outgoing.recv() => {
+                    let Some(text) = text else { break };
+                    if sink.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
+                }
             }
         }
     });
     let mut epoch = ctx.shared.epoch.subscribe();
     loop {
         tokio::select! {
+            _ = &mut writer => break,
             changed = epoch.changed() => {
                 if changed.is_err() || *epoch.borrow() != ctx.epoch {
                     break;
@@ -783,12 +799,12 @@ async fn session(ctx: Ctx, mut socket: WebSocket, ip: IpAddr, agent: String, aut
                         continue;
                     };
                     if INLINE.contains(&request.cmd.as_str()) {
-                        let _ = out.send(handle(&client, request).await);
+                        out.push(handle(&client, request).await);
                     } else {
                         let client = client.clone();
                         let out = out.clone();
                         tokio::spawn(async move {
-                            let _ = out.send(handle(&client, request).await);
+                            out.push(handle(&client, request).await);
                         });
                     }
                 }

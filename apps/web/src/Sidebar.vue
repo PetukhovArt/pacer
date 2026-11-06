@@ -10,7 +10,7 @@ import { useI18n } from './i18n';
 import { navigate, view } from './nav';
 import { sidebarCollapsed, sidebarSearchRequests, toggleSidebar } from './sidebarState';
 import ProjectTree from './workbench/ProjectTree.vue';
-import { treeQuery } from './workbench/useWorkTree';
+import { treeQuery, useWorkTree } from './workbench/useWorkTree';
 
 defineProps<{ dark: boolean }>();
 const emit = defineEmits<{ switch: [id: string]; theme: [] }>();
@@ -91,7 +91,9 @@ function onHandleKey(event: KeyboardEvent) {
 }
 
 const { connectors, list: listConnectors } = useConnectors();
-const { reviewCount, startPolling } = useForgeInbox();
+const { startPolling } = useForgeInbox();
+const { tabs: workTabs } = useWorkTree();
+const reviewCount = computed(() => workTabs.value.find((tab) => tab.id === 'reviews')?.count ?? 0);
 
 const hasForge = computed(() => connectors.value.some((c) => c.kind === 'github' || c.kind === 'gitlab'));
 const hasJira = computed(() => connectors.value.some((c) => c.kind === 'jira'));

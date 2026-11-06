@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VInputText } from '@ui/kit';
-import { confluenceSearch, describeError, type ConfluenceHit } from '../connectors/api';
+import { confluenceSearch, describeError, reloadWhenRecovered, type ConfluenceHit } from '../connectors/api';
 import { t, useI18n } from '../i18n';
 import ErrorInline from './ErrorInline.vue';
 import Skeleton from './Skeleton.vue';
@@ -78,6 +78,12 @@ function onKey(event: KeyboardEvent) {
     void run();
   }
 }
+
+reloadWhenRecovered(
+  () => props.connector,
+  () => error.value !== '',
+  () => void run(),
+);
 
 onMounted(() => input.value?.$el.focus());
 onBeforeUnmount(() => clearTimeout(timer));

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import '@xterm/xterm/css/xterm.css';
-import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue';
+import { onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
+import type { DockviewPanelApi } from 'dockview-vue';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -11,15 +12,19 @@ import { applyCtrl } from '../mobile/keys';
 import { useSettings } from '../settings/store';
 import { zoomTerminal } from './terminalFont';
 
-const props = defineProps<{ session: SessionRef }>();
+type LiveTerminal = { show: () => void; hide: () => void; dispose: () => void };
+
+const props = defineProps<{ session: SessionRef; panel?: DockviewPanelApi }>();
 const host = useTemplateRef<HTMLDivElement>('host');
 const { values } = useSettings();
+const released = shallowRef(true);
 
 const ESC = '\x1b';
 const SHIFT_ENTER = `${ESC}\r`;
 const CTRL_ENTER = `${ESC}[13;5u`;
 const REPORT_BODY = /^(?:\??\d+;\d+R|[?>][\d;]*c|\??[\d;]*n)$/;
 const RESIZE_DEBOUNCE_MS = 80;
+const MINUTE_MS = 60_000;
 
 const CONPTY_ANSWERS_QUERIES = navigator.userAgent.includes('Windows');
 
@@ -43,12 +48,9 @@ function themeFromTokens(): ITheme {
   return { background: token('surface'), foreground: token('text'), cursor: token('text'), cursorAccent: token('surface'), selectionBackground: token('nav-active') };
 }
 
-let teardown = () => {};
+let detached: Promise<unknown> = Promise.resolve();
 
-onMounted(() => {
-  const element = host.value;
-  if (!element) return;
-  const session = props.session;
+function build(element: HTMLElement, session: SessionRef): LiveTerminal {
   const term = new Terminal({
     allowProposedApi: true,
     fontFamily: values.value['terminal.font_family'],
@@ -63,13 +65,27 @@ onMounted(() => {
   term.loadAddon(new Unicode11Addon());
   term.unicode.activeVersion = '11';
   term.open(element);
-  const webgl = new WebglAddon();
-  webgl.onContextLoss(() => webgl.dispose());
-  try {
-    term.loadAddon(webgl);
-  } catch {
-    webgl.dispose();
-  }
+
+  let webgl: WebglAddon | null = null;
+  const loadWebgl = () => {
+    if (webgl) return;
+    const addon = new WebglAddon();
+    addon.onContextLoss(() => {
+      if (webgl === addon) webgl = null;
+      addon.dispose();
+    });
+    try {
+      term.loadAddon(addon);
+      webgl = addon;
+    } catch {
+      addon.dispose();
+    }
+  };
+  const unloadWebgl = () => {
+    webgl?.dispose();
+    webgl = null;
+  };
+  loadWebgl();
 
   let disposed = false;
   let fromKeyboard = false;
@@ -158,33 +174,107 @@ onMounted(() => {
       }
     }
   };
-  const attached = attachSession(session, term.cols, term.rows, onEvent);
+  const attached = detached.then(() => attachSession(session, term.cols, term.rows, onEvent));
   term.focus();
 
-  teardown = () => {
-    disposed = true;
-    clearTimeout(timer);
-    resizes.disconnect();
-    themes.disconnect();
-    stopLayout();
-    stopBehaviour();
-    element.removeEventListener('wheel', onWheel, { capture: true });
-    void attached.then(() => detachSession(session));
-    term.dispose();
+  return {
+    show: () => {
+      loadWebgl();
+      refit();
+      term.refresh(0, term.rows - 1);
+    },
+    hide: unloadWebgl,
+    dispose: () => {
+      disposed = true;
+      clearTimeout(timer);
+      resizes.disconnect();
+      themes.disconnect();
+      stopLayout();
+      stopBehaviour();
+      element.removeEventListener('wheel', onWheel, { capture: true });
+      detached = attached.then(() => detachSession(session)).catch(() => undefined);
+      term.dispose();
+    },
   };
+}
+
+let live: LiveTerminal | null = null;
+let shown = false;
+let evictTimer: ReturnType<typeof setTimeout> | undefined;
+let observer: IntersectionObserver | undefined;
+let inView = false;
+let tabVisible = true;
+let visibility: { dispose(): void } | undefined;
+
+function armEviction() {
+  clearTimeout(evictTimer);
+  const minutes = values.value['terminal.evictHiddenAfter'];
+  if (!live || shown || minutes <= 0) return;
+  evictTimer = setTimeout(() => {
+    if (shown || !live) return;
+    live.dispose();
+    live = null;
+    released.value = true;
+  }, minutes * MINUTE_MS);
+}
+
+function setShown(next: boolean) {
+  if (next === shown) return;
+  shown = next;
+  const element = host.value;
+  if (!element) return;
+  if (next) {
+    clearTimeout(evictTimer);
+    if (live) live.show();
+    else {
+      live = build(element, props.session);
+      released.value = false;
+    }
+    return;
+  }
+  live?.hide();
+  armEviction();
+}
+
+onMounted(() => {
+  const element = host.value;
+  if (!element) return;
+  const sync = () => setShown(inView && tabVisible);
+  tabVisible = props.panel?.isVisible ?? true;
+  visibility = props.panel?.onDidVisibilityChange((event) => {
+    tabVisible = event.isVisible;
+    sync();
+  });
+  observer = new IntersectionObserver((entries) => {
+    const latest = entries.at(-1);
+    if (!latest) return;
+    inView = latest.isIntersecting;
+    sync();
+  });
+  observer.observe(element);
 });
 
-onBeforeUnmount(() => teardown());
+watch(() => values.value['terminal.evictHiddenAfter'], armEviction);
+
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  visibility?.dispose();
+  clearTimeout(evictTimer);
+  live?.dispose();
+  live = null;
+});
 </script>
 
 <template>
   <div class="frame">
-    <div ref="host" class="terminal" data-testid="session-terminal" :data-session-id="sessionId(session)" />
+    <div ref="host" class="terminal" data-testid="session-terminal" :data-session-id="sessionId(session)" :data-released="released" />
+    <p v-if="released" class="released" data-testid="session-terminal-released">{{ t('agents.session.released') }}</p>
   </div>
 </template>
 
 <style scoped>
 .frame {
+  position: relative;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -196,5 +286,18 @@ onBeforeUnmount(() => teardown());
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+.released {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--vr-space-4);
+  color: var(--vr-color-text-muted);
+  text-align: center;
+  pointer-events: none;
 }
 </style>

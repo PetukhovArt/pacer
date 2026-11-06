@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -17,6 +17,8 @@ use crate::sink::BoxSink;
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 const TEXT_LIMIT: u64 = 20 * 1024 * 1024;
 const BINARY_LIMIT: u64 = 25 * 1024 * 1024;
+const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
+pub const CHANGED_ON_DISK: &str = "changed-on-disk";
 const LIST_LIMIT: usize = 2000;
 const DIRS_LIMIT: usize = 500;
 const SKIPPED_DIRS: [&str; 4] = ["node_modules", ".git", "target", "dist"];
@@ -54,6 +56,13 @@ pub struct BinaryFile {
 #[derive(Debug, Serialize)]
 pub struct FileChanged {
     text: String,
+    signature: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileDoc {
+    text: String,
+    signature: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -86,10 +95,79 @@ fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     fs::read(path).map_err(describe)
 }
 
-fn read_text(path: &Path) -> Result<String, String> {
+fn fingerprint(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{}:{hash:016x}", bytes.len())
+}
+
+fn decode(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned()
+}
+
+fn read_doc(path: &Path) -> Result<FileDoc, String> {
     let bytes = read_limited(path, TEXT_LIMIT)?;
-    let text = String::from_utf8_lossy(&bytes);
-    Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned())
+    Ok(FileDoc {
+        text: decode(&bytes),
+        signature: fingerprint(&bytes),
+    })
+}
+
+fn read_text(path: &Path) -> Result<String, String> {
+    read_doc(path).map(|doc| doc.text)
+}
+
+fn write_text(path: &Path, text: &str, expected: &str) -> Result<String, String> {
+    if !MARKDOWN_EXTENSIONS.contains(&extension(path).as_str()) {
+        return Err(format!(
+            "запись разрешена только для markdown: {}",
+            path.display()
+        ));
+    }
+    if text.len() as u64 > TEXT_LIMIT {
+        return Err(format!("файл слишком большой: {}", path.display()));
+    }
+    let target = fs::canonicalize(path)
+        .map_err(|e| format!("не удалось открыть {}: {e}", path.display()))?;
+    if !target.is_file() {
+        return Err(format!("не файл: {}", path.display()));
+    }
+    let current = read_limited(&target, TEXT_LIMIT)?;
+    if std::str::from_utf8(&current).is_err() {
+        return Err(format!("файл не в UTF-8: {}", path.display()));
+    }
+    if fingerprint(&current) != expected {
+        return Err(CHANGED_ON_DISK.to_owned());
+    }
+    let mut out = Vec::with_capacity(text.len() + BOM.len());
+    if current.starts_with(&BOM) {
+        out.extend_from_slice(&BOM);
+    }
+    out.extend_from_slice(text.as_bytes());
+    let dir = target
+        .parent()
+        .ok_or_else(|| format!("нет папки: {}", path.display()))?;
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let temp = dir.join(format!(".{name}.veyra-{}.tmp", std::process::id()));
+    let written = (|| -> io::Result<()> {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(&out)?;
+        file.sync_all()?;
+        drop(file);
+        if let Ok(meta) = fs::metadata(&target) {
+            let _ = fs::set_permissions(&temp, meta.permissions());
+        }
+        fs::rename(&temp, &target)
+    })();
+    if let Err(error) = written {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("не удалось записать {}: {error}", path.display()));
+    }
+    Ok(fingerprint(&out))
 }
 
 fn mime_of(path: &Path) -> &'static str {
@@ -109,6 +187,18 @@ fn mime_of(path: &Path) -> &'static str {
 
 pub async fn fs_read_text(path: String) -> Result<String, String> {
     spawn_blocking(move || read_text(Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+pub async fn fs_read_doc(path: String) -> Result<FileDoc, String> {
+    spawn_blocking(move || read_doc(Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+pub async fn fs_write_text(path: String, text: String, expected: String) -> Result<String, String> {
+    spawn_blocking(move || write_text(Path::new(&path), &text, &expected))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -137,9 +227,11 @@ pub fn fs_watch(watches: &FileWatches, path: String, on_event: BoxSink<FileChang
             if current == seen {
                 continue;
             }
-            let Ok(text) = read_text(&path) else { continue };
+            let Ok(FileDoc { text, signature }) = read_doc(&path) else {
+                continue;
+            };
             seen = current;
-            if !on_event.send(FileChanged { text }) {
+            if !on_event.send(FileChanged { text, signature }) {
                 return;
             }
         }

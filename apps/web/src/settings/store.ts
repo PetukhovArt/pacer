@@ -6,11 +6,13 @@ import { SETTINGS, checkValue, coerceValue, defaultValues, isSettingKey, type Se
 
 const LEGACY_THEME_KEY = 'veyra.theme';
 const LEGACY_TERMINAL_SIZE_KEY = 'veyra.terminal.fontSize';
+const LEGACY_HOT_MODES = new Set(['strip', 'section', 'overview']);
 
 const fileObject = shallowRef<Record<string, unknown>>({});
 const values = shallowRef<SettingValues>(defaultValues());
 const parseError = shallowRef<ParseFailure | null>(null);
 const issues = shallowRef<string[]>([]);
+const loaded = shallowRef(false);
 
 const backend = createBackend('settings');
 const file = createFileText(backend, parseText);
@@ -21,9 +23,10 @@ function resolve(object: Record<string, unknown>): { values: SettingValues; issu
   const found: string[] = [];
   for (const [key, raw] of Object.entries(object)) {
     if (!isSettingKey(key)) continue;
-    const problem = checkValue(SETTINGS[key], raw);
+    const value = key === 'workbench.hot' && typeof raw === 'string' && LEGACY_HOT_MODES.has(raw) ? 'titlebar' : raw;
+    const problem = checkValue(SETTINGS[key], value);
     if (problem) found.push(`${key}: ${problem}`);
-    else next[key] = raw;
+    else next[key] = value;
   }
   return { values: next as SettingValues, issues: found };
 }
@@ -65,7 +68,10 @@ function migrateLegacy(): void {
 }
 
 function start(): void {
-  file.start(migrateLegacy);
+  file.start(() => {
+    migrateLegacy();
+    loaded.value = true;
+  });
 }
 
 function set(key: SettingKey, value: unknown): void {
@@ -106,7 +112,7 @@ function saveText(candidate: string): string | null {
   return null;
 }
 
-const api = { values, text, parseError, issues, ioError, set, reset, isModified, checkText, saveText, openExternal: file.openExternal, canOpenExternal: file.canOpenExternal };
+const api = { loaded, values, text, parseError, issues, ioError, set, reset, isModified, checkText, saveText, openExternal: file.openExternal, canOpenExternal: file.canOpenExternal };
 
 export function useSettings(): typeof api {
   start();

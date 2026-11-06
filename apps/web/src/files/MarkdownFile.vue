@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
-import { ChevronDown, Columns2, ExternalLink, FileCode, ListTree, Eye } from 'lucide-vue-next';
+import { ChevronDown, Columns2, ExternalLink, FileCode, ListTree, Eye, Save } from 'lucide-vue-next';
+import { EditorState, type Extension } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import { describeError } from '../connectors/api';
-import { highlightLines } from '../content/highlight';
 import RichContent from '../content/RichContent.vue';
-import { t } from '../i18n';
-import { canOpenExternal, fsOpenExternal, fsReadText, fsWatch } from './api';
+import { useDarkTheme } from '../content/theme';
+import { t, useI18n } from '../i18n';
+import { canOpenExternal, fsOpenExternal } from './api';
+import CompareView from './CompareView.vue';
+import { createExtensions, darkSlot, languageSlot, phrases, scrollTopOfLine, topLineOf } from './editor';
+import { useEditableDoc } from './useEditableDoc';
 
 type Mode = 'code' | 'split' | 'preview';
 type Heading = { id: string; level: number; text: string; line: number };
@@ -15,7 +20,6 @@ const props = defineProps<{ path: string; hash?: string }>();
 const emit = defineEmits<{ 'open-file': [path: string, hash: string] }>();
 
 const MODE_KEY = 'veyra.markdown.mode';
-const LINE_HEIGHT = 20;
 const END_SLACK = 2;
 
 function storedMode(): Mode {
@@ -28,16 +32,33 @@ function storedMode(): Mode {
 }
 
 const mode = shallowRef<Mode>(storedMode());
-const text = shallowRef<string | null>(null);
-const failure = shallowRef<string | null>(null);
+const externalFailure = shallowRef<string | null>(null);
 const headings = shallowRef<Heading[]>([]);
 const tocOpen = shallowRef(false);
+const comparing = shallowRef(false);
+const mineSnapshot = shallowRef('');
 
 const sourcePane = useTemplateRef<HTMLElement>('source');
 const previewPane = useTemplateRef<HTMLElement>('preview');
 const toc = useTemplateRef<HTMLElement>('toc');
 
-const lines = computed(() => (text.value === null ? [] : highlightLines(text.value, 'file.md')));
+const { locale } = useI18n();
+const dark = useDarkTheme();
+
+let view: EditorView | undefined;
+let extensions: Extension[] = [];
+
+const doc = useEditableDoc({
+  path: () => props.path,
+  view: () => view,
+  reset: (text) => view?.setState(EditorState.create({ doc: text, extensions })),
+  onReplaced: () => {
+    anchorsDirty = true;
+  },
+});
+const { previewText, failure: loadFailure, saveError, dirty, saving, loaded, conflict } = doc;
+
+const failure = computed(() => loadFailure.value ?? externalFailure.value);
 const fileName = computed(() => props.path.split(/[\\/]/).pop() ?? props.path);
 const directory = computed(() => props.path.replace(/[\\/][^\\/]*$/, '') || props.path);
 const showSource = computed(() => mode.value !== 'preview');
@@ -47,8 +68,6 @@ let anchors: Anchor[] = [];
 let anchorsDirty = true;
 let topLine = 0;
 let ignore: { el: HTMLElement; top: number } | null = null;
-let unwatch: (() => void) | null = null;
-let generation = 0;
 let pendingHash = props.hash ?? '';
 let resizer: ResizeObserver | undefined;
 
@@ -90,7 +109,7 @@ function currentAnchors(pane: HTMLElement): Anchor[] {
 }
 
 function lineCount(): number {
-  return Math.max(1, lines.value.length);
+  return Math.max(1, view?.state.doc.lines ?? 1);
 }
 
 function lineToTop(pane: HTMLElement, line: number): number {
@@ -137,9 +156,9 @@ function consumed(el: HTMLElement): boolean {
 }
 
 function onSourceScroll() {
-  const source = sourcePane.value;
-  if (!source || consumed(source)) return;
-  topLine = source.scrollTop / LINE_HEIGHT;
+  const source = view?.scrollDOM;
+  if (!view || !source || consumed(source)) return;
+  topLine = topLineOf(view);
   const preview = previewPane.value;
   if (mode.value !== 'split' || !preview) return;
   const target = atEnd(source) ? preview.scrollHeight : lineToTop(preview, topLine);
@@ -150,16 +169,15 @@ function onPreviewScroll() {
   const preview = previewPane.value;
   if (!preview || consumed(preview)) return;
   topLine = topToLine(preview, preview.scrollTop);
-  const source = sourcePane.value;
-  if (mode.value !== 'split' || !source) return;
-  const target = atEnd(preview) ? source.scrollHeight : topLine * LINE_HEIGHT;
+  const source = view?.scrollDOM;
+  if (!view || mode.value !== 'split' || !source) return;
+  const target = atEnd(preview) ? source.scrollHeight : scrollTopOfLine(view, topLine);
   setTop(source, target);
 }
 
-function applyTopLine() {
-  const source = sourcePane.value;
+function applyTopLine(includeSource = true) {
   const preview = previewPane.value;
-  if (source && showSource.value) setTop(source, topLine * LINE_HEIGHT);
+  if (view && includeSource && showSource.value) setTop(view.scrollDOM, scrollTopOfLine(view, topLine));
   if (preview && showPreview.value) setTop(preview, lineToTop(preview, topLine));
 }
 
@@ -175,17 +193,16 @@ function onRendered() {
   anchorsDirty = true;
   collectHeadings();
   void nextTick(() => {
-    if (mode.value === 'split') applyTopLine();
+    if (mode.value === 'split') applyTopLine(false);
     applyHash();
   });
 }
 
 function gotoHeading(heading: Heading) {
   tocOpen.value = false;
-  const source = sourcePane.value;
-  if (mode.value === 'code' && source) {
+  if (mode.value === 'code' && view) {
     topLine = heading.line;
-    setTop(source, heading.line * LINE_HEIGHT);
+    setTop(view.scrollDOM, scrollTopOfLine(view, heading.line));
     return;
   }
   scrollPreviewTo(heading.id);
@@ -209,36 +226,43 @@ function onPointerDown(event: PointerEvent) {
   if (tocOpen.value && event.target instanceof Node && !toc.value?.contains(event.target)) tocOpen.value = false;
 }
 
+function onKeydown(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.code !== 'KeyS') return;
+  event.preventDefault();
+  void doc.save();
+}
+
 async function openExternal() {
   try {
     await fsOpenExternal(props.path);
   } catch (e) {
-    failure.value = describeError(e);
+    externalFailure.value = describeError(e);
   }
 }
 
-async function load() {
-  const ticket = ++generation;
-  unwatch?.();
-  unwatch = null;
-  failure.value = null;
-  text.value = null;
+function openFile() {
   topLine = 0;
-  try {
-    const content = await fsReadText(props.path);
-    if (ticket !== generation) return;
-    text.value = content;
-    const stop = await fsWatch(props.path, (next) => {
-      if (ticket === generation) text.value = next;
-    });
-    if (ticket === generation) unwatch = stop;
-    else stop();
-  } catch (e) {
-    if (ticket === generation) failure.value = describeError(e);
-  }
+  externalFailure.value = null;
+  comparing.value = false;
+  void doc.load();
 }
 
-watch(() => props.path, load);
+function toggleCompare() {
+  mineSnapshot.value = doc.mine();
+  comparing.value = !comparing.value;
+}
+
+function onReload() {
+  comparing.value = false;
+  doc.reload();
+}
+
+function onKeepMine() {
+  comparing.value = false;
+  void doc.keepMine();
+}
+
+watch(() => props.path, openFile);
 watch(
   () => props.hash,
   (hash) => {
@@ -249,11 +273,23 @@ watch(
 watch(mode, async () => {
   anchorsDirty = true;
   await nextTick();
+  view?.requestMeasure();
   applyTopLine();
 });
+watch(conflict, (value) => {
+  if (!value) comparing.value = false;
+});
+watch(locale, (value) => view?.dispatch({ effects: languageSlot.reconfigure(phrases(value)) }));
+watch(dark, (value) => view?.dispatch({ effects: darkSlot.reconfigure(EditorView.darkTheme.of(value)) }));
 
 onMounted(() => {
-  void load();
+  const parent = sourcePane.value;
+  if (parent) {
+    extensions = createExtensions({ onUpdate: doc.onUpdate, onBlur: doc.blurred }, locale.value, dark.value);
+    view = new EditorView({ state: EditorState.create({ doc: '', extensions }), parent });
+    view.scrollDOM.addEventListener('scroll', onSourceScroll, { passive: true });
+  }
+  openFile();
   document.addEventListener('pointerdown', onPointerDown, true);
   resizer = new ResizeObserver(() => {
     anchorsDirty = true;
@@ -263,22 +299,26 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  generation++;
-  unwatch?.();
+  doc.dispose();
+  view?.scrollDOM.removeEventListener('scroll', onSourceScroll);
+  view?.destroy();
+  view = undefined;
   resizer?.disconnect();
   document.removeEventListener('pointerdown', onPointerDown, true);
 });
 </script>
 
 <template>
-  <section class="md" data-testid="markdown-file">
+  <section class="md" data-testid="markdown-file" @keydown="onKeydown">
     <header class="toolbar">
       <span class="name" :title="path" data-testid="markdown-name">{{ fileName }}</span>
+      <span v-if="dirty" class="dirty" :title="t('files.editor.dirty')" :aria-label="t('files.editor.dirty')" data-testid="markdown-dirty" />
       <span class="group" role="group" :aria-label="t('files.markdown.viewMode')">
         <button class="mode" :data-active="mode === 'code'" :aria-pressed="mode === 'code'" data-testid="markdown-mode-code" @click="setMode('code')"><FileCode :size="14" />{{ t('files.markdown.code') }}</button>
         <button class="mode" :data-active="mode === 'split'" :aria-pressed="mode === 'split'" data-testid="markdown-mode-split" @click="setMode('split')"><Columns2 :size="14" />{{ t('files.markdown.split') }}</button>
         <button class="mode" :data-active="mode === 'preview'" :aria-pressed="mode === 'preview'" data-testid="markdown-mode-preview" @click="setMode('preview')"><Eye :size="14" />{{ t('files.markdown.preview') }}</button>
       </span>
+      <button class="mode" :disabled="!dirty || saving" :title="t('files.editor.saveTitle')" data-testid="markdown-save" @click="doc.save()"><Save :size="14" />{{ t('common.save') }}</button>
       <span class="spacer" />
       <span ref="toc" class="toc-wrap">
         <button class="mode" :data-active="tocOpen" :disabled="!headings.length" aria-haspopup="menu" :aria-expanded="tocOpen" data-testid="markdown-toc" @click="tocOpen = !tocOpen">
@@ -293,20 +333,25 @@ onBeforeUnmount(() => {
       <button v-if="canOpenExternal" class="mode" :title="t('files.markdown.openExternalTitle')" data-testid="markdown-open-external" @click="openExternal"><ExternalLink :size="14" />{{ t('files.markdown.openExternal') }}</button>
     </header>
 
-    <p v-if="failure" class="status failure" role="alert" data-testid="markdown-failure">{{ failure }}</p>
-    <p v-else-if="text === null" class="status">{{ t('common.loading') }}</p>
+    <div v-if="conflict" class="bar" role="alert" data-testid="markdown-conflict">
+      <strong>{{ t('files.editor.changed.title') }}</strong>
+      <span class="hint">{{ t('files.editor.changed.hint') }}</span>
+      <span class="spacer" />
+      <button class="mode" data-testid="markdown-conflict-reload" @click="onReload">{{ t('files.editor.changed.reload') }}</button>
+      <button class="mode" data-testid="markdown-conflict-keep" @click="onKeepMine">{{ t('files.editor.changed.keep') }}</button>
+      <button class="mode" :data-active="comparing" :aria-pressed="comparing" data-testid="markdown-conflict-compare" @click="toggleCompare">{{ t('files.editor.changed.compare') }}</button>
+    </div>
 
-    <div v-show="text !== null" class="panes" :data-mode="mode">
-      <div v-show="showSource" ref="source" class="pane source" tabindex="0" data-testid="markdown-source" @scroll.passive="onSourceScroll">
-        <div class="rows">
-          <div v-for="(html, n) in lines" :key="n" class="row">
-            <span class="num">{{ n + 1 }}</span>
-            <span class="code" v-html="html" />
-          </div>
-        </div>
-      </div>
+    <p v-if="failure" class="status failure" role="alert" data-testid="markdown-failure">{{ failure }}</p>
+    <p v-else-if="!loaded" class="status">{{ t('common.loading') }}</p>
+    <p v-if="saveError" class="status failure" role="alert" data-testid="markdown-save-error">{{ saveError }}</p>
+
+    <CompareView v-if="comparing && conflict" class="compare" :disk="conflict.text" :mine="mineSnapshot" />
+
+    <div v-show="loaded && !comparing" class="panes" :data-mode="mode">
+      <div v-show="showSource" ref="source" class="pane source" data-testid="markdown-source" />
       <div v-show="showPreview" ref="preview" class="pane preview" tabindex="0" data-testid="markdown-preview" @scroll.passive="onPreviewScroll">
-        <RichContent v-if="text !== null" :markdown="text" :base-path="directory" variant="document" :breaks="false" @open-file="(p, h) => emit('open-file', p, h)" @rendered="onRendered" />
+        <RichContent v-if="previewText !== null" :markdown="previewText" :base-path="directory" variant="document" :breaks="false" @open-file="(p, h) => emit('open-file', p, h)" @rendered="onRendered" />
       </div>
     </div>
   </section>
@@ -339,6 +384,43 @@ onBeforeUnmount(() => {
   font-family: var(--vr-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dirty {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: calc(-1 * var(--vr-space-1));
+  background: var(--vr-color-accent);
+  border-radius: var(--vr-radius-full);
+}
+
+.bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--vr-space-3);
+  padding: var(--vr-space-1) var(--vr-space-3);
+  font-size: var(--vr-font-size-xs);
+  background: var(--vr-color-surface-raised);
+  border-bottom: 1px solid var(--vr-color-border);
+}
+
+.bar .mode {
+  color: var(--vr-color-text);
+  border-color: var(--vr-color-border);
+}
+
+.hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vr-color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare {
+  flex: 1;
 }
 
 .spacer {
@@ -449,36 +531,11 @@ onBeforeUnmount(() => {
 }
 
 .source {
-  font-family: var(--vr-font-mono);
-  font-size: var(--vr-font-size-xs);
-  line-height: 20px;
+  overflow: hidden;
 }
 
-.rows {
-  min-width: max-content;
-  padding-bottom: var(--vr-space-4);
-}
-
-.row {
-  display: flex;
-  height: 20px;
-}
-
-.num {
-  position: sticky;
-  left: 0;
-  flex: none;
-  width: 56px;
-  padding: 0 var(--vr-space-2);
-  color: var(--vr-color-text-muted);
-  text-align: right;
-  user-select: none;
-  background: var(--vr-color-surface);
-}
-
-.code {
-  padding-left: var(--vr-space-2);
-  white-space: pre;
+.source :deep(.cm-editor) {
+  height: 100%;
 }
 
 .preview {

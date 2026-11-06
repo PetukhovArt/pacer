@@ -18,10 +18,15 @@ export const DEFAULT_KEYMAP: readonly KeymapEntry[] = [
     },
   },
   {
-    context: '!terminalFocus',
+    context: '!terminalFocus && !editorFocus',
     bindings: {
       'ctrl-b': 'sidebar.toggle',
       'ctrl-k': 'sidebar.search',
+    },
+  },
+  {
+    context: '!terminalFocus',
+    bindings: {
       'ctrl-p': 'agents.quickOpen',
       'ctrl-shift-r': 'nav.reviews',
       'ctrl-shift-j': 'nav.jira',

@@ -2,6 +2,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { Copy, Minus, Square, X } from 'lucide-vue-next';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { settleAll } from './files/documents';
+import HotChips from './hot/HotChips.vue';
+import { hotEnabled } from './hot/view';
 import { useI18n } from './i18n';
 import { view } from './nav';
 
@@ -29,6 +32,10 @@ const title = computed(() => {
   }
 });
 
+async function closeWindow() {
+  if (await settleAll()) await win.close();
+}
+
 async function sync() {
   maximized.value = await win.isMaximized();
 }
@@ -50,6 +57,7 @@ onUnmounted(() => stopResize?.());
       <circle class="node" cx="48" cy="13" r="4" />
     </svg>
     <span class="title" data-tauri-drag-region data-testid="titlebar-title">{{ title }}</span>
+    <HotChips v-if="hotEnabled" />
     <div class="controls">
       <button type="button" class="ctl" data-testid="titlebar-minimize" :aria-label="t('shell.window.minimize')" :title="t('shell.window.minimize')" @click="win.minimize()">
         <Minus :size="16" :stroke-width="1.5" />
@@ -66,7 +74,7 @@ onUnmounted(() => stopResize?.());
         <Copy v-if="maximized" :size="13" :stroke-width="1.5" />
         <Square v-else :size="12" :stroke-width="1.5" />
       </button>
-      <button type="button" class="ctl close" data-testid="titlebar-close" :aria-label="t('shell.window.close')" :title="t('shell.window.close')" @click="win.close()">
+      <button type="button" class="ctl close" data-testid="titlebar-close" :aria-label="t('shell.window.close')" :title="t('shell.window.close')" @click="closeWindow">
         <X :size="16" :stroke-width="1.5" />
       </button>
     </div>

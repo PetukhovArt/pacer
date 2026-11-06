@@ -8,6 +8,36 @@ export const files = {
     openExternalTitle: 'Open in the default application',
     openExternal: 'Open in editor',
   },
+  editor: {
+    dirty: 'Unsaved changes',
+    saveTitle: 'Save (Ctrl+S)',
+    changed: {
+      title: 'Changed on disk',
+      hint: 'This file was modified outside Veyra while you have unsaved edits.',
+      reload: 'Reload',
+      keep: 'Keep mine (overwrite)',
+      compare: 'Compare',
+    },
+    compare: {
+      disk: 'On disk',
+      mine: 'Your version',
+    },
+    unsaved: {
+      title: 'Unsaved changes',
+      message: 'Unsaved changes in {names}. Save them before closing?',
+      discard: 'Discard',
+    },
+  },
+  settings: {
+    category: 'Files',
+    autoSave: {
+      label: 'Auto-save Markdown files',
+      description: 'Off: save with Ctrl+S. On blur: save when the editor loses focus. After delay: save one second after the last edit.',
+      off: 'Off',
+      onBlur: 'On blur',
+      afterDelay: 'After delay',
+    },
+  },
   picker: {
     open: 'Open a Markdown file',
     filter: 'Filter Markdown files',

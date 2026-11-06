@@ -1,5 +1,5 @@
-import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue';
-import { describeError, forgeInbox, type ChangeRequestRef, type InboxError, type InboxItem, type PipelineStatus } from '../connectors/api';
+import { shallowRef, type ShallowRef } from 'vue';
+import { describeError, forgeInbox, onConnectorRecovered, type ChangeRequestRef, type InboxError, type InboxItem, type PipelineStatus } from '../connectors/api';
 
 const REFRESH_MS = 2 * 60_000;
 const TICK_MS = 30_000;
@@ -11,7 +11,6 @@ type InboxStore = {
   loading: ShallowRef<boolean>;
   loadedOnce: ShallowRef<boolean>;
   loadedAt: ShallowRef<number>;
-  reviewCount: ComputedRef<number>;
   load: () => Promise<void>;
   loadIfStale: (maxAgeMs: number) => void;
   startPolling: () => () => void;
@@ -26,7 +25,6 @@ function createStore(): InboxStore {
   const loading = shallowRef(false);
   const loadedOnce = shallowRef(false);
   const loadedAt = shallowRef(0);
-  const reviewCount = computed(() => items.value.filter((item) => item.reasons.includes('reviewer')).length);
 
   async function load() {
     if (loading.value) return;
@@ -44,6 +42,10 @@ function createStore(): InboxStore {
       loadedAt.value = Date.now();
     }
   }
+
+  onConnectorRecovered((id) => {
+    if (failure.value || errors.value.some((e) => e.connector === id)) void load();
+  });
 
   function loadIfStale(maxAgeMs: number) {
     if (Date.now() - loadedAt.value >= maxAgeMs) void load();
@@ -73,7 +75,7 @@ function createStore(): InboxStore {
     };
   }
 
-  return { items, errors, failure, loading, loadedOnce, loadedAt, reviewCount, load, loadIfStale, startPolling };
+  return { items, errors, failure, loading, loadedOnce, loadedAt, load, loadIfStale, startPolling };
 }
 
 export function useForgeInbox(): InboxStore {

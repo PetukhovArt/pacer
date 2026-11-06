@@ -24,6 +24,7 @@ export const agents = {
     confirmDelete: 'Delete "{name}" permanently?',
     exited: 'session ended',
     exitedWithCode: 'session ended, code {code}',
+    released: 'Terminal released to save memory. It reconnects when you open this tab.',
   },
   newSession: {
     title: 'New Session · {branch}',

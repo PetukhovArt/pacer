@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
-import { describeError, jiraSearch, type JiraIssueSummary } from '../connectors/api';
+import { describeError, jiraSearch, reloadWhenRecovered, type JiraIssueSummary } from '../connectors/api';
 import { t, useI18n } from '../i18n';
 import ErrorInline from './ErrorInline.vue';
 import PersonAvatar from './PersonAvatar.vue';
@@ -223,6 +223,12 @@ watch(
   () => props.connector,
   () => void load(false),
 );
+reloadWhenRecovered(
+  () => props.connector,
+  () => error.value !== '',
+  () => void load(false),
+);
+
 onMounted(() => void load(false));
 </script>
 

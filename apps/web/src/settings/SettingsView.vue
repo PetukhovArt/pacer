@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch, type Component } from 'vue';
-import { ExternalLink, FileJson, History, Keyboard, Palette, Plug, Search, SlidersHorizontal, Smartphone, SquareTerminal } from 'lucide-vue-next';
+import { ExternalLink, FileJson, FileText, History, Keyboard, Palette, Plug, Search, SlidersHorizontal, Smartphone, SquareTerminal } from 'lucide-vue-next';
 import { VButton, VInputText, VMessage } from '@ui/kit';
 import ConnectorsPanel from '../connectors/ConnectorsPanel.vue';
 import { useI18n } from '../i18n';
@@ -22,7 +22,7 @@ type CategoryId = (typeof CATEGORIES)[number]['id'];
 const category = shallowRef<CategoryId>('appearance');
 const rawMode = shallowRef(false);
 
-const CATEGORY_ICONS: Record<CategoryId, Component> = { appearance: Palette, terminal: SquareTerminal, sessions: History, connectors: Plug, remote: Smartphone, keymap: Keyboard };
+const CATEGORY_ICONS: Record<CategoryId, Component> = { appearance: Palette, terminal: SquareTerminal, sessions: History, files: FileText, connectors: Plug, remote: Smartphone, keymap: Keyboard };
 
 const normalizedQuery = computed(() => query.value.trim().toLowerCase());
 watch(normalizedQuery, (value) => {
@@ -213,7 +213,7 @@ h1 {
 .body {
   display: grid;
   flex: 1;
-  grid-template-columns: 12rem minmax(0, 1fr);
+  grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -233,6 +233,7 @@ h1 {
   padding: 0 var(--vr-space-3);
   font: inherit;
   text-align: left;
+  white-space: nowrap;
   color: inherit;
   background: none;
   border: 0;

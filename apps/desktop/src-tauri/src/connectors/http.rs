@@ -1,6 +1,6 @@
 use std::fmt;
 use std::net::IpAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use reqwest::{Client, Method, Proxy, RequestBuilder, Response, StatusCode, Url};
@@ -197,14 +197,25 @@ async fn status_error(host: &str, response: Response) -> ApiError {
     }
 }
 
+pub type UnreachableHook = Arc<dyn Fn(&str) + Send + Sync>;
+
 #[derive(Clone, Default)]
 pub struct Api {
     headers: Vec<(&'static str, String)>,
+    on_unreachable: Option<UnreachableHook>,
 }
 
 impl Api {
     pub fn new(headers: Vec<(&'static str, String)>) -> Self {
-        Api { headers }
+        Api {
+            headers,
+            on_unreachable: None,
+        }
+    }
+
+    pub fn on_unreachable(mut self, hook: UnreachableHook) -> Self {
+        self.on_unreachable = Some(hook);
+        self
     }
 
     fn builder(&self, method: Method, url: Url, auth: bool, accept: &str) -> RequestBuilder {
@@ -227,6 +238,14 @@ impl Api {
     }
 
     async fn send(&self, request: RequestBuilder, host: &str) -> ApiResult<Response> {
+        let result = self.dispatch(request, host).await;
+        if let (Err(ApiError::Unreachable(message)), Some(hook)) = (&result, &self.on_unreachable) {
+            hook(message);
+        }
+        result
+    }
+
+    async fn dispatch(&self, request: RequestBuilder, host: &str) -> ApiResult<Response> {
         let response = request
             .send()
             .await

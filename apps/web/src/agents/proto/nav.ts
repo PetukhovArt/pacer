@@ -38,7 +38,7 @@ const URGENCY: Record<SessionStatus, number> = {
 
 export type Rollup = { status: SessionStatus | undefined; unseen: boolean; running: number; feedback: number; total: number };
 
-export function rollupOf(sessions: readonly SessionNode[]): Rollup {
+export function rollupOf(sessions: readonly Pick<SessionNode, 'status' | 'unseen'>[]): Rollup {
   let status: SessionStatus | undefined;
   let unseen = false;
   let running = 0;
