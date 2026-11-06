@@ -1,7 +1,6 @@
 export const shell = {
   nav: {
     label: 'Navigation',
-    tasks: 'Tasks',
     agents: 'Workbench',
     reviews: 'Reviews',
     jira: 'Jira',
@@ -11,11 +10,6 @@ export const shell = {
   collapse: 'Collapse sidebar',
   expand: 'Expand sidebar',
   resize: 'Resize sidebar',
-  switchWorkspace: 'Switch to {name}',
-  topics: 'Topics',
-  tasks: 'Tasks',
-  online: 'online',
-  offline: 'disconnected',
   settings: 'Settings',
   themeLight: 'Light theme',
   themeDark: 'Dark theme',

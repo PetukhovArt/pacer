@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, shallowRef, useTemplateRef, type Directive } from 'vue';
+import { computed, shallowRef, useTemplateRef } from 'vue';
 import { Activity, Eye, GitPullRequest, ListTodo, MessageSquare, Plus, RefreshCw, Search, SquareTerminal, TriangleAlert } from 'lucide-vue-next';
-import { useClient, useClientState } from '@core/vue-bindings';
 import { VContextMenu } from '@ui/kit';
 import ArchivedRow from '../agents/ArchivedRow.vue';
 import { useExternalSessions } from '../agents/external';
@@ -20,7 +19,6 @@ import { useArchitecture } from '../forge/stratum';
 import PipelineIcon from '../forge/PipelineIcon.vue';
 import WorktreeBadge from '../forge/WorktreeBadge.vue';
 import { t } from '../i18n';
-import { openTopic, view } from '../nav';
 import ExplorerTree from '../tree/ExplorerTree.vue';
 import { useDock } from './dock';
 import RepoActions from './RepoActions.vue';
@@ -30,22 +28,15 @@ import { treeQuery, treeTab, useWorkTree } from './useWorkTree';
 withDefaults(defineProps<{ withFilter?: boolean }>(), { withFilter: false });
 
 const dock = useDock();
-const client = useClient();
-const state = useClientState();
 const { pacer, nodes, tabs, activeTab, refresh, loading, errors } = useWorkTree();
 const tabIcons = { sessions: SquareTerminal, mrs: GitPullRequest, reviews: Eye, tasks: ListTodo, all: SquareTerminal };
 
 const filtering = computed(() => treeQuery.value.trim().length > 0);
 const external = useExternalSessions();
 const selected = computed(() => {
-  if (view.value.kind === 'topic') return `topic:${view.value.id}`;
   const key = dock.activeKey.value;
   return key ? (external?.terminalOf.value.get(key) ?? key) : null;
 });
-const vFocus: Directive<HTMLElement> = { mounted: (el) => el.focus() };
-const creatingTopic = shallowRef(false);
-const topicName = shallowRef('');
-const topicError = shallowRef('');
 
 const archMenu = useTemplateRef<InstanceType<typeof VContextMenu>>('archMenu');
 const archItem = shallowRef<InboxItem | null>(null);
@@ -67,20 +58,6 @@ function showArchMenu(event: MouseEvent, item: InboxItem) {
 
 const jiraRefs = (review: ReviewMeta | undefined) => review?.refs.filter((ref) => !ref.startsWith('!')).join(', ') ?? '';
 const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft:|\[draft\]|\(draft\)|wip:)\s*/i, '') : item.title);
-
-async function createTopic() {
-  const name = topicName.value.trim();
-  if (!name) return;
-  topicError.value = '';
-  try {
-    const topic = await client.createTopic(name);
-    topicName.value = '';
-    creatingTopic.value = false;
-    openTopic(topic.id);
-  } catch (e) {
-    topicError.value = e instanceof Error ? e.message : String(e);
-  }
-}
 </script>
 
 <template>
@@ -145,14 +122,8 @@ async function createTopic() {
             <span class="key">{{ data.issue.key }}</span>
             <span class="title">{{ data.issue.summary }}</span>
           </span>
-          <span v-else-if="data?.task" class="line" data-testid="tree-task-row" :data-unread="state.unread.has(data.task.id)">
-            <span class="key">{{ data.task.externalRef }}</span>
-            <span class="title">{{ data.task.title }}</span>
-            <span v-if="state.unread.has(data.task.id)" class="unread-dot" />
-          </span>
-          <span v-else class="line" :data-unread="data?.topic ? state.unread.has(data.topic.id) : undefined">
+          <span v-else class="line">
             <span class="title">{{ node.label }}</span>
-            <span v-if="data?.topic && state.unread.has(data.topic.id)" class="unread-dot" />
           </span>
         </template>
         <template #row="{ node }">
@@ -193,13 +164,6 @@ async function createTopic() {
             @resumed="dock.openWhenListed({ Agent: $event })"
             @create="dock.startCreate($event)"
           />
-          <template v-else-if="node.kind === 'topics'">
-            <form v-if="creatingTopic" class="inline" @submit.prevent="createTopic">
-              <input v-model="topicName" v-focus class="topic-input" :placeholder="t('workbench.topicName')" :aria-label="t('workbench.topicName')" data-testid="topic-name" @keydown.esc="creatingTopic = false" />
-              <span v-if="topicError" class="error" role="alert">{{ topicError }}</span>
-            </form>
-            <button v-else class="icon" :title="t('workbench.newTopic')" :aria-label="t('workbench.newTopic')" data-testid="topic-add" @click="creatingTopic = true"><Plus :size="14" /></button>
-          </template>
         </template>
         <template #empty>
           <p class="empty" data-testid="tree-empty">{{ filtering ? t('workbench.nothingFound') : t('workbench.empty') }}</p>
@@ -475,10 +439,6 @@ async function createTopic() {
   text-overflow: ellipsis;
 }
 
-.line[data-unread='true'] .title {
-  font-weight: 600;
-}
-
 .draft {
   margin-right: var(--vr-space-1);
   padding: 0 var(--vr-space-1);
@@ -553,36 +513,6 @@ async function createTopic() {
   overflow-wrap: anywhere;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-}
-
-.unread-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  background: var(--vr-color-accent);
-  border-radius: 50%;
-}
-
-.inline {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vr-space-1);
-}
-
-.topic-input {
-  height: var(--vr-size-row);
-  padding: 0 var(--vr-space-2);
-  font: inherit;
-  color: var(--vr-color-text);
-  background: var(--vr-color-nav-hover);
-  border: 0;
-  border-radius: var(--vr-radius-md);
-  outline: none;
-}
-
-.error {
-  font-size: var(--vr-font-size-2xs);
-  color: var(--vr-color-danger);
 }
 
 .empty {

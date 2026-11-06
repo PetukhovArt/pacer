@@ -23,12 +23,8 @@ const title = computed(() => {
       return t('shell.nav.jira');
     case 'confluence':
       return t('shell.nav.confluence');
-    case 'settings':
-      return t('shell.settings');
-    case 'topic':
-      return t('shell.topics');
     default:
-      return t('shell.tasks');
+      return t('shell.settings');
   }
 });
 

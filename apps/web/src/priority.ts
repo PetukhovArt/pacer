@@ -11,7 +11,7 @@ const RANKS: Record<string, number> = {
   lowest: 4,
 };
 
-export function priorityRank(priority: string | null | undefined): number {
+function priorityRank(priority: string | null | undefined): number {
   return priority ? (RANKS[priority.toLowerCase()] ?? 5) : 6;
 }
 

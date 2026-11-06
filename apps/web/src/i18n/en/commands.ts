@@ -7,7 +7,6 @@ export const commands = {
   },
   action: {
     paletteOpen: 'Command palette',
-    navTasks: 'Go to tasks',
     navAgents: 'Go to the workbench',
     navReviews: 'Go to reviews',
     navJira: 'Go to Jira',

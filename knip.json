@@ -1,9 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [".claude/**", "npm/**"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.ts", "scripts/*.mjs"],
-      "ignoreDependencies": ["vue-tsc", "fastify"]
+      "entry": ["scripts/*.mjs"],
+      "ignoreDependencies": ["vue-tsc"]
     },
     "apps/web": {
       "ignoreDependencies": ["@types/katex"]

@@ -1,5 +1,4 @@
 import { computed, shallowRef, watch } from 'vue';
-import { useClientState } from '@core/vue-bindings';
 import { useExternalSessions } from '../agents/external';
 import { usePacer } from '../agents/pacer';
 import { useMyIssues } from '../atlassian/myIssues';
@@ -54,7 +53,6 @@ export type TabInfo = { id: TreeTab; label: string; count: number | undefined; t
 export function useWorkTree() {
   const pacer = usePacer();
   const external = useExternalSessions();
-  const state = useClientState();
   const { connectors } = useConnectors();
   const inbox = useForgeInbox();
   const jira = useMyIssues();
@@ -157,7 +155,6 @@ export function useWorkTree() {
 
   const sources = computed<Sources>(() => ({
     pacer: pacer !== null,
-    relay: state.value.connected,
     workspaces: pacer?.tree.value ?? [],
     entities: pacer?.entities.value,
     external: external?.sessions.value ?? [],
@@ -166,8 +163,6 @@ export function useWorkTree() {
     connectors: connectors.value,
     mrs: reviewMrs.value,
     issues: jira.issues.value,
-    tasks: state.value.tasks.filter((task) => task.assigneeId === state.value.me.id && task.statusCategory !== 'done'),
-    topics: state.value.topics,
     jiraProjects: values.value['tree.jiraProjects'],
     review: review.value,
   }));

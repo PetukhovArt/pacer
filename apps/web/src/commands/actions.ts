@@ -14,7 +14,6 @@ const KEYS = 'commands.category.keys';
 
 defineAction({ id: 'palette.open', title: 'commands.action.paletteOpen', category: VIEW, run: () => (paletteOpen.value = !paletteOpen.value) });
 
-defineAction({ id: 'nav.tasks', title: 'commands.action.navTasks', category: NAVIGATION, run: () => navigate({ kind: 'tasks' }) });
 defineAction({ id: 'nav.agents', title: 'commands.action.navAgents', category: NAVIGATION, run: () => navigate({ kind: 'agents' }) });
 defineAction({ id: 'nav.reviews', title: 'commands.action.navReviews', category: NAVIGATION, run: () => navigate({ kind: 'reviews' }) });
 defineAction({ id: 'nav.jira', title: 'commands.action.navJira', category: NAVIGATION, run: () => navigate({ kind: 'jira' }) });

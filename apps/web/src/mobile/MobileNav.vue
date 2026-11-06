@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutPanelLeft, ListTodo, Settings } from 'lucide-vue-next';
+import { LayoutPanelLeft, Settings } from 'lucide-vue-next';
 import { useI18n } from '../i18n';
 import { navigate, view, type View } from '../nav';
 import { useDock } from '../workbench/dock';
@@ -9,11 +9,10 @@ const { detail } = useDock();
 
 const ITEMS = [
   { kind: 'agents', label: 'shell.nav.agents', icon: LayoutPanelLeft },
-  { kind: 'tasks', label: 'shell.nav.tasks', icon: ListTodo },
   { kind: 'settings', label: 'shell.settings', icon: Settings },
 ] as const satisfies readonly { kind: View['kind']; label: string; icon: unknown }[];
 
-const isActive = (kind: View['kind']) => view.value.kind === kind || (kind === 'tasks' && (view.value.kind === 'task' || view.value.kind === 'topic'));
+const isActive = (kind: View['kind']) => view.value.kind === kind;
 
 function go(kind: (typeof ITEMS)[number]['kind']) {
   if (kind === 'agents' && view.value.kind === 'agents') detail.value = false;

@@ -2,13 +2,12 @@
 import 'dockview-vue/dist/styles/dockview.css';
 import { onBeforeUnmount, shallowRef } from 'vue';
 import { DockviewVue, themeLight, type DockviewApi, type DockviewReadyEvent } from 'dockview-vue';
-import { ChevronRight, FileText, GitPullRequest, ListTodo, Network, Ticket, X } from 'lucide-vue-next';
+import { ChevronRight, FileText, GitPullRequest, Network, Ticket, X } from 'lucide-vue-next';
 import JiraIssueView from '../../atlassian/JiraIssueView.vue';
 import ArchitectureView from '../../forge/ArchitectureView.vue';
 import ChangeRequestView from '../../forge/ChangeRequestView.vue';
 import { t } from '../../i18n';
 import MarkdownFile from '../../files/MarkdownFile.vue';
-import TaskView from '../../views/TaskView.vue';
 import ConversationView from '../../workbench/ConversationView.vue';
 import { METRICS_PANEL, useDock } from '../../workbench/dock';
 import { externalDot, isExternalPanel, useExternalSessions, type Harness } from '../external';
@@ -62,14 +61,13 @@ function labelOf(host: Host): SessionPath | undefined {
   return undefined;
 }
 
-function kindOf(id: string): 'metrics' | 'file' | 'review' | 'architecture' | 'issue' | 'task' | 'conversation' | 'session' {
+function kindOf(id: string): 'metrics' | 'file' | 'review' | 'architecture' | 'issue' | 'conversation' | 'session' {
   if (id === METRICS_PANEL) return 'metrics';
   if (id.startsWith('arch:')) return 'architecture';
   if (isExternalPanel(id)) return 'conversation';
   if (isFilePanel(id)) return 'file';
   if (id.startsWith('mr:')) return 'review';
   if (id.startsWith('jira:')) return 'issue';
-  if (id.startsWith('task:')) return 'task';
   return 'session';
 }
 
@@ -108,9 +106,6 @@ onBeforeUnmount(() => {
       <template #panel-issue="{ params }">
         <JiraIssueView v-if="typeof params.connector === 'string' && typeof params.key === 'string'" class="vr-fade-in" :connector="params.connector" :issue-key="params.key" @open="(ref) => dock.openIssue(ref.connector, ref.key)" />
       </template>
-      <template #panel-task="{ params }">
-        <TaskView v-if="str(params.id)" class="vr-fade-in" :task-id="str(params.id)" embedded />
-      </template>
       <template #panel-conversation="{ params }">
         <ConversationView v-if="isHarness(params.harness) && typeof params.id === 'string'" class="vr-fade-in" :harness="params.harness" :session-id="params.id" />
       </template>
@@ -126,7 +121,6 @@ onBeforeUnmount(() => {
           <GitPullRequest v-else-if="kindOf(api.id) === 'review'" :size="12" />
           <Network v-else-if="kindOf(api.id) === 'architecture'" :size="12" />
           <Ticket v-else-if="kindOf(api.id) === 'issue'" :size="12" />
-          <ListTodo v-else-if="kindOf(api.id) === 'task'" :size="12" />
           <template v-else-if="kindOf(api.id) === 'conversation'">
             <StatusDot :status="tabDot(api.id)" :unseen="false" />
             <HarnessIcon :harness="tabHarness(api.id)" />

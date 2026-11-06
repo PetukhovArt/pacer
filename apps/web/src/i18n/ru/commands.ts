@@ -10,7 +10,6 @@ export const commands: Translation<typeof en> = {
   },
   action: {
     paletteOpen: 'Палитра команд',
-    navTasks: 'Перейти к задачам',
     navAgents: 'Перейти в рабочую область',
     navReviews: 'Перейти к ревью',
     navJira: 'Перейти к Jira',

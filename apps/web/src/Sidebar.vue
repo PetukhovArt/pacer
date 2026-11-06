@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue';
 import { BookOpen, LayoutPanelLeft, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, Ticket } from 'lucide-vue-next';
-import { useClientState } from '@core/vue-bindings';
-import Avatar from './Avatar.vue';
 import { useConnectors } from './connectors/api';
 import { useForgeInbox } from './forge/inbox';
 import { shortcutLabel } from './commands/keymap';
@@ -13,10 +11,9 @@ import ProjectTree from './workbench/ProjectTree.vue';
 import { treeQuery, useWorkTree } from './workbench/useWorkTree';
 
 defineProps<{ dark: boolean }>();
-const emit = defineEmits<{ switch: [id: string]; theme: [] }>();
+const emit = defineEmits<{ theme: [] }>();
 
 const { t, locale, setLocale } = useI18n();
-const state = useClientState();
 const searchInput = ref<HTMLInputElement | null>(null);
 const sidebarEl = ref<HTMLElement | null>(null);
 
@@ -116,8 +113,6 @@ watch(hasForge, (on) => {
   stopPolling = on ? startPolling() : undefined;
 }, { immediate: true });
 
-const workspace = computed(() => state.value.workspaces.find((w) => w.id === state.value.workspaceId));
-
 function onSearchKey(event: KeyboardEvent) {
   if (event.key === 'Escape') treeQuery.value = '';
 }
@@ -181,32 +176,10 @@ onUnmounted(() => {
     </div>
 
     <div v-if="!collapsed" class="sections">
-      <div v-if="state.workspaces.length > 1" class="relay">
-        <button
-          v-for="w in state.workspaces"
-          :key="w.id"
-          class="group-label"
-          :aria-pressed="w.id === state.workspaceId"
-          :data-testid="`workspace-section-${w.id}`"
-          :title="w.id === state.workspaceId ? w.name : t('shell.switchWorkspace', { name: w.name })"
-          @click="w.id !== state.workspaceId && emit('switch', w.id)"
-        >
-          <span class="badge">{{ w.name.slice(0, 1).toUpperCase() }}</span>
-          <span>{{ w.name }}</span>
-        </button>
-      </div>
       <ProjectTree />
     </div>
 
     <footer>
-      <span class="me">
-        <Avatar :id="state.me.id" :name="state.me.name" />
-        <span class="presence vr-dot" :data-online="state.connected" :title="state.connected ? t('shell.online') : t('shell.offline')" />
-      </span>
-      <span v-if="!collapsed" class="who">
-        <strong>{{ state.me.name }}</strong>
-        <span>{{ workspace?.name }}</span>
-      </span>
       <button
         class="icon"
         :data-active="view.kind === 'settings'"
@@ -423,57 +396,6 @@ kbd {
   overflow: hidden;
 }
 
-.relay {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: var(--vr-space-1);
-  padding: 0 var(--vr-space-1) var(--vr-space-1);
-}
-
-.relay .group-label {
-  width: auto;
-}
-
-.relay .group-label[aria-pressed='true'] {
-  color: var(--vr-color-text);
-  background: var(--vr-color-nav-active);
-}
-
-.group-label {
-  display: flex;
-  align-items: center;
-  gap: var(--vr-space-2);
-  width: 100%;
-  height: var(--vr-size-row);
-  padding: 0 var(--vr-space-2);
-  font: inherit;
-  font-size: var(--vr-font-size-xs);
-  font-weight: 500;
-  color: var(--vr-color-nav-muted);
-  background: none;
-  border: 0;
-  border-radius: var(--vr-radius-md);
-}
-
-.group-label[aria-pressed='false']:hover {
-  color: var(--vr-color-text);
-  background: var(--vr-color-nav-hover);
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 10px;
-  font-weight: 700;
-  border-radius: 4px;
-  color: var(--vr-color-accent-contrast);
-  background: var(--vr-color-chrome);
-}
-
 .icon.lang {
   font: inherit;
   font-size: var(--vr-font-size-2xs);
@@ -485,39 +407,6 @@ footer {
   align-items: center;
   gap: var(--vr-space-2);
   padding: var(--vr-space-3) var(--vr-space-1);
-}
-
-.me {
-  position: relative;
-  display: inline-flex;
-}
-
-.presence {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 10px;
-  height: 10px;
-  box-shadow: 0 0 0 2px var(--vr-color-canvas-bottom);
-}
-
-.who {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 16px;
-}
-
-.who > * {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.who span {
-  font-size: var(--vr-font-size-xs);
-  color: var(--vr-color-nav-muted);
 }
 
 .icon {

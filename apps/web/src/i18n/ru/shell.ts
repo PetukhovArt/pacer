@@ -4,7 +4,6 @@ import type { shell as en } from '../en/shell';
 export const shell: Translation<typeof en> = {
   nav: {
     label: 'Навигация',
-    tasks: 'Задачи',
     agents: 'Рабочая область',
     reviews: 'Ревью',
     jira: 'Jira',
@@ -14,11 +13,6 @@ export const shell: Translation<typeof en> = {
   collapse: 'Свернуть панель',
   expand: 'Развернуть панель',
   resize: 'Изменить ширину панели',
-  switchWorkspace: 'Перейти в {name}',
-  topics: 'Топики',
-  tasks: 'Задачи',
-  online: 'в сети',
-  offline: 'нет связи',
   settings: 'Настройки',
   themeLight: 'Светлая тема',
   themeDark: 'Тёмная тема',

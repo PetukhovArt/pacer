@@ -10,7 +10,7 @@ import { itemId } from '../forge/inbox';
 import { architecturePanelId, type ArchitectureParams } from '../forge/stratum';
 import { t } from '../i18n';
 import { useIsMobile } from '../mobile/useIsMobile';
-import { navigate, openTopic, view } from '../nav';
+import { navigate, view } from '../nav';
 import type { WorkNode } from './tree';
 
 export const METRICS_PANEL = 'metrics';
@@ -20,7 +20,6 @@ type PanelPosition = { referencePanel: string; direction: 'within' | 'right' | '
 type Carried = { id: string; component: string; title: string; params: Record<string, unknown> };
 
 export const issuePanelId = (connector: string, key: string) => `jira:${connector}/${key}`;
-export const taskPanelId = (id: string) => `task:${id}`;
 const isSessionPanel = (id: string) => id.startsWith('agent:') || id.startsWith('terminal:');
 
 function createDock() {
@@ -177,10 +176,6 @@ function createDock() {
     openPanel({ id: issuePanelId(connector, key), component: 'issue', title: key, params: { connector, key } });
   }
 
-  function openTask(id: string, title: string) {
-    openPanel({ id: taskPanelId(id), component: 'task', title, params: { id } });
-  }
-
   function openExternal(session: ExternalSession) {
     openPanel({ id: externalKey(session), component: 'conversation', title: session.title, params: { harness: session.harness, id: session.id } });
   }
@@ -191,8 +186,6 @@ function createDock() {
     else if (data?.external) openExternal(data.external);
     else if (data?.item) openReview(data.item, `${numberLabel(data.item)} ${data.item.title}`);
     else if (data?.issue) openIssue(data.issue.connector, data.issue.key);
-    else if (data?.task) openTask(data.task.id, data.task.externalRef);
-    else if (data?.topic) openTopic(data.topic.id);
   }
 
   function openMetrics() {
@@ -290,7 +283,6 @@ function createDock() {
     openReview,
     openArchitecture,
     openIssue,
-    openTask,
     openExternal,
     openLeaf,
     openMetrics,

@@ -1,6 +1,4 @@
-import type { Topic } from '@core/client-sdk';
-import type { Task } from '@veyra/protocol';
-import { Archive, Eye, EyeOff, Folder, FolderGit2, FolderOpen, FolderSearch, GitBranch, Hash, History, House, Inbox, Layers, UserRound } from 'lucide-vue-next';
+import { Archive, Eye, EyeOff, Folder, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, House, Inbox, Layers, UserRound } from 'lucide-vue-next';
 import { externalDot, externalKey, placeExternal, splitEarlier, type ExternalSession } from '../agents/external';
 import { worktreesOfProject, type Entities, type SessionNode, type WorktreeNode } from '../agents/pacer';
 import { rollupOf, type Rollup, type WorkspaceNode } from '../agents/proto/nav';
@@ -10,7 +8,7 @@ import { itemId, pipelineRollup } from '../forge/inbox';
 import { t } from '../i18n';
 import type { TreeNode } from '../tree/types';
 import type { RepoRef } from './clones';
-import { issuePanelId, taskPanelId } from './dock';
+import { issuePanelId } from './dock';
 import { connectorBase, type Remote } from './remotes';
 
 export type TreeTab = 'sessions' | 'mrs' | 'reviews' | 'tasks' | 'all';
@@ -27,8 +25,6 @@ type NodeData = {
   linked?: ExternalSession;
   item?: InboxItem;
   issue?: JiraIssueSummary;
-  task?: Task;
-  topic?: Topic;
   repo?: RepoRef;
   review?: ReviewMeta;
   notes?: ReviewNoteView[];
@@ -50,7 +46,6 @@ type ReviewKind = 'queue' | 'plain' | 'also';
 
 export type Sources = {
   pacer: boolean;
-  relay: boolean;
   workspaces: readonly WorkspaceNode[];
   entities: Entities | undefined;
   external: readonly ExternalSession[];
@@ -59,14 +54,12 @@ export type Sources = {
   connectors: readonly ConnectorView[];
   mrs: readonly InboxItem[];
   issues: readonly JiraIssueSummary[];
-  tasks: readonly Task[];
-  topics: readonly Topic[];
   jiraProjects: Readonly<Record<string, string>>;
   review: ReviewSource;
 };
 
 type ProjectNode = WorkspaceNode['projects'][number];
-type Work = JiraIssueSummary | Task;
+type Work = JiraIssueSummary;
 type Links = {
   mrs: Map<string | null, InboxItem[]>;
   work: Map<string | null, Work[]>;
@@ -114,9 +107,7 @@ function link(sources: Sources): Links {
   }
   const projectOfKey = (key: string) => byBranchKey.get(key.toUpperCase()) ?? byPrefix.get(key.slice(0, key.lastIndexOf('-')).toUpperCase()) ?? null;
 
-  const issueKeys = new Set(sources.issues.map((issue) => issue.key));
   for (const issue of sources.issues) push(links.work, projectOfKey(issue.key), issue);
-  for (const task of sources.tasks) if (!issueKeys.has(task.externalRef)) push(links.work, projectOfKey(task.externalRef), task);
   return links;
 }
 
@@ -153,13 +144,10 @@ const mrLeaf = (item: InboxItem, review?: ReviewMeta): WorkNode => ({
   title: `${item.project} ${numberLabel(item)}\n${item.title}${review?.refs.length ? `\n${review.refs.join(', ')}` : ''}`,
   data: { item, pipeline: item.pipeline, review },
 });
-const workLeaf = (work: Work): WorkNode =>
-  'key' in work
-    ? { id: issuePanelId(work.connector, work.key), kind: 'issue', label: `${work.key} ${work.summary}`, title: `${work.key} ${work.summary}\n${work.status}`, data: { issue: work } }
-    : { id: taskPanelId(work.id), kind: 'task', label: `${work.externalRef} ${work.title}`, title: `${work.externalRef} ${work.title}\n${work.status}`, data: { task: work } };
+const workLeaf = (work: Work): WorkNode => ({ id: issuePanelId(work.connector, work.key), kind: 'issue', label: `${work.key} ${work.summary}`, title: `${work.key} ${work.summary}\n${work.status}`, data: { issue: work } });
 
 const mrText = (item: InboxItem) => `${item.project} ${numberLabel(item)} ${item.number} ${item.title} ${item.author.name} ${item.author.username} ${item.source_branch} ${item.target_branch}`;
-const workText = (work: Work) => ('key' in work ? `${work.key} ${work.summary} ${work.status}` : `${work.externalRef} ${work.title} ${work.status}`);
+const workText = (work: Work) => `${work.key} ${work.summary} ${work.status}`;
 
 type Placed = {
   now: number;
@@ -346,14 +334,13 @@ export function tabCounts(sources: Sources): TabCounts {
     const kind = kinds.get(itemId(item));
     return kind === 'plain' || (kind === 'queue' && !sources.review.rows.get(itemId(item))?.approved);
   });
-  const issueKeys = new Set(sources.issues.map((issue) => issue.key));
   return {
     sessionsWaiting: rollup.feedback,
     sessionsRunning: rollup.running,
     mrs: mine.length,
     mrsAttention: mine.filter(needsAttention).length,
     reviews: pending.length,
-    tasks: sources.issues.length + sources.tasks.filter((task) => !issueKeys.has(task.externalRef)).length,
+    tasks: sources.issues.length,
   };
 }
 
@@ -368,11 +355,6 @@ export function buildTree(sources: Sources, tab: TreeTab, query: string): WorkNo
   const wanted = (item: InboxItem) => (tab === 'reviews' ? kinds.has(itemId(item)) : tab === 'mrs' ? !kinds.has(itemId(item)) : true);
   const mrsOf = (key: string | null) => (links.mrs.get(key) ?? []).filter((item) => wanted(item) && match(mrText(item)));
   const workOf = (key: string | null) => (links.work.get(key) ?? []).filter((work) => match(workText(work)));
-  const topics = sources.topics.filter((topic) => match(topic.name));
-  const topicsGroup =
-    topics.length || (sources.relay && !filtering)
-      ? [group('topics', 'topics', t('workbench.topics'), topics.map((topic): WorkNode => ({ id: `topic:${topic.id}`, kind: 'topic', label: topic.name, icon: Hash, data: { topic } })), { icon: Hash })]
-      : [];
   const projects = sources.workspaces.flatMap((workspace) => workspace.projects.map((project) => ({ workspace, project })));
   const projectLabel = (workspace: WorkspaceNode, project: ProjectNode) => (sources.workspaces.length > 1 ? `${workspace.name} / ${project.name}` : project.name);
 
@@ -443,16 +425,16 @@ export function buildTree(sources: Sources, tab: TreeTab, query: string): WorkNo
     ];
   };
 
-  if (tab === 'sessions') return [...sessionNodes(), ...topicsGroup, ...(sources.pacer && !filtering ? [{ id: 'add-workspace', kind: 'add-workspace', label: '', custom: true, inert: true }] : [])];
+  if (tab === 'sessions') return [...sessionNodes(), ...(sources.pacer && !filtering ? [{ id: 'add-workspace', kind: 'add-workspace', label: '', custom: true, inert: true }] : [])];
   if (tab === 'tasks') return taskNodes();
-  if (tab === 'all') return [...sessionNodes(), ...mrNodes(), ...taskNodes(), ...topicsGroup];
+  if (tab === 'all') return [...sessionNodes(), ...mrNodes(), ...taskNodes()];
   return mrNodes();
 }
 
 export type QuickItem = { key: string; node: WorkNode; crumbs: string[]; search: string };
 
 const CRUMB_KINDS = new Set(['workspace', 'project', 'worktree', 'orphans', 'repo', 'folder', 'folders']);
-const QUICK_KINDS = new Set(['session', 'external', 'mr', 'issue', 'task', 'topic']);
+const QUICK_KINDS = new Set(['session', 'external', 'mr', 'issue']);
 const QUICK_RANK: Readonly<Record<string, number>> = { session: 0, external: 1, mr: 2 };
 
 export function quickItems(nodes: readonly WorkNode[]): QuickItem[] {

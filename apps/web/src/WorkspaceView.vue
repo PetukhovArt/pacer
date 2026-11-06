@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { watch } from 'vue';
-import { useClient, useClientState } from '@core/vue-bindings';
 import AgentsView from './agents/AgentsView.vue';
 import CommandPalette from './commands/CommandPalette.vue';
 import { paletteOpen } from './commands/context';
@@ -11,23 +10,17 @@ import { useIsMobile } from './mobile/useIsMobile';
 import Sidebar from './Sidebar.vue';
 import TitleBar from './TitleBar.vue';
 import { installTray } from './tray';
-import { navigate, view, type View } from './nav';
+import { view, type View } from './nav';
 import { isDark, toggleTheme } from './settings/appearance';
 import SettingsView from './settings/SettingsView.vue';
 import ConfluenceView from './views/ConfluenceView.vue';
 import JiraView from './views/JiraView.vue';
-import TasksView from './views/TasksView.vue';
-import TaskView from './views/TaskView.vue';
-import TopicView from './views/TopicView.vue';
 import { useDock } from './workbench/dock';
 import QuickOpen from './workbench/QuickOpen.vue';
 
 const inTauri = '__TAURI_INTERNALS__' in window;
 const mobile = useIsMobile();
-const client = useClient();
-const state = useClientState();
-const WORKSPACE_KEY = 'veyra.workspace';
-const viewKey = `veyra.view.v2.${state.value.me.id}`;
+const viewKey = 'veyra.view.v2';
 const dock = useDock();
 installTray();
 
@@ -48,28 +41,19 @@ watch(
   },
   { immediate: true },
 );
-
-function switchWorkspace(id: string) {
-  localStorage.setItem(WORKSPACE_KEY, id);
-  if (view.value.kind === 'task' || view.value.kind === 'topic') void navigate({ kind: 'agents' });
-  client.setWorkspace(id);
-}
 </script>
 
 <template>
   <div class="shell">
     <TitleBar v-if="inTauri" />
     <div class="body" :data-mobile="mobile">
-      <Sidebar v-if="!mobile" :dark="isDark" @switch="switchWorkspace" @theme="toggleTheme" />
+      <Sidebar v-if="!mobile" :dark="isDark" @theme="toggleTheme" />
       <main class="card vt-main">
         <KeepAlive include="AgentsView">
           <AgentsView v-if="view.kind === 'agents'" />
           <JiraView v-else-if="view.kind === 'jira'" />
           <ConfluenceView v-else-if="view.kind === 'confluence'" />
-          <SettingsView v-else-if="view.kind === 'settings'" />
-          <TaskView v-else-if="view.kind === 'task'" :key="view.id" :task-id="view.id" />
-          <TopicView v-else-if="view.kind === 'topic'" :key="view.id" :topic-id="view.id" />
-          <TasksView v-else />
+          <SettingsView v-else />
         </KeepAlive>
       </main>
     </div>

@@ -15,10 +15,12 @@ const args = process.argv
 process.chdir(root);
 process.env.PATH = [join(root, 'node_modules', '.bin'), join(homedir(), '.cargo', 'bin'), process.env.PATH].join(delimiter);
 
+const inApps = (file) => /^(apps|packages|docker)\//.test(file) || file === 'scripts/checks.mjs';
 const staged = args.length === 0;
-const files = staged ? lines(git('diff', '--cached', '--name-only', '--diff-filter=ACMR')) : args.filter((file) => existsSync(file));
+const files = (staged ? lines(git('diff', '--cached', '--name-only', '--diff-filter=ACMR')) : args.filter((file) => existsSync(file))).filter(inApps);
+if (files.length === 0) process.exit(0);
 const tracked = new Set(staged ? [] : lines(git('ls-files', '--', ...files)));
-const added = staged ? lines(git('diff', '--cached', '--name-only', '--diff-filter=A')) : files.filter((file) => !tracked.has(file));
+const added = (staged ? lines(git('diff', '--cached', '--name-only', '--diff-filter=A')) : files.filter((file) => !tracked.has(file))).filter(inApps);
 const read = (file) => (staged ? git('show', `:${file}`) : readFileSync(file, 'utf8'));
 
 const K = ts.SyntaxKind;
@@ -94,12 +96,7 @@ const run = async (command, env = {}) => {
 const quoted = (list) => list.map((file) => `"${file}"`).join(' ');
 const lintable = files.filter((file) => /\.(vue|[cm]?[jt]s)$/.test(file));
 const rust = files.filter((file) => file.endsWith('.rs'));
-const cargoInput = files.filter((file) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|(^|\/)rust-toolchain\.toml$/.test(file));
-const workspaceTouched = cargoInput.some((file) => !file.includes('/'));
-const tauriTouched = cargoInput.some((file) => file === 'rust-toolchain.toml' || file.startsWith('apps/desktop/src-tauri/'));
-const packageOf = (dir) => readFileSync(`crates/${dir}/Cargo.toml`, 'utf8').match(/^name\s*=\s*"([^"]+)"/m)[1];
-const crateDirs = [...new Set(cargoInput.map((file) => file.match(/^crates\/([^/]+)\//)?.[1]).filter((dir) => dir && existsSync(`crates/${dir}/Cargo.toml`)))];
-const crateClippy = workspaceTouched ? '--workspace' : crateDirs.map((dir) => `-p ${packageOf(dir)}`).join(' ');
+const tauriTouched = files.some((file) => /^apps\/desktop\/src-tauri\/.*(\.rs|Cargo\.toml)$/.test(file));
 
 const checks = [
   ['comments', 'удали комментарий: смысл выражай именем, типом или правилом линтера; разрешён только /// <reference>', async () => scan(() => true, (file, text) => commentsOf(file, text).filter(([, raw]) => !/^\/\/\/\s*<reference\s/.test(raw)))],
@@ -107,9 +104,9 @@ const checks = [
   ['new-files', 'не добавляй .md, *.test.*, *.spec.* и __tests__/: правда живёт в коде, тестов в проекте нет', async () => added.filter((file) => /\.md$|\.(test|spec)\.|(^|\/)__tests__\//i.test(file))],
   ['oxlint', 'исправь предупреждения oxlint, не отключай правило', async () => (lintable.length ? run(`oxlint --deny-warnings ${quoted(lintable)}`) : [])],
   ['knip', 'удали неиспользуемый export, файл или зависимость', () => run('knip')],
-  ['types', 'исправь ошибки типов', async () => (existsSync(DIFF_VERIFY) ? run(`node "${DIFF_VERIFY}"`, { VERIFY_SKIP_LINT: '1', VERIFY_SKIP_TESTS: '1' }) : [...(await run('pnpm -r --filter "...[HEAD]" --filter "!veyra" --if-present typecheck')), ...(files.some((file) => file.startsWith('scripts/')) ? await run('tsc -p .') : [])])],
-  ['rustfmt', 'отформатируй: cargo fmt --all или cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml', async () => (await Promise.all(Array.from({ length: Math.ceil(rust.length / 50) }, (_, i) => run(`rustfmt --check --edition 2021 ${quoted(rust.slice(i * 50, i * 50 + 50))}`)))).flat()],
-  ['clippy', 'исправь замечания clippy, не глуши их через allow', async () => [...(tauriTouched ? await run('cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -- -D warnings') : []), ...(crateClippy ? await run(`cargo clippy ${crateClippy} -- -D warnings`) : [])]],
+  ['types', 'исправь ошибки типов', async () => (existsSync(DIFF_VERIFY) ? run(`node "${DIFF_VERIFY}"`, { VERIFY_SKIP_LINT: '1', VERIFY_SKIP_TESTS: '1' }) : [...(await run('pnpm -r --filter "...[HEAD]" --filter "!berth-apps" --if-present typecheck')), ...(files.some((file) => file.startsWith('scripts/')) ? await run('tsc -p .') : [])])],
+  ['rustfmt', 'отформатируй: cargo fmt -p berth-desktop', async () => (await Promise.all(Array.from({ length: Math.ceil(rust.length / 50) }, (_, i) => run(`rustfmt --check --edition 2021 ${quoted(rust.slice(i * 50, i * 50 + 50))}`)))).flat()],
+  ['clippy', 'исправь замечания clippy, не глуши их через allow', async () => (tauriTouched ? run('cargo clippy -p berth-desktop --all-targets -j 4 -- -D warnings') : [])],
 ];
 
 const results = await Promise.all(checks.map(async ([name, fix, check]) => [name, fix, await check()]));

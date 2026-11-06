@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, shallowRef, useTemplateRef } from 'vue';
-import { ChevronRight, FileText, GitPullRequest, Hash, ListTodo, Ticket } from 'lucide-vue-next';
+import { ChevronRight, FileText, GitPullRequest, Ticket } from 'lucide-vue-next';
 import { subsequenceScore } from '../../commands/fuzzy';
 import { usePickerList } from '../../commands/usePickerList';
 import PipelineIcon from '../../forge/PipelineIcon.vue';
@@ -20,7 +20,7 @@ const input = useTemplateRef<HTMLInputElement>('input');
 const list = useTemplateRef<HTMLElement>('list');
 const query = shallowRef('');
 
-const ICONS = { mr: GitPullRequest, issue: Ticket, task: ListTodo, topic: Hash } as const;
+const ICONS = { mr: GitPullRequest, issue: Ticket } as const;
 const iconOf = (kind: string) => (kind in ICONS ? ICONS[kind as keyof typeof ICONS] : undefined);
 
 const results = computed<Item[]>(() => {

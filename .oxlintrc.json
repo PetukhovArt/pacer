@@ -9,8 +9,8 @@
       "rules": {
         "no-restricted-globals": [
           "error",
-          { "name": "fetch", "message": "Сеть только через @core/client-sdk." },
-          { "name": "WebSocket", "message": "Сеть только через @core/client-sdk." }
+          { "name": "fetch", "message": "Сеть только через bridge.ts." },
+          { "name": "WebSocket", "message": "Сеть только через bridge.ts." }
         ]
       }
     },
