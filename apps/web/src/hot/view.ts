@@ -1,5 +1,5 @@
 import { computed, shallowRef } from 'vue';
-import type { SessionStatus } from '../agents/pacer';
+import type { SessionStatus } from '../agents/berth';
 import { useSettings } from '../settings/store';
 import type { HotStatus } from './hot';
 

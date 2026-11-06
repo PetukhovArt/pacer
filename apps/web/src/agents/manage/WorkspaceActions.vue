@@ -2,7 +2,7 @@
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
 import { t } from '../../i18n';
-import { usePacer } from '../pacer';
+import { useBerth } from '../berth';
 import ActionMenu from './ActionMenu.vue';
 import { useAction } from '../useAction';
 import { addWorkspace, removeWorkspace, renameWorkspace } from './workspaces';
@@ -11,13 +11,13 @@ const props = defineProps<{ workspaceId?: string }>();
 
 type Mode = 'idle' | 'creating' | 'renaming' | 'removing';
 
-const pacer = usePacer();
+const berth = useBerth();
 const mode = shallowRef<Mode>('idle');
 const draft = shallowRef('');
 const { error, busy, run, clear } = useAction();
 const input = useTemplateRef<{ $el: HTMLInputElement }>('input');
 
-const current = computed(() => (props.workspaceId ? pacer?.entities.value.workspaces.get(props.workspaceId) : undefined));
+const current = computed(() => (props.workspaceId ? berth?.entities.value.workspaces.get(props.workspaceId) : undefined));
 const name = computed(() => draft.value.trim());
 const editing = computed(() => mode.value === 'creating' || mode.value === 'renaming');
 
@@ -50,7 +50,7 @@ async function confirmRemove() {
 </script>
 
 <template>
-  <div v-if="pacer" class="actions">
+  <div v-if="berth" class="actions">
     <ActionMenu
       v-if="workspaceId"
       testid="workspace-menu"

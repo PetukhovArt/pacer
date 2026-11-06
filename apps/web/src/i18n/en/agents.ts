@@ -1,5 +1,5 @@
 export const agents = {
-  unavailable: 'Pacer sessions work only in the Veyra desktop app',
+  unavailable: 'Berth sessions work only in the Veyra desktop app',
   sidePane: {
     resize: 'Session list width',
   },
@@ -70,7 +70,7 @@ export const agents = {
   project: {
     actions: 'Project actions',
     newSession: 'New Session',
-    removeFromPacer: 'Remove from pacer',
+    removeFromBerth: 'Remove from berth',
     oldConversations: 'Old Conversations',
     add: 'Add Project',
     path: 'Folder path',
@@ -82,7 +82,7 @@ export const agents = {
     folderName: 'Folder name',
     renameHint: 'An empty name resets to the folder name',
     confirm: 'Confirmation',
-    removeQuestion: 'Remove "{name}" from pacer? The folder on disk is not affected.',
+    removeQuestion: 'Remove "{name}" from berth? The folder on disk is not affected.',
   },
   workspace: {
     fallback: 'Workspace',
@@ -104,15 +104,15 @@ export const agents = {
     quickOpenTitle: 'Quick Open (Ctrl+P)',
   },
   notices: {
-    connecting: 'connecting to pacer…',
-    offline: 'pacer daemon is not running',
-    incompatible: 'incompatible pacer version',
+    connecting: 'connecting to berth…',
+    offline: 'berth daemon is not running',
+    incompatible: 'incompatible berth version',
   },
   errors: {
-    unexpectedReply: 'unexpected pacer reply: {reply}',
-    expectedAck: 'pacer replied {reply} instead of Ack',
-    expectedMetrics: 'pacer replied {reply} instead of Metrics',
-    expectedOrphans: 'pacer replied {reply} instead of the conversation list',
-    noAgentCreated: 'pacer did not return the created agent',
+    unexpectedReply: 'unexpected berth reply: {reply}',
+    expectedAck: 'berth replied {reply} instead of Ack',
+    expectedMetrics: 'berth replied {reply} instead of Metrics',
+    expectedOrphans: 'berth replied {reply} instead of the conversation list',
+    noAgentCreated: 'berth did not return the created agent',
   },
 } as const;

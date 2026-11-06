@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/berth-core", "crates/berth-daemon", "crates/berth-tui", "crates/berth"]
+members = [
+    "crates/berth-core",
+    "crates/berth-daemon",
+    "crates/berth-tui",
+    "crates/berth",
+    "apps/desktop/src-tauri",
+]
+default-members = ["crates/berth-core", "crates/berth-daemon", "crates/berth-tui", "crates/berth"]
 exclude = ["vendor/vt100"]
 
 # Vendored vt100 with one patch: rows scrolled out of a top-anchored DECSTBM

@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use pacer_core::codec::{read_frame, write_frame};
-use pacer_core::transport::{self, Stream};
-use pacer_core::{
+use berth_core::codec::{read_frame, write_frame};
+use berth_core::transport::{self, Stream};
+use berth_core::{
     Agent, AgentId, AgentStatus, ClientRequest, Entity, EntityId, Project, ServerEvent, SessionRef,
     TerminalTab, Workspace, WorkspaceId, Worktree, PROTOCOL_VERSION,
 };
@@ -22,8 +22,8 @@ const OFFLINE_RETRY: Duration = Duration::from_secs(1);
 const INCOMPATIBLE_RETRY: Duration = Duration::from_secs(5);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
-const CALL_OFFLINE: &str = "демон pacer не запущен";
-const CALL_LOST: &str = "соединение с pacer потеряно";
+const CALL_OFFLINE: &str = "демон berth не запущен";
+const CALL_LOST: &str = "соединение с berth потеряно";
 
 type CallResult = Result<serde_json::Value, String>;
 
@@ -76,9 +76,9 @@ pub enum SessionEvent {
     Exited { exit_code: Option<i32> },
 }
 
-pub struct Pacer(UnboundedSender<Msg>);
+pub struct Berth(UnboundedSender<Msg>);
 
-impl Pacer {
+impl Berth {
     pub fn spawn() -> Self {
         let (tx, rx) = unbounded_channel();
         tokio::spawn(Actor::new(tx.clone()).run(rx));
@@ -90,24 +90,24 @@ impl Pacer {
     }
 }
 
-impl Drop for Pacer {
+impl Drop for Berth {
     fn drop(&mut self) {
         let _ = self.0.send(Msg::Stop);
     }
 }
 
-pub fn pacer_watch(pacer: &Pacer, on_event: BoxSink<WatchEvent>) {
-    pacer.send(Command::Watch(on_event));
+pub fn berth_watch(berth: &Berth, on_event: BoxSink<WatchEvent>) {
+    berth.send(Command::Watch(on_event));
 }
 
-pub fn pacer_attach(
-    pacer: &Pacer,
+pub fn berth_attach(
+    berth: &Berth,
     session: SessionRef,
     cols: u16,
     rows: u16,
     on_event: BoxSink<SessionEvent>,
 ) {
-    pacer.send(Command::Attach {
+    berth.send(Command::Attach {
         session,
         cols,
         rows,
@@ -115,30 +115,30 @@ pub fn pacer_attach(
     });
 }
 
-pub fn pacer_input(pacer: &Pacer, session: SessionRef, data: String) {
-    pacer.send(Command::Input {
+pub fn berth_input(berth: &Berth, session: SessionRef, data: String) {
+    berth.send(Command::Input {
         session,
         data: data.into_bytes(),
     });
 }
 
-pub fn pacer_resize(pacer: &Pacer, session: SessionRef, cols: u16, rows: u16) {
-    pacer.send(Command::Resize {
+pub fn berth_resize(berth: &Berth, session: SessionRef, cols: u16, rows: u16) {
+    berth.send(Command::Resize {
         session,
         cols,
         rows,
     });
 }
 
-pub fn pacer_detach(pacer: &Pacer, session: SessionRef) {
-    pacer.send(Command::Detach { session });
+pub fn berth_detach(berth: &Berth, session: SessionRef) {
+    berth.send(Command::Detach { session });
 }
 
-pub fn pacer_mark_seen(pacer: &Pacer, agent: AgentId) {
-    pacer.send(Command::MarkSeen { agent });
+pub fn berth_mark_seen(berth: &Berth, agent: AgentId) {
+    berth.send(Command::MarkSeen { agent });
 }
 
-pub async fn pacer_call(pacer: &Pacer, mut request: serde_json::Value) -> CallResult {
+pub async fn berth_call(berth: &Berth, mut request: serde_json::Value) -> CallResult {
     if let Some(serde_json::Value::Object(fields)) = request
         .as_object_mut()
         .and_then(|tagged| tagged.values_mut().next())
@@ -146,9 +146,9 @@ pub async fn pacer_call(pacer: &Pacer, mut request: serde_json::Value) -> CallRe
         fields.entry("req_id").or_insert(serde_json::Value::from(0));
     }
     let request: ClientRequest = serde_json::from_value(request)
-        .map_err(|error| format!("некорректный запрос к pacer: {error}"))?;
+        .map_err(|error| format!("некорректный запрос к berth: {error}"))?;
     let (reply, answer) = oneshot::channel();
-    pacer.send(Command::Call { request, reply });
+    berth.send(Command::Call { request, reply });
     answer.await.unwrap_or_else(|_| Err(CALL_LOST.into()))
 }
 
@@ -220,7 +220,7 @@ impl Failure {
         match self {
             Self::Offline(message) => message,
             Self::Incompatible(daemon) => format!(
-                "pacer daemon speaks protocol v{daemon}, Veyra speaks protocol v{PROTOCOL_VERSION}"
+                "berth daemon speaks protocol v{daemon}, Veyra speaks protocol v{PROTOCOL_VERSION}"
             ),
         }
     }
@@ -322,7 +322,7 @@ impl Actor {
                 Msg::CallTimedOut(req_id) => {
                     if let Some(reply) = self.pending.remove(&req_id) {
                         let _ = reply.send(Err(format!(
-                            "pacer не ответил за {} с",
+                            "berth не ответил за {} с",
                             CALL_TIMEOUT.as_secs()
                         )));
                     }
@@ -384,7 +384,7 @@ impl Actor {
     fn call(&mut self, mut request: ClientRequest, reply: oneshot::Sender<CallResult>) {
         let Some(slot) = rpc_req_id(&mut request) else {
             let _ = reply.send(Err(
-                "pacer_call принимает только RPC-запросы с req_id".into()
+                "berth_call принимает только RPC-запросы с req_id".into()
             ));
             return;
         };
@@ -455,7 +455,7 @@ impl Actor {
                 Ok(Ok(stream)) => LinkEvent::Up(stream),
                 Ok(Err(failure)) => LinkEvent::Failed(failure),
                 Err(_) => {
-                    LinkEvent::Failed(Failure::Offline("pacer daemon handshake timed out".into()))
+                    LinkEvent::Failed(Failure::Offline("berth daemon handshake timed out".into()))
                 }
             };
             let _ = inbox.send(Msg::Link { epoch, event });
@@ -657,10 +657,10 @@ async fn handshake() -> Result<Stream, Failure> {
             daemon_protocol_version,
         }) => Err(Failure::Incompatible(daemon_protocol_version)),
         Some(other) => Err(Failure::Offline(format!(
-            "unexpected pacer handshake reply: {other:?}"
+            "unexpected berth handshake reply: {other:?}"
         ))),
         None => Err(Failure::Offline(
-            "pacer daemon closed the connection during the handshake".into(),
+            "berth daemon closed the connection during the handshake".into(),
         )),
     }
 }

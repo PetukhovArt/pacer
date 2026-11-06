@@ -1,7 +1,7 @@
 import { computed, onActivated, onBeforeUnmount, onDeactivated, shallowRef, watch } from 'vue';
 import type { DockviewApi, DockviewReadyEvent } from 'dockview-vue';
 import { externalKey, type ExternalSession } from '../agents/external';
-import { markSeen, sessionKey, usePacer, type SessionNode, type SessionRef, type WorktreeNode } from '../agents/pacer';
+import { markSeen, sessionKey, useBerth, type SessionNode, type SessionRef, type WorktreeNode } from '../agents/berth';
 import { FILE_PANEL_PREFIX, fileNameOf, filePanelId, isFilePanel, normalizePath } from '../agents/proto/markdownFiles';
 import { sessionPaths } from '../agents/proto/nav';
 import type { ChangeRequestRef } from '../connectors/api';
@@ -23,7 +23,7 @@ export const issuePanelId = (connector: string, key: string) => `jira:${connecto
 const isSessionPanel = (id: string) => id.startsWith('agent:') || id.startsWith('terminal:');
 
 function createDock() {
-  const pacer = usePacer();
+  const berth = useBerth();
   const mobile = useIsMobile();
   const dock = shallowRef<DockviewApi | null>(null);
   const activeKey = shallowRef<string | null>(null);
@@ -36,13 +36,13 @@ function createDock() {
   const pending: ((api: DockviewApi) => void)[] = [];
   let carried: { panels: Carried[]; active: string | null } = { panels: [], active: null };
 
-  const paths = computed(() => sessionPaths(pacer?.tree.value ?? []));
+  const paths = computed(() => sessionPaths(berth?.tree.value ?? []));
   const activePath = computed(() => (activeKey.value ? paths.value.get(activeKey.value) : undefined));
-  const activeSession = computed(() => (activeKey.value ? pacer?.sessions.value.get(activeKey.value) : undefined));
+  const activeSession = computed(() => (activeKey.value ? berth?.sessions.value.get(activeKey.value) : undefined));
 
   function findWorktree(id: string | null | undefined): WorktreeNode | null {
     if (!id) return null;
-    for (const workspace of pacer?.tree.value ?? []) for (const project of workspace.projects) for (const worktree of project.worktrees) if (worktree.id === id) return worktree;
+    for (const workspace of berth?.tree.value ?? []) for (const project of workspace.projects) for (const worktree of project.worktrees) if (worktree.id === id) return worktree;
     return null;
   }
 
@@ -53,7 +53,7 @@ function createDock() {
     if (byPath || !key || !isFilePanel(key)) return byPath;
     const file = key.slice(FILE_PANEL_PREFIX.length);
     let best: WorktreeNode | null = null;
-    for (const workspace of pacer?.tree.value ?? [])
+    for (const workspace of berth?.tree.value ?? [])
       for (const project of workspace.projects)
         for (const worktree of project.worktrees) {
           const root = normalizePath(worktree.path).replace(/\/+$/, '');
@@ -72,10 +72,10 @@ function createDock() {
   });
 
   watch(
-    () => pacer?.sessions.value,
+    () => berth?.sessions.value,
     (sessions) => {
       const api = dock.value;
-      if (!api || !sessions || pacer?.connection.value.state !== 'connected') return;
+      if (!api || !sessions || berth?.connection.value.state !== 'connected') return;
       for (const panel of api.panels) if (isSessionPanel(panel.id) && !sessions.has(panel.id)) panel.api.close();
       const opening = openingKey.value ? sessions.get(openingKey.value) : undefined;
       if (!opening) return;
@@ -194,7 +194,7 @@ function createDock() {
 
   function openWhenListed(session: SessionRef) {
     const key = sessionKey(session);
-    const node = pacer?.sessions.value.get(key);
+    const node = berth?.sessions.value.get(key);
     if (node) openSession(node);
     else openingKey.value = key;
   }
@@ -205,7 +205,7 @@ function createDock() {
   }
 
   function startCreateInMain() {
-    const projects = (pacer?.tree.value ?? []).flatMap((workspace) => workspace.projects);
+    const projects = (berth?.tree.value ?? []).flatMap((workspace) => workspace.projects);
     const active = activeWorktree.value?.id;
     const project = projects.find((candidate) => candidate.worktrees.some((worktree) => worktree.id === active)) ?? projects[0];
     const target = project?.worktrees.find((worktree) => worktree.main) ?? project?.worktrees[0];
@@ -218,7 +218,7 @@ function createDock() {
   }
 
   function restore(api: DockviewApi) {
-    const sessions = pacer?.sessions.value;
+    const sessions = berth?.sessions.value;
     for (const panel of carried.panels) {
       if (isSessionPanel(panel.id) && !sessions?.has(panel.id)) continue;
       const always = panel.component === 'session' || panel.component === 'markdown' || panel.component === 'architecture';
@@ -267,7 +267,7 @@ function createDock() {
   }
 
   return {
-    pacer,
+    berth,
     activeKey,
     activeTitle,
     activeSession,

@@ -1,6 +1,6 @@
-import type { SessionNode, SessionStatus, usePacer } from '../pacer';
+import type { SessionNode, SessionStatus, useBerth } from '../berth';
 
-type Store = NonNullable<ReturnType<typeof usePacer>>;
+type Store = NonNullable<ReturnType<typeof useBerth>>;
 export type WorkspaceNode = Store['tree']['value'][number];
 
 export type SessionPath = {

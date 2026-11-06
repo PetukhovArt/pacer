@@ -1,6 +1,6 @@
 import { Archive, Eye, EyeOff, Folder, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, House, Inbox, Layers, UserRound } from 'lucide-vue-next';
 import { externalDot, externalKey, placeExternal, splitEarlier, type ExternalSession } from '../agents/external';
-import { worktreesOfProject, type Entities, type SessionNode, type WorktreeNode } from '../agents/pacer';
+import { worktreesOfProject, type Entities, type SessionNode, type WorktreeNode } from '../agents/berth';
 import { rollupOf, type Rollup, type WorkspaceNode } from '../agents/proto/nav';
 import type { ConnectorView, InboxItem, JiraIssueSummary, PipelineStatus } from '../connectors/api';
 import { numberLabel } from '../forge/format';
@@ -45,7 +45,7 @@ export type ReviewSource = {
 type ReviewKind = 'queue' | 'plain' | 'also';
 
 export type Sources = {
-  pacer: boolean;
+  berth: boolean;
   workspaces: readonly WorkspaceNode[];
   entities: Entities | undefined;
   external: readonly ExternalSession[];
@@ -359,7 +359,7 @@ export function buildTree(sources: Sources, tab: TreeTab, query: string): WorkNo
   const projectLabel = (workspace: WorkspaceNode, project: ProjectNode) => (sources.workspaces.length > 1 ? `${workspace.name} / ${project.name}` : project.name);
 
   const sessionNodes = (): WorkNode[] => {
-    if (!sources.pacer && !sources.external.length) return [];
+    if (!sources.berth && !sources.external.length) return [];
     const workspaceNodes = sources.workspaces.flatMap((workspace): WorkNode[] => {
       const children = workspace.projects.flatMap((project): WorkNode[] => {
         const worktrees = [...worktreeNodes('s|', project, links, placed, match, filtering), ...otherFolders('s|', project, placed, match)];
@@ -425,7 +425,7 @@ export function buildTree(sources: Sources, tab: TreeTab, query: string): WorkNo
     ];
   };
 
-  if (tab === 'sessions') return [...sessionNodes(), ...(sources.pacer && !filtering ? [{ id: 'add-workspace', kind: 'add-workspace', label: '', custom: true, inert: true }] : [])];
+  if (tab === 'sessions') return [...sessionNodes(), ...(sources.berth && !filtering ? [{ id: 'add-workspace', kind: 'add-workspace', label: '', custom: true, inert: true }] : [])];
   if (tab === 'tasks') return taskNodes();
   if (tab === 'all') return [...sessionNodes(), ...mrNodes(), ...taskNodes()];
   return mrNodes();

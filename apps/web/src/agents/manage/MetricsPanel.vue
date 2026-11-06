@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue';
 import { useI18n } from '../../i18n';
-import { describeError, sessionId, sessionKey, usePacer } from '../pacer';
+import { describeError, sessionId, sessionKey, useBerth } from '../berth';
 import { getMetrics, type MetricsSnapshot, type SessionMetrics } from './metrics';
 
 const POLL_INTERVAL_MS = 3000;
@@ -10,7 +10,7 @@ const { t, formatBytes } = useI18n();
 
 type Row = { id: string; name: string; procs: number; rssBytes: number; share: number };
 
-const pacer = usePacer();
+const berth = useBerth();
 const snapshot = shallowRef<MetricsSnapshot | null>(null);
 const error = shallowRef<string | null>(null);
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -19,7 +19,7 @@ let stopped = false;
 
 function sessionName(metrics: SessionMetrics): string {
   if (metrics.prewarm) return t('agents.metrics.prewarm', { kind: metrics.prewarm.kind });
-  return pacer?.sessions.value.get(sessionKey(metrics.session))?.name ?? t('agents.metrics.unnamed', { id: sessionId(metrics.session) });
+  return berth?.sessions.value.get(sessionKey(metrics.session))?.name ?? t('agents.metrics.unnamed', { id: sessionId(metrics.session) });
 }
 
 const rows = computed<Row[]>(() => {
@@ -61,7 +61,7 @@ async function poll(): Promise<void> {
   try {
     const next = await getMetrics();
     if (stopped) return;
-    snapshot.value = next;
+    if (next.sampled_at_ms) snapshot.value = next;
     error.value = null;
   } catch (e) {
     if (!stopped) error.value = describeError(e);
@@ -82,7 +82,7 @@ function onVisibilityChange(): void {
 }
 
 onMounted(() => {
-  if (!pacer) return;
+  if (!berth) return;
   document.addEventListener('visibilitychange', onVisibilityChange);
   if (!document.hidden) void poll();
 });
@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="metrics" :aria-label="t('agents.metrics.aria')" data-testid="metrics-panel">
-    <p v-if="!pacer" class="note">{{ t('agents.metrics.unavailable') }}</p>
+    <p v-if="!berth" class="note">{{ t('agents.metrics.unavailable') }}</p>
     <template v-else>
       <p v-if="error" class="error" role="alert" data-testid="metrics-error">{{ error }}</p>
       <p v-if="!snapshot && !error" class="note" role="status">{{ t('common.loading') }}</p>

@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch } from 'vue';
 import { useExternalSessions } from '../agents/external';
-import { usePacer } from '../agents/pacer';
+import { useBerth } from '../agents/berth';
 import { useMyIssues } from '../atlassian/myIssues';
 import { useConnectors, type ChangeRequestRef, type InboxItem } from '../connectors/api';
 import { itemId, useForgeInbox } from '../forge/inbox';
@@ -51,7 +51,7 @@ watch(treeTab, (tab) => localStorage.setItem(TAB_KEY, tab));
 export type TabInfo = { id: TreeTab; label: string; count: number | undefined; tone: 'alert' | 'accent' | 'muted'; title: string };
 
 export function useWorkTree() {
-  const pacer = usePacer();
+  const berth = useBerth();
   const external = useExternalSessions();
   const { connectors } = useConnectors();
   const inbox = useForgeInbox();
@@ -59,13 +59,13 @@ export function useWorkTree() {
   const { values } = useSettings();
 
   watch(
-    () => [...(pacer?.entities.value.projects.values() ?? [])].map((project) => project.repo_path),
+    () => [...(berth?.entities.value.projects.values() ?? [])].map((project) => project.repo_path),
     (repos) => lookupRemotes(repos),
     { immediate: true },
   );
   watch(jira.jiraConnectors, () => jira.refresh(false), { immediate: true });
 
-  const projectRepos = computed(() => [...(pacer?.entities.value.projects.values() ?? [])].map((project) => ({ id: project.id, repo: project.repo_path })));
+  const projectRepos = computed(() => [...(berth?.entities.value.projects.values() ?? [])].map((project) => ({ id: project.id, repo: project.repo_path })));
   watch(
     () => projectRepos.value.map((project) => project.repo),
     (repos) => syncReviewRepos(repos),
@@ -117,7 +117,7 @@ export function useWorkTree() {
   const reviewSettled = computed(() => projectRepos.value.length > 0 && projectRepos.value.every(({ repo }) => (reviewEntries.value.get(repo)?.loadedAt ?? 0) > 0));
 
   const review = computed<ReviewSource>(() => {
-    const hosts = new Set<string>(pacer !== null && !reviewSettled.value ? storedHosts() : []);
+    const hosts = new Set<string>(berth !== null && !reviewSettled.value ? storedHosts() : []);
     const byProject = new Map<string, { notes: ReviewNoteView[]; state: ReviewState }>();
     const seenNotes = new Set<string>();
     for (const { id, repo } of projectRepos.value) {
@@ -154,9 +154,9 @@ export function useWorkTree() {
   );
 
   const sources = computed<Sources>(() => ({
-    pacer: pacer !== null,
-    workspaces: pacer?.tree.value ?? [],
-    entities: pacer?.entities.value,
+    berth: berth !== null,
+    workspaces: berth?.tree.value ?? [],
+    entities: berth?.entities.value,
     external: external?.sessions.value ?? [],
     linked: external?.linked.value ?? new Map(),
     remotes: remotes.value,
@@ -193,5 +193,5 @@ export function useWorkTree() {
     jira.refresh(true);
   }
 
-  return { pacer, nodes, all, tabs, activeTab, refresh, loading: computed(() => inbox.loading.value || jira.loading.value || [...reviewEntries.value.values()].some((entry) => entry.loading)), errors: computed(() => [...inbox.errors.value.map((e) => ({ connector: e.connector, message: e.message })), ...jira.errors.value]) };
+  return { berth, nodes, all, tabs, activeTab, refresh, loading: computed(() => inbox.loading.value || jira.loading.value || [...reviewEntries.value.values()].some((entry) => entry.loading)), errors: computed(() => [...inbox.errors.value.map((e) => ({ connector: e.connector, message: e.message })), ...jira.errors.value]) };
 }

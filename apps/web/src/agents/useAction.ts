@@ -1,5 +1,5 @@
 import { shallowRef, type ShallowRef } from 'vue';
-import { describeError } from './pacer';
+import { describeError } from './berth';
 
 type Action = {
   error: ShallowRef<string | null>;

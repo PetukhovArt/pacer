@@ -6,14 +6,14 @@ import { useSettings } from './store';
 const KEY = 'sessions.unloadIdleAfter';
 const CHOICES = new Set<string>(SETTINGS[KEY].options.map((option) => option.value));
 
-export function installPacerIdleSync(): void {
+export function installBerthIdleSync(): void {
   if (!hasBackend) return;
   const { loaded, values, set } = useSettings();
   let known: string | null = null;
 
   async function pull(): Promise<void> {
     try {
-      const remote = await invoke<string>('pacer_idle_timeout_read');
+      const remote = await invoke<string>('berth_idle_timeout_read');
       if (!CHOICES.has(remote)) return;
       known = remote;
       if (values.value[KEY] !== remote) set(KEY, remote);
@@ -27,7 +27,7 @@ export function installPacerIdleSync(): void {
     async (next) => {
       if (known === null || next === known) return;
       try {
-        await invoke<void>('pacer_idle_timeout_write', { value: next });
+        await invoke<void>('berth_idle_timeout_write', { value: next });
         known = next;
       } catch {
         return;

@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use berth_desktop_lib::connectors::monitor;
+use berth_desktop_lib::connectors::secrets::{self, FileStore};
+use berth_desktop_lib::connectors::Connectors;
+use berth_desktop_lib::remote::{Pinned, Remote, WebAsset, WebSource};
+use berth_desktop_lib::settings;
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
-use veyra_desktop_lib::connectors::monitor;
-use veyra_desktop_lib::connectors::secrets::{self, FileStore};
-use veyra_desktop_lib::connectors::Connectors;
-use veyra_desktop_lib::remote::{Pinned, Remote, WebAsset, WebSource};
-use veyra_desktop_lib::settings;
 
 const USAGE: &str = "veyra-server: Veyra core without a window, served to browsers and phones
 
@@ -238,7 +238,7 @@ async fn serve(options: Options, token_note: String) -> ExitCode {
     }
     let connectors = Arc::new(Connectors::load());
     tokio::spawn(monitor::run(connectors.clone()));
-    tokio::spawn(veyra_desktop_lib::stratum::sweep_once());
+    tokio::spawn(berth_desktop_lib::stratum::sweep_once());
     let remote = Remote::pinned(
         connectors,
         directory(options.web.clone()),

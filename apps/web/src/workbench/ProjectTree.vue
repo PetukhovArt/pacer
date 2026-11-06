@@ -28,7 +28,7 @@ import { treeQuery, treeTab, useWorkTree } from './useWorkTree';
 withDefaults(defineProps<{ withFilter?: boolean }>(), { withFilter: false });
 
 const dock = useDock();
-const { pacer, nodes, tabs, activeTab, refresh, loading, errors } = useWorkTree();
+const { berth, nodes, tabs, activeTab, refresh, loading, errors } = useWorkTree();
 const tabIcons = { sessions: SquareTerminal, mrs: GitPullRequest, reviews: Eye, tasks: ListTodo, all: SquareTerminal };
 
 const filtering = computed(() => treeQuery.value.trim().length > 0);
@@ -88,7 +88,7 @@ const shownTitle =(item: InboxItem) => (item.draft ? item.title.replace(/^(draft
       </div>
       <span class="head-actions">
         <button class="icon" :title="t('agents.layouts.quickOpenTitle')" :aria-label="t('agents.layouts.quickOpen')" data-testid="quick-switch-open" @click="dock.switching.value = true"><Search :size="14" /></button>
-        <button v-if="pacer" class="icon" :title="t('agents.metrics.open')" :aria-label="t('agents.metrics.title')" data-testid="open-metrics" @click="dock.openMetrics()"><Activity :size="14" /></button>
+        <button v-if="berth" class="icon" :title="t('agents.metrics.open')" :aria-label="t('agents.metrics.title')" data-testid="open-metrics" @click="dock.openMetrics()"><Activity :size="14" /></button>
         <button class="icon" :title="t('workbench.refresh')" :aria-label="t('workbench.refresh')" :data-loading="loading" data-testid="tree-refresh" @click="refresh"><RefreshCw :size="14" :class="{ spin: loading }" /></button>
       </span>
     </div>

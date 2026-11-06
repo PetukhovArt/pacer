@@ -4,7 +4,7 @@ import { FolderPlus, LoaderCircle } from 'lucide-vue-next';
 import { VButton, VPopover } from '@ui/kit';
 import ProjectActions from '../agents/manage/ProjectActions.vue';
 import { addProject } from '../agents/manage/workspaces';
-import { usePacer } from '../agents/pacer';
+import { useBerth } from '../agents/berth';
 import { useAction } from '../agents/useAction';
 import { t } from '../i18n';
 import { findClones, type Clone, type RepoRef } from './clones';
@@ -13,14 +13,14 @@ const props = defineProps<{ repo: RepoRef }>();
 
 type Mode = 'idle' | 'searching' | 'picking' | 'manual';
 
-const pacer = usePacer();
+const berth = useBerth();
 const mode = shallowRef<Mode>('idle');
 const clones = shallowRef<Clone[]>([]);
 const popover = useTemplateRef<InstanceType<typeof VPopover>>('popover');
 const manual = useTemplateRef<{ openAdd: () => Promise<void> }>('manual');
 const { error, busy, run, clear } = useAction();
 
-const fallbackWorkspace = computed(() => pacer?.tree.value[0]?.id);
+const fallbackWorkspace = computed(() => berth?.tree.value[0]?.id);
 const searching = computed(() => mode.value === 'searching' || busy.value);
 
 async function add(clone: Clone) {
@@ -30,10 +30,10 @@ async function add(clone: Clone) {
 
 async function start() {
   popover.value?.hide();
-  if (!pacer || searching.value) return;
+  if (!berth || searching.value) return;
   clear();
   mode.value = 'searching';
-  const projects = [...pacer.entities.value.projects.values()].map((project) => ({ repoPath: project.repo_path, workspaceId: project.workspace_id }));
+  const projects = [...berth.entities.value.projects.values()].map((project) => ({ repoPath: project.repo_path, workspaceId: project.workspace_id }));
   const found = await findClones(props.repo, projects);
   clones.value = found;
   if (found.length === 1 && found[0]) {
@@ -58,15 +58,15 @@ const folder = (path: string) => path.slice(0, path.lastIndexOf('/'));
 </script>
 
 <template>
-  <div v-if="pacer" class="repo-actions">
-    <button class="icon" type="button" :title="t('workbench.addToPacer')" :aria-label="t('workbench.addToPacer')" :disabled="searching" data-testid="repo-add" @click="start">
+  <div v-if="berth" class="repo-actions">
+    <button class="icon" type="button" :title="t('workbench.addToBerth')" :aria-label="t('workbench.addToBerth')" :disabled="searching" data-testid="repo-add" @click="start">
       <LoaderCircle v-if="searching" :size="14" class="spin" />
       <FolderPlus v-else :size="14" />
     </button>
     <VButton label="⋯" size="small" text severity="secondary" :aria-label="t('workbench.repoActions')" aria-haspopup="menu" data-testid="repo-menu" @click="popover?.toggle($event)" />
     <VPopover ref="popover">
       <div class="menu" role="menu">
-        <button class="item" type="button" role="menuitem" data-testid="repo-menu-add" @click="start">{{ t('workbench.addToPacer') }}</button>
+        <button class="item" type="button" role="menuitem" data-testid="repo-menu-add" @click="start">{{ t('workbench.addToBerth') }}</button>
       </div>
     </VPopover>
     <div v-if="mode === 'picking'" class="inline" role="group" :aria-label="t('workbench.pickClone')" data-testid="repo-clones">

@@ -1,5 +1,5 @@
 import { computed, shallowRef, watch } from 'vue';
-import { usePacer } from '../agents/pacer';
+import { useBerth } from '../agents/berth';
 import { hasBackend, invoke, isDesktop } from '../bridge';
 import { useConnectors } from '../connectors/api';
 import { t } from '../i18n';
@@ -35,10 +35,10 @@ function ensureProbe(repo: string, target: string) {
 export const architecturePanelId = (ref: { connector: string; project: string; number: number }) => `arch:${ref.connector}/${ref.project}/${ref.number}`;
 
 export function useArchitecture(target: () => ArchitectureTarget | undefined) {
-  const pacer = usePacer();
+  const berth = useBerth();
   const { connectors } = useConnectors();
 
-  const projects = computed(() => [...(pacer?.entities.value.projects.values() ?? [])]);
+  const projects = computed(() => [...(berth?.entities.value.projects.values() ?? [])]);
   watch(
     () => projects.value.map((project) => project.repo_path),
     (repos) => lookupRemotes(repos),

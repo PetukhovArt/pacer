@@ -6,7 +6,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { attachSession, detachSession, resizeSession, sendInput, sessionId, type SessionEvent, type SessionRef } from './pacer';
+import { attachSession, detachSession, resizeSession, sendInput, sessionId, type SessionEvent, type SessionRef } from './berth';
 import { t } from '../i18n';
 import { applyCtrl } from '../mobile/keys';
 import { useSettings } from '../settings/store';

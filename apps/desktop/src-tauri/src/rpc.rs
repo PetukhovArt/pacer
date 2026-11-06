@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use pacer_core::{AgentId, Entity, SessionRef};
+use berth_core::{AgentId, Entity, SessionRef};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -10,11 +10,11 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Notify;
 
 use crate::agent_sessions::{self, AgentSessionWatch};
+use crate::berth::{self, Berth, WatchEvent};
 use crate::commands::{plain_commands, to_json};
 use crate::connectors::monitor;
 use crate::connectors::Connectors;
 use crate::files::{self, FileWatches};
-use crate::pacer::{self, Pacer, WatchEvent};
 use crate::settings::{self, ConfigFile, SettingsWatch};
 use crate::sink::{BoxSink, Sink};
 
@@ -178,7 +178,7 @@ impl Sink<WatchEvent> for RootsSink {
 
 pub struct Client {
     connectors: Arc<Connectors>,
-    pacer: Pacer,
+    berth: Berth,
     settings: SettingsWatch,
     files: FileWatches,
     sessions: AgentSessionWatch,
@@ -207,7 +207,7 @@ impl Client {
     pub fn new(connectors: Arc<Connectors>, out: Outbox) -> Self {
         Self {
             connectors,
-            pacer: Pacer::spawn(),
+            berth: Berth::spawn(),
             settings: SettingsWatch::default(),
             files: FileWatches::default(),
             sessions: AgentSessionWatch::default(),
@@ -237,7 +237,7 @@ impl Client {
         if allowed {
             Ok(())
         } else {
-            Err(format!("путь вне рабочих деревьев pacer: {raw}"))
+            Err(format!("путь вне рабочих деревьев berth: {raw}"))
         }
     }
 
@@ -245,7 +245,7 @@ impl Client {
         let args = if args.is_null() { json!({}) } else { args };
         self.guard(cmd, &args)?;
         match cmd {
-            "pacer_watch" => {
+            "berth_watch" => {
                 #[derive(Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 struct Args {
@@ -256,10 +256,10 @@ impl Client {
                     inner: self.sink(on_event.channel),
                     roots: self.roots.clone(),
                 });
-                pacer::pacer_watch(&self.pacer, sink);
+                berth::berth_watch(&self.berth, sink);
                 Ok(Value::Null)
             }
-            "pacer_attach" => {
+            "berth_attach" => {
                 #[derive(Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 struct Args {
@@ -275,20 +275,20 @@ impl Client {
                     on_event,
                 } = parse(args)?;
                 let sink = Box::new(self.sink(on_event.channel));
-                pacer::pacer_attach(&self.pacer, session, cols, rows, sink);
+                berth::berth_attach(&self.berth, session, cols, rows, sink);
                 Ok(Value::Null)
             }
-            "pacer_input" => {
+            "berth_input" => {
                 #[derive(Deserialize)]
                 struct Args {
                     session: SessionRef,
                     data: String,
                 }
                 let Args { session, data } = parse(args)?;
-                pacer::pacer_input(&self.pacer, session, data);
+                berth::berth_input(&self.berth, session, data);
                 Ok(Value::Null)
             }
-            "pacer_resize" => {
+            "berth_resize" => {
                 #[derive(Deserialize)]
                 struct Args {
                     session: SessionRef,
@@ -300,34 +300,34 @@ impl Client {
                     cols,
                     rows,
                 } = parse(args)?;
-                pacer::pacer_resize(&self.pacer, session, cols, rows);
+                berth::berth_resize(&self.berth, session, cols, rows);
                 Ok(Value::Null)
             }
-            "pacer_detach" => {
+            "berth_detach" => {
                 #[derive(Deserialize)]
                 struct Args {
                     session: SessionRef,
                 }
                 let Args { session } = parse(args)?;
-                pacer::pacer_detach(&self.pacer, session);
+                berth::berth_detach(&self.berth, session);
                 Ok(Value::Null)
             }
-            "pacer_mark_seen" => {
+            "berth_mark_seen" => {
                 #[derive(Deserialize)]
                 struct Args {
                     agent: AgentId,
                 }
                 let Args { agent } = parse(args)?;
-                pacer::pacer_mark_seen(&self.pacer, agent);
+                berth::berth_mark_seen(&self.berth, agent);
                 Ok(Value::Null)
             }
-            "pacer_call" => {
+            "berth_call" => {
                 #[derive(Deserialize)]
                 struct Args {
                     request: Value,
                 }
                 let Args { request } = parse(args)?;
-                pacer::pacer_call(&self.pacer, request).await
+                berth::berth_call(&self.berth, request).await
             }
             "settings_watch" => {
                 #[derive(Deserialize)]

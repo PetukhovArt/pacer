@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch, type ComputedRef } from 'vue';
 import { externalKey, externalTarget, readTranscript, useExternalSessions, type ExternalSession } from '../agents/external';
-import { usePacer, type SessionNode, type SessionStatus } from '../agents/pacer';
+import { useBerth, type SessionNode, type SessionStatus } from '../agents/berth';
 import { t } from '../i18n';
 import { useDock } from '../workbench/dock';
 
@@ -78,7 +78,7 @@ function previewOf(messages: readonly { role: string; text: string; tool: string
 }
 
 function create() {
-  const pacer = usePacer();
+  const berth = useBerth();
   const external = useExternalSessions();
   const dock = useDock();
   const pins = shallowRef<string[]>(readPins());
@@ -89,9 +89,9 @@ function create() {
 
   const raw = computed<Raw[]>(() => {
     const out: Raw[] = [];
-    const entities = pacer?.entities.value;
+    const entities = berth?.entities.value;
     const linked = external?.linked.value;
-    for (const node of pacer?.sessions.value.values() ?? []) {
+    for (const node of berth?.sessions.value.values() ?? []) {
       const path = dock.paths.value.get(node.key);
       const agent = 'Agent' in node.ref ? entities?.agents.get(node.id) : undefined;
       const link = agent ? undefined : linked?.get(node.key);
@@ -256,7 +256,7 @@ function create() {
   );
 
   function open(key: string) {
-    const node: SessionNode | undefined = pacer?.sessions.value.get(key);
+    const node: SessionNode | undefined = berth?.sessions.value.get(key);
     if (node) {
       dock.openSession(node);
       return;

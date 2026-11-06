@@ -4,9 +4,9 @@ import { Check, Copy, FolderOpen, GitBranch, Play, SquareTerminal, TriangleAlert
 import { VButton, VMessage } from '@ui/kit';
 import { copyText } from '../atlassian/util';
 import RichContent from '../content/RichContent.vue';
-import { continueInPacer, externalDot, externalKey, externalOrigin, externalStatusLabel, externalTarget, readTranscript, resumeCommand, useExternalSessions, type Harness, type TranscriptMessage } from '../agents/external';
+import { continueInBerth, externalDot, externalKey, externalOrigin, externalStatusLabel, externalTarget, readTranscript, resumeCommand, useExternalSessions, type Harness, type TranscriptMessage } from '../agents/external';
 import HarnessIcon from '../agents/HarnessIcon.vue';
-import { describeError, usePacer } from '../agents/pacer';
+import { describeError, useBerth } from '../agents/berth';
 import StatusDot from '../agents/StatusDot.vue';
 import { useAction } from '../agents/useAction';
 import { useI18n } from '../i18n';
@@ -20,7 +20,7 @@ const props = defineProps<{ harness: Harness; sessionId: string }>();
 
 const { t, formatRelative, formatDate } = useI18n();
 const external = useExternalSessions();
-const pacer = usePacer();
+const berth = useBerth();
 const dock = useDock();
 const action = useAction();
 const scroller = useTemplateRef<HTMLElement>('scroller');
@@ -32,7 +32,7 @@ let generation = 0;
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
 const session = computed(() => external?.anyByKey.value.get(externalKey({ harness: props.harness, id: props.sessionId })));
-const target = computed(() => (session.value ? externalTarget(session.value, pacer?.entities.value) : null));
+const target = computed(() => (session.value ? externalTarget(session.value, berth?.entities.value) : null));
 const running = computed(() => session.value?.running ?? false);
 const command = computed(() => resumeCommand({ harness: props.harness, id: props.sessionId }));
 const canContinue = computed(() => !!session.value && !!target.value && !running.value && !action.busy.value);
@@ -103,7 +103,7 @@ async function continueHere() {
   const where = target.value;
   if (!current || !where || current.running) return;
   await action.run(async () => {
-    const ref = await continueInPacer(current, where);
+    const ref = await continueInBerth(current, where);
     dock.openWhenListed(ref);
   });
 }
@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
         </VButton>
         <code class="command mono">{{ command }}</code>
       </div>
-      <p v-if="running && session?.in_pacer" class="hint" data-testid="conversation-in-terminal">{{ t('workbench.external.liveInTerminal') }}</p>
+      <p v-if="running && session?.in_berth" class="hint" data-testid="conversation-in-terminal">{{ t('workbench.external.liveInTerminal') }}</p>
       <p v-else-if="running" class="warning" role="alert" data-testid="conversation-running-warning"><TriangleAlert :size="13" />{{ t('workbench.external.stillOpen') }}</p>
       <p v-else-if="session && !target" class="hint" data-testid="conversation-no-project">{{ t('workbench.external.noProject') }}</p>
       <p v-else-if="target" class="hint" data-testid="conversation-target">{{ t('workbench.external.continuesIn', { project: target.projectName, branch: target.branch }) }}</p>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { t } from '../../i18n';
-import { usePacer } from '../pacer';
+import { useBerth } from '../berth';
 
-const pacer = usePacer();
+const berth = useBerth();
 
 const banner = computed(() => {
-  const connection = pacer?.connection.value;
+  const connection = berth?.connection.value;
   if (!connection) return null;
   switch (connection.state) {
     case 'connected':
@@ -26,9 +26,9 @@ const banner = computed(() => {
 </script>
 
 <template>
-  <template v-if="pacer">
-    <p v-if="banner" class="banner" role="status" data-testid="pacer-banner" :data-state="pacer.connection.value.state">{{ banner }}</p>
-    <p v-if="pacer.error.value" class="banner" role="alert" data-testid="pacer-error">{{ pacer.error.value }}</p>
+  <template v-if="berth">
+    <p v-if="banner" class="banner" role="status" data-testid="berth-banner" :data-state="berth.connection.value.state">{{ banner }}</p>
+    <p v-if="berth.error.value" class="banner" role="alert" data-testid="berth-error">{{ berth.error.value }}</p>
   </template>
 </template>
 

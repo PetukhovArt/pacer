@@ -4,7 +4,7 @@ import { t } from '../i18n';
 import { useSettings } from '../settings/store';
 import { getMetrics } from './manage/metrics';
 import { listOrphans, resumeOrphan } from './manage/orphans';
-import { createTerminal, describeError, entitySessionRef, PacerCallError, sendInput, sessionKey, usePacer, worktreesOfProject, type Entities, type SessionRef, type SessionStatus } from './pacer';
+import { createTerminal, describeError, entitySessionRef, BerthCallError, sendInput, sessionKey, useBerth, worktreesOfProject, type Entities, type SessionRef, type SessionStatus } from './berth';
 
 export type Harness = 'claude' | 'codex';
 type ExternalStatus = 'working' | 'waiting' | 'idle';
@@ -18,8 +18,8 @@ export type ExternalSession = {
   status: ExternalStatus;
   running: boolean;
   host: string | null;
-  in_pacer: boolean;
-  pacer_pids: number[];
+  in_berth: boolean;
+  berth_pids: number[];
   messages: number;
 };
 export type TranscriptMessage = { key: string; role: 'user' | 'assistant'; text: string; tool: string | null; at: string | null };
@@ -61,7 +61,7 @@ export function externalStatusLabel(session: ExternalSession): string {
 }
 
 export function externalOrigin(session: ExternalSession): string {
-  if (session.in_pacer) return t('workbench.external.inTerminal');
+  if (session.in_berth) return t('workbench.external.inTerminal');
   return session.host ? t('workbench.external.startedIn', { host: session.host }) : t('workbench.external.startedOutside');
 }
 
@@ -125,22 +125,22 @@ export function readTranscript(session: Pick<ExternalSession, 'harness' | 'id'>,
   return invoke<TranscriptMessage[]>('agent_session_transcript', { harness: session.harness, id: session.id, tail });
 }
 
-export async function continueInPacer(session: ExternalSession, target: ExternalTarget): Promise<SessionRef> {
+export async function continueInBerth(session: ExternalSession, target: ExternalTarget): Promise<SessionRef> {
   if (session.harness === 'claude') {
     const orphans = await listOrphans(target.projectId).catch(() => []);
     if (orphans.some((orphan) => orphan.session_id === session.id)) return { Agent: await resumeOrphan(session.id, target.worktreeId) };
   }
   const terminal = entitySessionRef(await createTerminal(target.worktreeId, session.title.slice(0, TERMINAL_NAME_CHARS)));
-  if (!terminal) throw new PacerCallError(t('workbench.external.noTerminal'));
+  if (!terminal) throw new BerthCallError(t('workbench.external.noTerminal'));
   await whenListed(terminal);
   await sendInput(terminal, `${resumeCommand(session)}\r`);
   return terminal;
 }
 
 function whenListed(session: SessionRef): Promise<void> {
-  const pacer = usePacer();
+  const berth = useBerth();
   const key = sessionKey(session);
-  if (!pacer || pacer.sessions.value.has(key)) return Promise.resolve();
+  if (!berth || berth.sessions.value.has(key)) return Promise.resolve();
   return new Promise((resolve) => {
     const finish = () => {
       clearTimeout(timer);
@@ -149,7 +149,7 @@ function whenListed(session: SessionRef): Promise<void> {
     };
     const timer = setTimeout(finish, LISTED_TIMEOUT_MS);
     const stop = watch(
-      () => pacer.sessions.value.has(key),
+      () => berth.sessions.value.has(key),
       (listed) => {
         if (listed) finish();
       },
@@ -170,7 +170,7 @@ function terminalByName(session: ExternalSession, entities: Entities): string | 
 let store: Store | null = null;
 
 function createStore(): Store {
-  const pacer = usePacer();
+  const berth = useBerth();
   const { values } = useSettings();
   const raw = shallowRef<readonly ExternalSession[]>([]);
   const error = shallowRef<string | null>(null);
@@ -191,14 +191,14 @@ function createStore(): Store {
     { immediate: true },
   );
 
-  const pacerIds = computed(() => {
+  const berthIds = computed(() => {
     const ids = new Set<string>();
-    for (const agent of pacer?.entities.value.agents.values() ?? []) if (agent.session_id) ids.add(agent.session_id);
+    for (const agent of berth?.entities.value.agents.values() ?? []) if (agent.session_id) ids.add(agent.session_id);
     return ids;
   });
   const pidOwners = shallowRef<ReadonlyMap<number, string> | null>(null);
-  const pacerHosted = computed(() => raw.value.filter((session) => session.in_pacer && !pacerIds.value.has(session.id)));
-  const refreshSignature = computed(() => `${pacerHosted.value.map((session) => `${externalKey(session)}@${session.pacer_pids.join('.')}`).join(',')}|${[...(pacer?.sessions.value.keys() ?? [])].join(',')}`);
+  const berthHosted = computed(() => raw.value.filter((session) => session.in_berth && !berthIds.value.has(session.id)));
+  const refreshSignature = computed(() => `${berthHosted.value.map((session) => `${externalKey(session)}@${session.berth_pids.join('.')}`).join(',')}|${[...(berth?.sessions.value.keys() ?? [])].join(',')}`);
   let metricsRun = 0;
   let metricsTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -206,7 +206,7 @@ function createStore(): Store {
     refreshSignature,
     () => {
       clearTimeout(metricsTimer);
-      if (!pacerHosted.value.length) return;
+      if (!berthHosted.value.length) return;
       metricsTimer = setTimeout(() => {
         const run = ++metricsRun;
         getMetrics().then(
@@ -224,10 +224,10 @@ function createStore(): Store {
 
   const hostKey = computed(() => {
     const keys = new Map<string, string>();
-    const entities = pacer?.entities.value;
+    const entities = berth?.entities.value;
     const owners = pidOwners.value;
-    for (const session of pacerHosted.value) {
-      const key = owners ? session.pacer_pids.map((pid) => owners.get(pid)).find((owner) => owner !== undefined) : undefined;
+    for (const session of berthHosted.value) {
+      const key = owners ? session.berth_pids.map((pid) => owners.get(pid)).find((owner) => owner !== undefined) : undefined;
       const resolved = key ?? (entities ? terminalByName(session, entities) : null);
       if (resolved) keys.set(externalKey(session), resolved);
     }
@@ -235,7 +235,7 @@ function createStore(): Store {
   });
   const linked = computed(() => {
     const map = new Map<string, ExternalSession>();
-    for (const session of pacerHosted.value) {
+    for (const session of berthHosted.value) {
       const key = hostKey.value.get(externalKey(session));
       if (!key?.startsWith('terminal:')) continue;
       const current = map.get(key);
@@ -246,8 +246,8 @@ function createStore(): Store {
   const terminalOf = computed(() => new Map([...linked.value].map(([terminal, session]) => [externalKey(session), terminal])));
   const sessions = computed(() =>
     raw.value.filter((session) => {
-      if (pacerIds.value.has(session.id)) return false;
-      if (!session.in_pacer) return true;
+      if (berthIds.value.has(session.id)) return false;
+      if (!session.in_berth) return true;
       if (hostKey.value.has(externalKey(session))) return false;
       return pidOwners.value !== null;
     }),

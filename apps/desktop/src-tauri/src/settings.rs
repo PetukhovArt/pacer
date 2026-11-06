@@ -138,7 +138,7 @@ const IDLE_KEY: &str = "session_idle_timeout";
 const IDLE_DEFAULT: &str = "5m";
 const IDLE_CHOICES: [&str; 6] = ["off", "1m", "5m", "15m", "30m", "1h"];
 
-fn pacer_config_object(path: &Path) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+fn berth_config_object(path: &Path) -> Result<serde_json::Map<String, serde_json::Value>, String> {
     let text =
         read_text(path).map_err(|e| format!("не удалось прочитать {}: {e}", path.display()))?;
     if text.trim().is_empty() {
@@ -151,8 +151,8 @@ fn pacer_config_object(path: &Path) -> Result<serde_json::Map<String, serde_json
     }
 }
 
-pub async fn pacer_idle_timeout_read() -> Result<String, String> {
-    let map = pacer_config_object(&pacer_core::paths::config_path())?;
+pub async fn berth_idle_timeout_read() -> Result<String, String> {
+    let map = berth_config_object(&berth_core::paths::config_path())?;
     Ok(map
         .get(IDLE_KEY)
         .and_then(|value| value.as_str())
@@ -160,12 +160,12 @@ pub async fn pacer_idle_timeout_read() -> Result<String, String> {
         .to_owned())
 }
 
-pub async fn pacer_idle_timeout_write(value: String) -> Result<(), String> {
+pub async fn berth_idle_timeout_write(value: String) -> Result<(), String> {
     if !IDLE_CHOICES.contains(&value.as_str()) {
         return Err(format!("недопустимое значение {value}"));
     }
-    let path = pacer_core::paths::config_path();
-    let mut map = pacer_config_object(&path)?;
+    let path = berth_core::paths::config_path();
+    let mut map = berth_config_object(&path)?;
     if map.get(IDLE_KEY).and_then(|v| v.as_str()) == Some(value.as_str()) {
         return Ok(());
     }

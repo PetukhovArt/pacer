@@ -107,8 +107,8 @@ pub struct AgentSession {
     status: Status,
     running: bool,
     host: Option<String>,
-    in_pacer: bool,
-    pacer_pids: Vec<u32>,
+    in_berth: bool,
+    berth_pids: Vec<u32>,
     messages: u32,
 }
 
@@ -202,14 +202,14 @@ struct Proc {
     resume: Option<String>,
     started: u64,
     host: Option<String>,
-    pacer: bool,
-    pacer_pids: Vec<u32>,
+    berth: bool,
+    berth_pids: Vec<u32>,
 }
 
 struct Claim {
     host: Option<String>,
-    pacer: bool,
-    pacer_pids: Vec<u32>,
+    berth: bool,
+    berth_pids: Vec<u32>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -817,8 +817,8 @@ fn host_of(system: &System, process: &Process) -> (Option<String>, bool, Vec<u32
             break;
         };
         let name = stem_of(parent.name());
-        if name.starts_with("pacer") {
-            return (Some("pacer".to_owned()), true, chain);
+        if name.starts_with("berth") || name.starts_with("pacer") {
+            return (Some("berth".to_owned()), true, chain);
         }
         if let Some(label) = host_label(&name) {
             return (Some(label.to_owned()), false, Vec::new());
@@ -874,7 +874,7 @@ fn processes() -> Vec<Proc> {
             if !interactive(*harness, args) {
                 return None;
             }
-            let (host, pacer, pacer_pids) = host_of(&system, process);
+            let (host, berth, berth_pids) = host_of(&system, process);
             Some(Proc {
                 harness: *harness,
                 cwd: process
@@ -884,8 +884,8 @@ fn processes() -> Vec<Proc> {
                 resume: resume_id(*harness, args),
                 started: process.start_time().saturating_mul(1000),
                 host,
-                pacer,
-                pacer_pids,
+                berth,
+                berth_pids,
             })
         })
         .collect()
@@ -904,8 +904,8 @@ fn claim(candidates: &[&Entry], procs: &[Proc]) -> HashMap<usize, Claim> {
             Some(at) => {
                 claims.entry(at).or_insert(Claim {
                     host: proc.host.clone(),
-                    pacer: proc.pacer,
-                    pacer_pids: proc.pacer_pids.clone(),
+                    berth: proc.berth,
+                    berth_pids: proc.berth_pids.clone(),
                 });
             }
             None => pending.push(proc),
@@ -927,8 +927,8 @@ fn claim(candidates: &[&Entry], procs: &[Proc]) -> HashMap<usize, Claim> {
                 at,
                 Claim {
                     host: proc.host.clone(),
-                    pacer: proc.pacer,
-                    pacer_pids: proc.pacer_pids.clone(),
+                    berth: proc.berth,
+                    berth_pids: proc.berth_pids.clone(),
                 },
             );
         }
@@ -981,9 +981,9 @@ fn session_of(entry: &Entry, claim: Option<&Claim>, now: u64) -> AgentSession {
         status: status_of(entry, running, now),
         running,
         host: claim.and_then(|claim| claim.host.clone()),
-        in_pacer: claim.is_some_and(|claim| claim.pacer),
-        pacer_pids: claim
-            .map(|claim| claim.pacer_pids.clone())
+        in_berth: claim.is_some_and(|claim| claim.berth),
+        berth_pids: claim
+            .map(|claim| claim.berth_pids.clone())
             .unwrap_or_default(),
         messages: entry.tail.messages.unwrap_or(entry.tail.counted),
     }

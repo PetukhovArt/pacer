@@ -2,7 +2,7 @@
 import { shallowRef, watch } from 'vue';
 import { VButton, VDialog, VMessage, VSelect } from '@ui/kit';
 import { useI18n } from '../../i18n';
-import { describeError, usePacer } from '../pacer';
+import { describeError, useBerth } from '../berth';
 import { useAction } from '../useAction';
 import { listOrphans, resumeOrphan, type OrphanedSession } from './orphans';
 import { useWorktreeOptions } from './worktrees';
@@ -19,12 +19,12 @@ const resuming = shallowRef<string | null>(null);
 const resume = useAction();
 const picks = shallowRef<Readonly<Record<string, string>>>({});
 const options = useWorktreeOptions(() => props.project);
-const pacer = usePacer();
+const berth = useBerth();
 
 let loadToken = 0;
 
 async function load(project: string) {
-  if (!pacer) return;
+  if (!berth) return;
   const token = ++loadToken;
   loading.value = true;
   loadError.value = null;
@@ -68,7 +68,7 @@ async function resumeSession(session: string) {
 </script>
 
 <template>
-  <VDialog v-if="pacer" :visible="true" modal dismissable-mask :header="t('agents.orphans.title')" :style="{ width: '46rem', maxWidth: '95vw' }" data-testid="orphans-dialog" @update:visible="emit('close')">
+  <VDialog v-if="berth" :visible="true" modal dismissable-mask :header="t('agents.orphans.title')" :style="{ width: '46rem', maxWidth: '95vw' }" data-testid="orphans-dialog" @update:visible="emit('close')">
     <VMessage v-if="loadError" severity="error" size="small" data-testid="orphans-error">{{ loadError }}</VMessage>
     <p v-else-if="loading" class="state" role="status">{{ t('common.loading') }}</p>
     <p v-else-if="!orphans.length" class="state" role="status" data-testid="orphans-empty">{{ t('agents.orphans.empty') }}</p>

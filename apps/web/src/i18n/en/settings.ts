@@ -92,7 +92,7 @@ export const settings = {
     },
     sessionsUnloadIdleAfter: {
       label: 'Unload idle sessions after',
-      description: 'Closes the processes of sessions nobody has open once they sit idle this long. Each Claude session holds roughly 0.7-0.9 GB of memory, and an unloaded one resumes its conversation when you open it. Sessions with a running agent, a waiting prompt or a running terminal command are kept. Stored in the pacer config, so it applies to every client.',
+      description: 'Closes the processes of sessions nobody has open once they sit idle this long. Each Claude session holds roughly 0.7-0.9 GB of memory, and an unloaded one resumes its conversation when you open it. Sessions with a running agent, a waiting prompt or a running terminal command are kept. Stored in the berth config, so it applies to every client.',
       off: 'Never',
       m1: '1 minute',
       m5: '5 minutes',

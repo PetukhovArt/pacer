@@ -2,7 +2,7 @@ import type { Translation } from '../types';
 import type { agents as en } from '../en/agents';
 
 export const agents: Translation<typeof en> = {
-  unavailable: 'Сессии pacer работают только в десктопном приложении Veyra',
+  unavailable: 'Сессии berth работают только в десктопном приложении Veyra',
   sidePane: {
     resize: 'Ширина списка сессий',
   },
@@ -73,7 +73,7 @@ export const agents: Translation<typeof en> = {
   project: {
     actions: 'Действия проекта',
     newSession: 'Новая сессия',
-    removeFromPacer: 'Убрать из pacer',
+    removeFromBerth: 'Убрать из berth',
     oldConversations: 'Старые разговоры',
     add: 'Добавить проект',
     path: 'Путь к папке',
@@ -85,7 +85,7 @@ export const agents: Translation<typeof en> = {
     folderName: 'Имя папки',
     renameHint: 'Пустое название вернёт имя папки',
     confirm: 'Подтверждение',
-    removeQuestion: 'Убрать «{name}» из pacer? Папка на диске не будет затронута.',
+    removeQuestion: 'Убрать «{name}» из berth? Папка на диске не будет затронута.',
   },
   workspace: {
     fallback: 'Workspace',
@@ -107,15 +107,15 @@ export const agents: Translation<typeof en> = {
     quickOpenTitle: 'Быстрый переход (Ctrl+P)',
   },
   notices: {
-    connecting: 'подключаюсь к pacer…',
-    offline: 'демон pacer не запущен',
-    incompatible: 'несовместимая версия pacer',
+    connecting: 'подключаюсь к berth…',
+    offline: 'демон berth не запущен',
+    incompatible: 'несовместимая версия berth',
   },
   errors: {
-    unexpectedReply: 'неожиданный ответ pacer: {reply}',
-    expectedAck: 'pacer ответил {reply} вместо Ack',
-    expectedMetrics: 'pacer ответил {reply} вместо Metrics',
-    expectedOrphans: 'pacer ответил {reply} вместо списка разговоров',
-    noAgentCreated: 'pacer не вернул созданного агента',
+    unexpectedReply: 'неожиданный ответ berth: {reply}',
+    expectedAck: 'berth ответил {reply} вместо Ack',
+    expectedMetrics: 'berth ответил {reply} вместо Metrics',
+    expectedOrphans: 'berth ответил {reply} вместо списка разговоров',
+    noAgentCreated: 'berth не вернул созданного агента',
   },
 };

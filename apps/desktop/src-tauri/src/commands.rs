@@ -49,8 +49,8 @@ macro_rules! plain_commands {
             local_state ai_env() = $crate::connectors::ai::ai_env;
             free settings_read(file: Option<$crate::settings::ConfigFile>) = $crate::settings::settings_read;
             free settings_write(text: String, file: Option<$crate::settings::ConfigFile>) = $crate::settings::settings_write;
-            free pacer_idle_timeout_read() = $crate::settings::pacer_idle_timeout_read;
-            free pacer_idle_timeout_write(value: String) = $crate::settings::pacer_idle_timeout_write;
+            free berth_idle_timeout_read() = $crate::settings::berth_idle_timeout_read;
+            free berth_idle_timeout_write(value: String) = $crate::settings::berth_idle_timeout_write;
             free agent_sessions_list(since_days: Option<u32>) = $crate::agent_sessions::agent_sessions_list;
             free agent_session_transcript(harness: $crate::agent_sessions::Harness, id: String, tail: Option<u32>) = $crate::agent_sessions::agent_session_transcript;
             free review_queue(repo: String) = $crate::review::review_queue;

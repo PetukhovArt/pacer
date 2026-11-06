@@ -12,7 +12,7 @@ import ConversationView from '../../workbench/ConversationView.vue';
 import { METRICS_PANEL, useDock } from '../../workbench/dock';
 import { externalDot, isExternalPanel, useExternalSessions, type Harness } from '../external';
 import HarnessIcon from '../HarnessIcon.vue';
-import { isSessionRef, usePacer } from '../pacer';
+import { isSessionRef, useBerth } from '../berth';
 import SessionPanel from '../SessionPanel.vue';
 import StatusDot from '../StatusDot.vue';
 import MetricsPanel from '../manage/MetricsPanel.vue';
@@ -25,7 +25,7 @@ const emit = defineEmits<{ ready: [event: DockviewReadyEvent]; 'open-file': [pat
 
 type Host = { id: string; el: HTMLElement; panels: string[] };
 
-const pacer = usePacer();
+const berth = useBerth();
 const external = useExternalSessions();
 const dock = useDock();
 const isHarness = (value: unknown): value is Harness => value === 'claude' || value === 'codex';
@@ -116,7 +116,7 @@ onBeforeUnmount(() => {
         <MarkdownFile v-if="typeof params.path === 'string'" class="vr-fade-in" :path="params.path" :hash="typeof params.hash === 'string' ? params.hash : ''" @open-file="(path, hash) => emit('open-file', path, hash, api.id)" />
       </template>
       <template #defaultTab="{ api }">
-        <span class="tab" :data-testid="`${kindOf(api.id)}-tab`" :data-panel-id="api.id" :data-session-id="pacer?.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">
+        <span class="tab" :data-testid="`${kindOf(api.id)}-tab`" :data-panel-id="api.id" :data-session-id="berth?.sessions.value.get(api.id)?.id" :data-active="api.id === activeKey">
           <FileText v-if="kindOf(api.id) === 'file'" :size="12" />
           <GitPullRequest v-else-if="kindOf(api.id) === 'review'" :size="12" />
           <Network v-else-if="kindOf(api.id) === 'architecture'" :size="12" />
@@ -125,8 +125,8 @@ onBeforeUnmount(() => {
             <StatusDot :status="tabDot(api.id)" :unseen="false" />
             <HarnessIcon :harness="tabHarness(api.id)" />
           </template>
-          <StatusDot v-if="pacer?.sessions.value.has(api.id)" :status="pacer.sessions.value.get(api.id)?.status" :unseen="pacer.sessions.value.get(api.id)?.unseen" />
-          <span class="name">{{ pacer?.sessions.value.get(api.id)?.name ?? external?.anyByKey.value.get(api.id)?.title ?? api.title }}</span>
+          <StatusDot v-if="berth?.sessions.value.has(api.id)" :status="berth.sessions.value.get(api.id)?.status" :unseen="berth.sessions.value.get(api.id)?.unseen" />
+          <span class="name">{{ berth?.sessions.value.get(api.id)?.name ?? external?.anyByKey.value.get(api.id)?.title ?? api.title }}</span>
           <span v-if="isFilePanel(api.id) && isDirtyPath(api.id.slice(FILE_PANEL_PREFIX.length))" class="dirty" :title="t('files.editor.dirty')" data-testid="file-tab-dirty" />
           <button class="close" :title="t('common.close')" :aria-label="t('common.close')" data-testid="session-tab-close" @pointerdown.stop @click.stop="closeTab(api)"><X :size="12" /></button>
         </span>

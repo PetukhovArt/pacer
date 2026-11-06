@@ -49,7 +49,7 @@ export type WorktreeNode = { id: string; path: string; branch: string; main: boo
 type ProjectNode = { id: string; name: string; worktrees: WorktreeNode[] };
 type WorkspaceNode = { id: string; name: string; projects: ProjectNode[] };
 
-type PacerStore = {
+type BerthStore = {
   entities: ComputedRef<Entities>;
   connection: ShallowRef<Connection>;
   error: ShallowRef<string | null>;
@@ -156,10 +156,10 @@ function buildTree(entities: Entities): WorkspaceNode[] {
   return [...entities.workspaces.values()].map((w) => ({ id: w.id, name: w.name, projects: projectsOf(w.id) }));
 }
 
-let store: PacerStore | null = null;
+let store: BerthStore | null = null;
 let watching: Promise<void> = Promise.resolve();
 
-function createStore(): PacerStore {
+function createStore(): BerthStore {
   const entities = shallowRef<Entities>(EMPTY);
   const connection = shallowRef<Connection>({ state: 'connecting', message: null });
   const error = shallowRef<string | null>(null);
@@ -198,7 +198,7 @@ function createStore(): PacerStore {
     }
   }
 
-  watching = invoke<void>('pacer_watch', { onEvent: createChannel<WatchEvent>(receive) }).catch((e: unknown) => {
+  watching = invoke<void>('berth_watch', { onEvent: createChannel<WatchEvent>(receive) }).catch((e: unknown) => {
     error.value = describeError(e);
   });
 
@@ -207,7 +207,7 @@ function createStore(): PacerStore {
   return { entities: computed(() => entities.value), connection, error, tree, sessions };
 }
 
-export function usePacer(): PacerStore | null {
+export function useBerth(): BerthStore | null {
   if (!hasBackend) return null;
   store ??= createStore();
   return store;
@@ -215,26 +215,26 @@ export function usePacer(): PacerStore | null {
 
 export async function attachSession(session: SessionRef, cols: number, rows: number, onEvent: (event: SessionEvent) => void): Promise<void> {
   await watching;
-  await invoke<void>('pacer_attach', { session, cols, rows, onEvent: createChannel<SessionEvent>(onEvent) });
+  await invoke<void>('berth_attach', { session, cols, rows, onEvent: createChannel<SessionEvent>(onEvent) });
 }
 
 export function detachSession(session: SessionRef): Promise<void> {
-  return invoke<void>('pacer_detach', { session });
+  return invoke<void>('berth_detach', { session });
 }
 
 export function sendInput(session: SessionRef, data: string): Promise<void> {
-  return invoke<void>('pacer_input', { session, data });
+  return invoke<void>('berth_input', { session, data });
 }
 
 export function resizeSession(session: SessionRef, cols: number, rows: number): Promise<void> {
-  return invoke<void>('pacer_resize', { session, cols, rows });
+  return invoke<void>('berth_resize', { session, cols, rows });
 }
 
 export function markSeen(agent: string): Promise<void> {
-  return invoke<void>('pacer_mark_seen', { agent });
+  return invoke<void>('berth_mark_seen', { agent });
 }
 
-export type PacerRequest = { [variant: string]: Record<string, unknown> };
+export type BerthRequest = { [variant: string]: Record<string, unknown> };
 
 type OrphanedSession = {
   session_id: string;
@@ -246,39 +246,40 @@ type OrphanedSession = {
   created_at: number;
   orphaned_at: number;
   transcript_bytes: number | null;
+  live: boolean;
 };
 type PrewarmInfo = { worktree: string; kind: AgentKind; model: string | null };
 type SessionMetrics = { session: SessionRef; pid: number; rss_bytes: number; procs: number; prewarm: PrewarmInfo | null };
-type MetricsSnapshot = { daemon_pid: number; daemon_rss_bytes: number; system_total_bytes: number; sessions: SessionMetrics[] };
+type MetricsSnapshot = { daemon_pid: number; daemon_rss_bytes: number; system_total_bytes: number; sessions: SessionMetrics[]; sampled_at_ms: number };
 type EnterOutcome = 'AlreadyThere' | 'Relocating' | 'NextLaunch';
 
-export type PacerReply =
+export type BerthReply =
   | { Ack: { req_id: number; created: EntityId | null } }
   | { OrphanedSessions: { req_id: number; sessions: OrphanedSession[] } }
   | { WorktreeEntered: { req_id: number; worktree: Worktree; outcome: EnterOutcome } }
   | { Metrics: { req_id: number; snapshot: MetricsSnapshot } };
 
-export class PacerCallError extends Error {}
+export class BerthCallError extends Error {}
 
 const REPLY_VARIANTS = new Set(['Ack', 'OrphanedSessions', 'WorktreeEntered', 'Metrics']);
 
-function isPacerReply(value: unknown): value is PacerReply {
+function isBerthReply(value: unknown): value is BerthReply {
   if (typeof value !== 'object' || value === null) return false;
   const keys = Object.keys(value);
   return keys.length === 1 && REPLY_VARIANTS.has(keys[0] ?? '');
 }
 
-export async function call(request: PacerRequest): Promise<PacerReply> {
-  const reply = await invoke<unknown>('pacer_call', { request }).catch((e: unknown) => {
-    throw new PacerCallError(describeError(e));
+export async function call(request: BerthRequest): Promise<BerthReply> {
+  const reply = await invoke<unknown>('berth_call', { request }).catch((e: unknown) => {
+    throw new BerthCallError(describeError(e));
   });
-  if (!isPacerReply(reply)) throw new PacerCallError(t('agents.errors.unexpectedReply', { reply: JSON.stringify(reply) }));
+  if (!isBerthReply(reply)) throw new BerthCallError(t('agents.errors.unexpectedReply', { reply: JSON.stringify(reply) }));
   return reply;
 }
 
-export async function acknowledged(request: PacerRequest): Promise<EntityId | null> {
+export async function acknowledged(request: BerthRequest): Promise<EntityId | null> {
   const reply = await call(request);
-  if (!('Ack' in reply)) throw new PacerCallError(t('agents.errors.expectedAck', { reply: Object.keys(reply).join('') }));
+  if (!('Ack' in reply)) throw new BerthCallError(t('agents.errors.expectedAck', { reply: Object.keys(reply).join('') }));
   return reply.Ack.created;
 }
 

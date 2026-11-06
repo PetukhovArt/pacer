@@ -5,7 +5,7 @@ import { VButton, VContextMenu, VInputText } from '@ui/kit';
 import { t } from '../i18n';
 import { externalDot, externalStatusLabel, type ExternalSession } from './external';
 import HarnessIcon from './HarnessIcon.vue';
-import { archiveAgent, closeTerminal, deleteAgent, renameSession, restartAgent, type SessionNode, type SessionStatus } from './pacer';
+import { archiveAgent, closeTerminal, deleteAgent, renameSession, restartAgent, type SessionNode, type SessionStatus } from './berth';
 import { useAction } from './useAction';
 import MoveAgentDialog from './manage/MoveAgentDialog.vue';
 import StatusDot from './StatusDot.vue';

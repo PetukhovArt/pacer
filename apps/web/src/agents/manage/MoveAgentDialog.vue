@@ -2,7 +2,7 @@
 import { computed, shallowRef } from 'vue';
 import { VButton, VDialog, VMessage, VSelect } from '@ui/kit';
 import { t } from '../../i18n';
-import { usePacer } from '../pacer';
+import { useBerth } from '../berth';
 import { useAction } from '../useAction';
 import { moveAgent } from './orphans';
 import { useWorktreeOptions } from './worktrees';
@@ -10,9 +10,9 @@ import { useWorktreeOptions } from './worktrees';
 const props = defineProps<{ agent: string }>();
 const emit = defineEmits<{ moved: []; close: [] }>();
 
-const pacer = usePacer();
-const current = computed(() => pacer?.entities.value.agents.get(props.agent)?.worktree_id);
-const project = computed(() => (current.value ? pacer?.entities.value.worktrees.get(current.value)?.project_id : undefined));
+const berth = useBerth();
+const current = computed(() => berth?.entities.value.agents.get(props.agent)?.worktree_id);
+const project = computed(() => (current.value ? berth?.entities.value.worktrees.get(current.value)?.project_id : undefined));
 const options = useWorktreeOptions(() => project.value, () => current.value);
 
 const picked = shallowRef<string | null>(null);
@@ -32,7 +32,7 @@ async function submit() {
 </script>
 
 <template>
-  <VDialog v-if="pacer" :visible="true" modal dismissable-mask :header="t('agents.move.title')" :style="{ width: '28rem', maxWidth: '95vw' }" data-testid="move-agent-dialog" @update:visible="emit('close')">
+  <VDialog v-if="berth" :visible="true" modal dismissable-mask :header="t('agents.move.title')" :style="{ width: '28rem', maxWidth: '95vw' }" data-testid="move-agent-dialog" @update:visible="emit('close')">
     <p v-if="!options.length" class="state" role="status">{{ t('agents.move.none') }}</p>
     <form v-else class="form" @submit.prevent="submit">
       <VSelect

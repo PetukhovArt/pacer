@@ -1,11 +1,11 @@
 pub mod agent_sessions;
+pub mod berth;
 mod child;
 mod commands;
 pub mod connectors;
 #[cfg(feature = "desktop")]
 mod desktop;
 pub mod files;
-pub mod pacer;
 pub mod remote;
 mod review;
 pub mod rpc;

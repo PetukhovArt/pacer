@@ -1,7 +1,7 @@
 import { watch } from 'vue';
 import { listen } from '@tauri-apps/api/event';
 import { useExternalSessions } from './agents/external';
-import { usePacer } from './agents/pacer';
+import { useBerth } from './agents/berth';
 import { invoke, isDesktop } from './bridge';
 import { useDock } from './workbench/dock';
 
@@ -9,15 +9,15 @@ const NEW_SESSION_EVENT = 'tray://new-session';
 
 export function installTray(): void {
   if (!isDesktop) return;
-  const pacer = usePacer();
+  const berth = useBerth();
   const external = useExternalSessions();
   const dock = useDock();
-  if (pacer) {
+  if (berth) {
     watch(
       () => {
         let running = 0;
         let waiting = 0;
-        for (const session of pacer.sessions.value.values()) {
+        for (const session of berth.sessions.value.values()) {
           if (session.status === 'running') running += 1;
           else if (session.status === 'needs_feedback') waiting += 1;
         }

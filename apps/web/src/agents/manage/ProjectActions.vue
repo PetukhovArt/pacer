@@ -2,7 +2,7 @@
 import { computed, nextTick, shallowRef, useTemplateRef } from 'vue';
 import { VButton, VInputText } from '@ui/kit';
 import { t } from '../../i18n';
-import { usePacer, worktreesOfProject } from '../pacer';
+import { useBerth, worktreesOfProject } from '../berth';
 import ActionMenu from './ActionMenu.vue';
 import OrphansDialog from './OrphansDialog.vue';
 import { useAction } from '../useAction';
@@ -15,7 +15,7 @@ const emit = defineEmits<{ resumed: [agent: string]; create: [worktree: string] 
 
 type Mode = 'idle' | 'adding' | 'renaming' | 'removing';
 
-const pacer = usePacer();
+const berth = useBerth();
 const mode = shallowRef<Mode>('idle');
 const path = shallowRef('');
 const name = shallowRef('');
@@ -25,9 +25,9 @@ const { error, busy, run, clear } = useAction();
 const pathInput = useTemplateRef<{ $el: HTMLInputElement }>('pathInput');
 const nameInput = useTemplateRef<{ $el: HTMLInputElement }>('nameInput');
 
-const current = computed(() => (props.projectId ? pacer?.entities.value.projects.get(props.projectId) : undefined));
+const current = computed(() => (props.projectId ? berth?.entities.value.projects.get(props.projectId) : undefined));
 const mainWorktree = computed(() => {
-  const entities = pacer?.entities.value;
+  const entities = berth?.entities.value;
   if (!entities || !props.projectId) return undefined;
   const worktrees = worktreesOfProject(entities, props.projectId);
   return worktrees.find((worktree) => worktree.is_main) ?? worktrees[0];
@@ -96,12 +96,12 @@ async function confirmRemove() {
 </script>
 
 <template>
-  <div v-if="pacer" class="actions">
+  <div v-if="berth" class="actions">
     <ActionMenu
       v-if="projectId"
       testid="project-menu"
       :label="t('agents.project.actions')"
-      :remove-label="t('agents.project.removeFromPacer')"
+      :remove-label="t('agents.project.removeFromBerth')"
       :extra-label="t('agents.project.oldConversations')"
       extra-testid="project-menu-orphans"
       :create-label="mainWorktree ? t('agents.project.newSession') : undefined"

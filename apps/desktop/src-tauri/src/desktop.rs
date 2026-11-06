@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use pacer_core::{AgentId, SessionRef};
+use berth_core::{AgentId, SessionRef};
 use serde_json::Value;
 use tauri::ipc::{Channel, IpcResponse};
 use tauri::{AppHandle, Manager, Runtime, State};
 
 use crate::agent_sessions::{self, AgentSessionWatch, AgentSessionsChanged};
+use crate::berth::{self, Berth, SessionEvent, WatchEvent};
 use crate::commands::{plain_commands, to_json};
 use crate::connectors::monitor::{self, ConnectorsChanged};
 use crate::connectors::Connectors;
 use crate::files::{self, FileChanged, FileWatches};
-use crate::pacer::{self, Pacer, SessionEvent, WatchEvent};
 use crate::remote::{Remote, RemoteStatus, WebAsset, WebSource};
 use crate::settings::{self, ConfigFile, SettingsChanged, SettingsWatch};
 use crate::sink::Sink;
@@ -53,44 +53,44 @@ macro_rules! tauri_wrappers {
 plain_commands!(tauri_wrappers);
 
 #[tauri::command]
-pub fn pacer_watch(pacer: State<'_, Pacer>, on_event: Channel<WatchEvent>) {
-    pacer::pacer_watch(&pacer, sink(on_event));
+pub fn berth_watch(berth: State<'_, Berth>, on_event: Channel<WatchEvent>) {
+    berth::berth_watch(&berth, sink(on_event));
 }
 
 #[tauri::command]
-pub fn pacer_attach(
-    pacer: State<'_, Pacer>,
+pub fn berth_attach(
+    berth: State<'_, Berth>,
     session: SessionRef,
     cols: u16,
     rows: u16,
     on_event: Channel<SessionEvent>,
 ) {
-    pacer::pacer_attach(&pacer, session, cols, rows, sink(on_event));
+    berth::berth_attach(&berth, session, cols, rows, sink(on_event));
 }
 
 #[tauri::command]
-pub fn pacer_input(pacer: State<'_, Pacer>, session: SessionRef, data: String) {
-    pacer::pacer_input(&pacer, session, data);
+pub fn berth_input(berth: State<'_, Berth>, session: SessionRef, data: String) {
+    berth::berth_input(&berth, session, data);
 }
 
 #[tauri::command]
-pub fn pacer_resize(pacer: State<'_, Pacer>, session: SessionRef, cols: u16, rows: u16) {
-    pacer::pacer_resize(&pacer, session, cols, rows);
+pub fn berth_resize(berth: State<'_, Berth>, session: SessionRef, cols: u16, rows: u16) {
+    berth::berth_resize(&berth, session, cols, rows);
 }
 
 #[tauri::command]
-pub fn pacer_detach(pacer: State<'_, Pacer>, session: SessionRef) {
-    pacer::pacer_detach(&pacer, session);
+pub fn berth_detach(berth: State<'_, Berth>, session: SessionRef) {
+    berth::berth_detach(&berth, session);
 }
 
 #[tauri::command]
-pub fn pacer_mark_seen(pacer: State<'_, Pacer>, agent: AgentId) {
-    pacer::pacer_mark_seen(&pacer, agent);
+pub fn berth_mark_seen(berth: State<'_, Berth>, agent: AgentId) {
+    berth::berth_mark_seen(&berth, agent);
 }
 
 #[tauri::command]
-pub async fn pacer_call(pacer: State<'_, Pacer>, request: Value) -> Result<Value, String> {
-    pacer::pacer_call(&pacer, request).await
+pub async fn berth_call(berth: State<'_, Berth>, request: Value) -> Result<Value, String> {
+    berth::berth_call(&berth, request).await
 }
 
 #[tauri::command]
@@ -163,11 +163,11 @@ pub fn web_source<R: Runtime>(app: &AppHandle<R>) -> WebSource {
 
 pub fn run() {
     let connectors = Arc::new(Connectors::load());
-    let pacer = tauri::async_runtime::block_on(async { Pacer::spawn() });
+    let berth = tauri::async_runtime::block_on(async { Berth::spawn() });
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(connectors.clone())
-        .manage(pacer)
+        .manage(berth)
         .manage(SettingsWatch::default())
         .manage(FileWatches::default())
         .manage(AgentSessionWatch::default())
@@ -183,17 +183,17 @@ pub fn run() {
         })
         .on_window_event(tray::on_window_event)
         .invoke_handler(tauri::generate_handler![
-            pacer_watch,
-            pacer_attach,
-            pacer_input,
-            pacer_resize,
-            pacer_detach,
-            pacer_mark_seen,
-            pacer_call,
+            berth_watch,
+            berth_attach,
+            berth_input,
+            berth_resize,
+            berth_detach,
+            berth_mark_seen,
+            berth_call,
             settings_read,
             settings_write,
-            pacer_idle_timeout_read,
-            pacer_idle_timeout_write,
+            berth_idle_timeout_read,
+            berth_idle_timeout_write,
             settings_watch,
             settings_open_external,
             connectors_list,

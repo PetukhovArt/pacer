@@ -1,4 +1,4 @@
-import { acknowledged } from '../pacer';
+import { acknowledged } from '../berth';
 
 export type NewProject = { path: string; name: string | null; createMissing: boolean };
 

@@ -3,7 +3,7 @@ import { computed, shallowRef } from 'vue';
 import { VButton, VDialog, VInputText, VMessage, VSelect, VTextarea } from '@ui/kit';
 import { t } from '../i18n';
 import { useSettings } from '../settings/store';
-import { createAgent,createTerminal, entitySessionRef, type AgentKind, type SessionRef, type WorktreeNode } from './pacer';
+import { createAgent,createTerminal, entitySessionRef, type AgentKind, type SessionRef, type WorktreeNode } from './berth';
 import { useAction } from './useAction';
 
 const props = defineProps<{ worktree: WorktreeNode }>();

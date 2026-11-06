@@ -33,12 +33,12 @@ const FAIL_WINDOW: Duration = Duration::from_secs(60);
 const FAIL_LIMIT: u32 = 5;
 const DEFAULT_PORT: u16 = 4477;
 const INLINE: [&str; 9] = [
-    "pacer_watch",
-    "pacer_attach",
-    "pacer_input",
-    "pacer_resize",
-    "pacer_detach",
-    "pacer_mark_seen",
+    "berth_watch",
+    "berth_attach",
+    "berth_input",
+    "berth_resize",
+    "berth_detach",
+    "berth_mark_seen",
     "settings_watch",
     "fs_watch",
     "fs_unwatch",

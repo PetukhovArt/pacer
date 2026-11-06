@@ -18,7 +18,7 @@ const { activeKey, activeTitle, activeSession, paths, detail, creatingWorktree }
 </script>
 
 <template>
-  <div v-if="!dock.pacer" class="unavailable" data-testid="pacer-banner" data-state="unavailable">{{ t('agents.unavailable') }}</div>
+  <div v-if="!dock.berth" class="unavailable" data-testid="berth-banner" data-state="unavailable">{{ t('agents.unavailable') }}</div>
   <div v-else class="workbench" data-testid="workbench" :data-mobile="mobile" :data-detail="detail">
     <ProjectTree v-if="mobile && !detail" class="mobile-tree" with-filter />
     <BackBar v-if="mobile && detail" :title="activeSession?.name ?? activeTitle" @back="detail = false" />

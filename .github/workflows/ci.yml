@@ -37,8 +37,8 @@ jobs:
           git config --global user.name berth-ci
           git config --global user.email ci@berth.dev
 
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --exclude berth-desktop --all-targets --locked -- -D warnings
 
       # e2e_pty and e2e_tui are `#![cfg(unix)]`, e2e_windows is `#![cfg(windows)]`
       # — each host runs its own half of the end-to-end grid.
-      - run: cargo test --workspace --locked
+      - run: cargo test --workspace --exclude berth-desktop --locked
